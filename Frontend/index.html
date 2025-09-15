@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Meal Plan (MVP)</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main class="container">
+    <h1>🍽️ Meal Plan Generator</h1>
+
+    <form id="plan-form">
+      <div class="grid">
+        <label>
+          Target calories/day
+          <input type="number" name="calories" value="2200" min="800" max="5000" required />
+        </label>
+        <label>
+          Days
+          <input type="number" name="days" value="7" min="1" max="14" required />
+        </label>
+        <label>
+          Diet (optional)
+          <input type="text" name="diet" placeholder="e.g., high-protein, vegetarian" />
+        </label>
+        <label>
+          Allergies (comma-separated)
+          <input type="text" name="allergies" placeholder="e.g., peanuts, lactose" />
+        </label>
+        <label class="full">
+          Dislikes (comma-separated)
+          <input type="text" name="dislikes" placeholder="e.g., mushrooms, olives" />
+        </label>
+      </div>
+      <button type="submit" id="generate">Generate plan</button>
+    </form>
+
+    <section id="status" class="muted"></section>
+    <section id="result"></section>
+  </main>
+
+  <script src="./app.js" type="module"></script>
+</body>
+</html>
