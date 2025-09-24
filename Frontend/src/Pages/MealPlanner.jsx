@@ -1,22 +1,47 @@
-import React, { useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
-import { Button } from '@/components/ui/button';
-import { ArrowLeft, ArrowRight } from 'lucide-react';
-import { UserPreferences } from '@/entities/UserPreferences';
+// src/pages/MealPlanner.jsx
+import React, { useEffect, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { ArrowLeft, ArrowRight, Moon, Sun } from 'lucide-react'
+import { UserPreferences } from '@/entities/UserPreferences'
 
-import ProgressBar from '../components/questionnaire/ProgressBar';
-import PersonalInfoStep from '../components/questionnaire/PersonalInfoStep';
-import ActivityStep from '../components/questionnaire/ActivityStep';
-import GoalsStep from '../components/questionnaire/GoalsStep';
-import DietaryStep from '../components/questionnaire/DietaryStep';
-import CuisineStep from '../components/questionnaire/CuisineStep';
-import PreferencesStep from '../components/questionnaire/PreferencesStep';
-import ResultsStep from '../components/questionnaire/ResultsStep';
+// If you don’t use shadcn yet, use our simple Button below
+import { Button } from '@/components/ui/button'
+
+import ProgressBar from '@/components/questionnaire/ProgressBar'
+import PersonalInfoStep from '@/components/questionnaire/PersonalInfoStep'
+import ActivityStep from '@/components/questionnaire/ActivityStep'
+import GoalsStep from '@/components/questionnaire/GoalsStep'
+import DietaryStep from '@/components/questionnaire/DietaryStep'
+import CuisineStep from '@/components/questionnaire/CuisineStep'
+import PreferencesStep from '@/components/questionnaire/PreferencesStep'
+import ResultsStep from '@/components/questionnaire/ResultsStep'
+
+// …paste your MealPlanner component code here unchanged…
+
 
 export default function MealPlanner() {
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    const stored = window.localStorage.getItem('theme');
+    if (stored) return stored === 'dark';
+    const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)')?.matches;
+    return prefersDark ?? false;
+  });
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (isDarkMode) {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+    }
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
+    }
+  }, [isDarkMode]);
 
   const totalSteps = 7;
 
@@ -88,17 +113,28 @@ export default function MealPlanner() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#F5F5F5] via-white to-[#F5F5F5] p-4 md:p-8">
+    <div className="min-h-screen bg-gradient-to-br from-[#F5F5F5] via-white to-[#F5F5F5] p-4 md:p-8 transition-colors dark:from-[#0F172A] dark:via-[#111827] dark:to-[#0F172A]">
       <div className="max-w-3xl mx-auto">
+        <div className="flex justify-end mb-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setIsDarkMode(prev => !prev)}
+            className="rounded-full bg-white/70 text-gray-600 shadow-sm hover:bg-white dark:bg-slate-800/70 dark:text-gray-200 dark:hover:bg-slate-700"
+          >
+            {isDarkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+            <span className="sr-only">Toggle dark mode</span>
+          </Button>
+        </div>
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           className="text-center mb-8"
         >
-          <h1 className="text-3xl md:text-4xl font-bold mb-2" style={{ color: '#2E3A59' }}>
+          <h1 className="text-3xl md:text-4xl font-bold mb-2 text-[#2E3A59] dark:text-gray-100">
             Personal Meal Planner
           </h1>
-          <p className="text-gray-600">
+          <p className="text-gray-600 dark:text-gray-300">
             Answer a few questions to get your customized weekly meal plan
           </p>
         </motion.div>
@@ -107,7 +143,7 @@ export default function MealPlanner() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="bg-white rounded-2xl shadow-xl p-6 md:p-8"
+          className="bg-white rounded-2xl shadow-xl p-6 md:p-8 transition-colors dark:bg-slate-900 dark:shadow-[0_24px_60px_rgba(7,11,23,0.45)]"
         >
           {currentStep < 7 && (
             <ProgressBar currentStep={currentStep} totalSteps={6} />
@@ -128,7 +164,7 @@ export default function MealPlanner() {
                 variant="outline"
                 onClick={prevStep}
                 disabled={currentStep === 1}
-                className="flex items-center gap-2"
+                className="flex items-center gap-2 dark:border-slate-700 dark:text-gray-200"
               >
                 <ArrowLeft className="w-4 h-4" />
                 Previous
@@ -139,7 +175,6 @@ export default function MealPlanner() {
                   onClick={handleFinish}
                   disabled={!isStepValid() || isSubmitting}
                   className="flex items-center gap-2 px-8"
-                  style={{ backgroundColor: '#A5D6A7' }}
                 >
                   {isSubmitting ? 'Creating Plan...' : 'Create My Plan'}
                   <ArrowRight className="w-4 h-4" />
@@ -149,7 +184,6 @@ export default function MealPlanner() {
                   onClick={nextStep}
                   disabled={!isStepValid()}
                   className="flex items-center gap-2"
-                  style={{ backgroundColor: '#A5D6A7' }}
                 >
                   Next
                   <ArrowRight className="w-4 h-4" />

@@ -65,20 +65,20 @@ export default function ResultsStep({ data }) {
         initial={{ opacity: 0, y: 30 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.5 }}
-        className="bg-gradient-to-br from-[#A5D6A7] to-[#81C784] p-6 rounded-2xl text-white"
+        className="bg-gradient-to-br from-[#A5D6A7] to-[#81C784] p-6 rounded-2xl text-white transition-colors dark:from-[#12413b] dark:to-[#0f2f2d]"
       >
         <div className="flex items-center gap-2 mb-4">
-          <Sparkles className="w-5 h-5" />
-          <h3 className="font-semibold">Your Profile Summary</h3>
+          <Sparkles className="w-5 h-5 text-white/80" />
+          <h3 className="font-semibold text-white">Your Profile Summary</h3>
         </div>
         <div className="grid md:grid-cols-2 gap-4 text-sm">
-          <div className="bg-white bg-opacity-20 p-3 rounded-lg">
+          <div className="rounded-xl bg-white/15 p-4 text-white shadow-inner">
             <div className="font-medium">Physical Stats</div>
-            <div>{data.age} years • {data.height}cm • {data.weight}kg</div>
+            <div className="text-sm opacity-90">{data.age} years • {data.height}cm • {data.weight}kg</div>
           </div>
-          <div className="bg-white bg-opacity-20 p-3 rounded-lg">
+          <div className="rounded-xl bg-white/15 p-4 text-white shadow-inner">
             <div className="font-medium">Activity & Goal</div>
-            <div>{getActivityText(data.activity_level)} • {getGoalText(data.nutrition_goal)}</div>
+            <div className="text-sm opacity-90">{getActivityText(data.activity_level)} • {getGoalText(data.nutrition_goal)}</div>
           </div>
         </div>
       </motion.div>
@@ -88,15 +88,15 @@ export default function ResultsStep({ data }) {
           initial={{ opacity: 0, x: -30 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.6 }}
-          className="bg-white border border-gray-200 p-6 rounded-xl"
+          className="bg-white border border-gray-200 p-6 rounded-xl transition-colors dark:bg-slate-900/60 dark:border-slate-700"
         >
           <div className="flex items-center gap-2 mb-4">
-            <Calendar className="w-5 h-5" style={{ color: '#A5D6A7' }} />
-            <h3 className="font-semibold" style={{ color: '#2E3A59' }}>
+            <Calendar className="w-5 h-5 text-[#A5D6A7] dark:text-[#7dd3a7]" />
+            <h3 className="font-semibold text-[#2E3A59] dark:text-gray-100">
               Weekly Plan Preview
             </h3>
           </div>
-          <div className="space-y-2 text-sm text-gray-600">
+          <div className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
             <div className="flex justify-between">
               <span>Meals per day:</span>
               <span className="font-medium">{data.meals_per_day || 3}</span>
@@ -116,15 +116,15 @@ export default function ResultsStep({ data }) {
           initial={{ opacity: 0, x: 30 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.7 }}
-          className="bg-white border border-gray-200 p-6 rounded-xl"
+          className="bg-white border border-gray-200 p-6 rounded-xl transition-colors dark:bg-slate-900/60 dark:border-slate-700"
         >
           <div className="flex items-center gap-2 mb-4">
-            <Clock className="w-5 h-5" style={{ color: '#FF6F61' }} />
-            <h3 className="font-semibold" style={{ color: '#2E3A59' }}>
+            <Clock className="w-5 h-5 text-[#FF6F61] dark:text-[#fb7185]" />
+            <h3 className="font-semibold text-[#2E3A59] dark:text-gray-100">
               Cooking Preferences
             </h3>
           </div>
-          <div className="space-y-2 text-sm text-gray-600">
+          <div className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
             <div className="flex justify-between">
               <span>Cooking time:</span>
               <span className="font-medium">{data.cooking_time_preference?.replace('_', ' ') || 'Not specified'}</span>
@@ -141,13 +141,13 @@ export default function ResultsStep({ data }) {
         initial={{ opacity: 0, y: 30 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.8 }}
-        className="bg-[#F5F5F5] p-6 rounded-xl text-center"
+        className="bg-[#F5F5F5] p-6 rounded-xl text-center transition-colors dark:bg-slate-900/60"
       >
         <div className="text-4xl mb-2">🍽️</div>
-        <h3 className="font-semibold mb-2" style={{ color: '#2E3A59' }}>
+        <h3 className="font-semibold mb-2 text-[#2E3A59] dark:text-gray-100">
           Your meal plan is being prepared!
         </h3>
-        <p className="text-sm text-gray-600">
+        <p className="text-sm text-gray-600 dark:text-gray-300">
           In the full version, you'll receive detailed recipes, shopping lists, and nutritional information
           tailored specifically to your preferences and goals.
         </p>
