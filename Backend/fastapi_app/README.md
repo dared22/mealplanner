@@ -26,6 +26,24 @@
    uvicorn main:app --reload --host 0.0.0.0 --port 8000
    ```
 
+## Database migrations (Alembic)
+
+1. Create a new migration after modifying models:
+   ```bash
+   alembic revision --autogenerate -m "describe change"
+   ```
+2. Apply migrations:
+   ```bash
+   alembic upgrade head
+   ```
+3. Inspect history:
+   ```bash
+   alembic history --verbose
+   ```
+
+Alembic reads the same `DATABASE_URL` environment variable as the app. The configuration
+files live in `alembic.ini` and the `alembic/` folder inside `fastapi_app`.
+
 The API exposes:
 - `GET /health` – health check
 - `POST /preferences` – persists structured questionnaire data to PostgreSQL and returns an integer identifier

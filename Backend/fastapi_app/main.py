@@ -25,6 +25,7 @@ def health_check() -> Dict[str, str]:
 
 @app.on_event("startup")
 def on_startup() -> None:
+    # Ensures the table exists when running without Alembic migrations.
     Base.metadata.create_all(bind=engine)
 
 
@@ -50,6 +51,7 @@ def save_preferences(
         preferred_cuisines=payload.get("preferred_cuisines") or [],
         raw_data=payload,
     )
+
     db.add(preference)
     db.commit()
     db.refresh(preference)

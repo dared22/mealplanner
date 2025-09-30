@@ -14,8 +14,7 @@ class Preference(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     submitted_at: Mapped[str] = mapped_column(
         String(32),
-        default=lambda: datetime.now(timezone.utc)
-        .isoformat(timespec="minutes"),
+        default=lambda: datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"),
         nullable=False,
     )
 
