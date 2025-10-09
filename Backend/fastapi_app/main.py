@@ -1,11 +1,35 @@
 from typing import Any, Dict
 
-from fastapi import Body, Depends, FastAPI, HTTPException
+from fastapi import Body, Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from passlib.context import CryptContext
+from pydantic import BaseModel, EmailStr, Field
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from database import Base, engine, get_session
-from models import Preference
+from models import Preference, User
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+class AuthRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=128)
+
+
+class AuthResponse(BaseModel):
+    message: str
+    user_id: int
+    email: EmailStr
+
+
+def hash_password(password: str) -> str:
+    return pwd_context.hash(password)
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return pwd_context.verify(plain_password, hashed_password)
 
 app = FastAPI(title="Meal Planner API")
 
@@ -37,6 +61,14 @@ def save_preferences(
     if not payload:
         raise HTTPException(status_code=400, detail="Request body cannot be empty")
 
+    user_id = payload.get("user_id")
+    if user_id is None:
+        raise HTTPException(status_code=400, detail="user_id is required")
+
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
     preference = Preference(
         age=payload.get("age"),
         gender=payload.get("gender"),
@@ -50,6 +82,7 @@ def save_preferences(
         dietary_restrictions=payload.get("dietary_restrictions") or [],
         preferred_cuisines=payload.get("preferred_cuisines") or [],
         raw_data=payload,
+        user=user,
     )
 
     db.add(preference)
@@ -80,4 +113,48 @@ def get_preferences(pref_id: int, db: Session = Depends(get_session)) -> Dict[st
         "dietary_restrictions": entry.dietary_restrictions,
         "preferred_cuisines": entry.preferred_cuisines,
         "raw_data": entry.raw_data,
+        "user_id": entry.user_id,
+    }
+
+
+@app.post("/auth/register", status_code=status.HTTP_201_CREATED, response_model=AuthResponse)
+def register_user(payload: AuthRequest, db: Session = Depends(get_session)) -> AuthResponse:
+    existing_user = db.scalar(select(User).where(User.email == payload.email))
+    if existing_user is not None:
+        raise HTTPException(status_code=409, detail="User already exists")
+
+    user = User(email=payload.email, password_hash=hash_password(payload.password))
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    return AuthResponse(message="User registered", user_id=user.id, email=user.email)
+
+
+@app.post("/auth/login", response_model=AuthResponse)
+def login_user(payload: AuthRequest, db: Session = Depends(get_session)) -> AuthResponse:
+    user = db.scalar(select(User).where(User.email == payload.email))
+    if user is None or not verify_password(payload.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    return AuthResponse(message="Login successful", user_id=user.id, email=user.email)
+
+
+@app.get("/users/{user_id}/preferences")
+def list_user_preferences(user_id: int, db: Session = Depends(get_session)) -> Dict[str, Any]:
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    entries = db.scalars(select(Preference).where(Preference.user_id == user_id)).all()
+    return {
+        "user_id": user_id,
+        "preferences": [
+            {
+                "id": entry.id,
+                "submitted_at": entry.submitted_at,
+                "raw_data": entry.raw_data,
+            }
+            for entry in entries
+        ],
     }

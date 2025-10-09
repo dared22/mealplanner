@@ -19,7 +19,7 @@ import ResultsStep from '@/components/questionnaire/ResultsStep'
 // …paste your MealPlanner component code here unchanged…
 
 
-export default function MealPlanner() {
+export default function MealPlanner({ onLogout, user }) {
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -81,9 +81,14 @@ export default function MealPlanner() {
   };
 
   const handleFinish = async () => {
+    if (!user?.id) {
+      console.error('Cannot submit preferences without user context.')
+      return
+    }
+
     setIsSubmitting(true);
     try {
-      await UserPreferences.create(formData);
+      await UserPreferences.create({ ...formData, user_id: user.id });
       setCurrentStep(7);
     } catch (error) {
       console.error('Error saving preferences:', error);
@@ -112,10 +117,23 @@ export default function MealPlanner() {
     }
   };
 
+  const handleLogoutClick = () => {
+    onLogout?.()
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#F5F5F5] via-white to-[#F5F5F5] p-4 md:p-8 transition-colors dark:from-[#0F172A] dark:via-[#111827] dark:to-[#0F172A]">
       <div className="max-w-3xl mx-auto">
-        <div className="flex justify-end mb-4">
+        <div className="flex justify-end items-center gap-3 mb-4">
+          {onLogout && (
+            <Button
+              variant="outline"
+              onClick={handleLogoutClick}
+              className="rounded-full bg-white/70 text-gray-600 shadow-sm hover:bg-white dark:bg-slate-800/70 dark:text-gray-200 dark:hover:bg-slate-700"
+            >
+              Log out
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon"

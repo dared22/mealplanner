@@ -1,9 +1,9 @@
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-from sqlalchemy import Integer, String
+from sqlalchemy import DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database import Base
 
@@ -31,3 +31,19 @@ class Preference(Base):
     preferred_cuisines: Mapped[Optional[list[str]]] = mapped_column(ARRAY(String))
 
     raw_data: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    user: Mapped["User"] = relationship("User", back_populates="preferences")
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    preferences: Mapped[list["Preference"]] = relationship(
+        "Preference", back_populates="user", cascade="all, delete-orphan"
+    )

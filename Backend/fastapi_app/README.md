@@ -21,6 +21,22 @@
    uvicorn main:app --reload --host 0.0.0.0 --port 8000
    ```
 
+## Docker Compose (full stack)
+
+1. Install Docker Desktop (or Docker Engine) and ensure `docker compose` is available.
+2. From the repository root, start all services:
+   ```bash
+   docker compose up --build
+   ```
+   This launches PostgreSQL, the FastAPI backend with live reload, and the Vite frontend dev server.
+3. Open the app at [http://localhost:5173](http://localhost:5173). The backend is exposed on [http://localhost:8000](http://localhost:8000).
+4. When you are finished, stop everything with `Ctrl+C`, then remove containers (and the Postgres volume if desired):
+   ```bash
+   docker compose down
+   # or to wipe the Postgres data volume as well
+   docker compose down -v
+   ```
+
 The API exposes:
 - `GET /health` – health check
 - `POST /preferences` – persists questionnaire data to PostgreSQL and returns an identifier
