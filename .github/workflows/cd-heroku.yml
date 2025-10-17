@@ -1,0 +1,50 @@
+name: CD Heroku
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+      HEROKU_EMAIL: ${{ secrets.HEROKU_EMAIL }}
+      HEROKU_APP_BACKEND: ${{ secrets.HEROKU_APP_BACKEND }}
+      HEROKU_APP_FRONTEND: ${{ secrets.HEROKU_APP_FRONTEND }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Install Heroku CLI
+        run: |
+          curl https://cli-assets.heroku.com/install.sh | sh
+      - name: Configure Heroku credentials
+        run: |
+          cat <<EOF > ~/.netrc
+          machine api.heroku.com
+            login $HEROKU_EMAIL
+            password $HEROKU_API_KEY
+          machine git.heroku.com
+            login $HEROKU_EMAIL
+            password $HEROKU_API_KEY
+          EOF
+          chmod 600 ~/.netrc
+      - name: Login to Heroku Container Registry
+        run: |
+          heroku container:login
+      - name: Push backend container
+        run: |
+          heroku container:push web --app "$HEROKU_APP_BACKEND" --context-path Backend/fastapi_app
+      - name: Release backend container
+        run: |
+          heroku container:release web --app "$HEROKU_APP_BACKEND"
+      - name: Push frontend container
+        run: |
+          heroku container:push web --app "$HEROKU_APP_FRONTEND" --context-path Frontend
+      - name: Release frontend container
+        run: |
+          heroku container:release web --app "$HEROKU_APP_FRONTEND"
