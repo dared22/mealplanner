@@ -19,6 +19,14 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+      - name: Normalize Heroku secrets
+        run: |
+          {
+            echo "HEROKU_API_KEY=${HEROKU_API_KEY//$'\r'/}"
+            echo "HEROKU_EMAIL=${HEROKU_EMAIL//$'\r'/}"
+            echo "HEROKU_APP_BACKEND=${HEROKU_APP_BACKEND//$'\r'/}"
+            echo "HEROKU_APP_FRONTEND=${HEROKU_APP_FRONTEND//$'\r'/}"
+          } >> "$GITHUB_ENV"
       - name: Install Heroku CLI
         run: |
           curl https://cli-assets.heroku.com/install.sh | sh
