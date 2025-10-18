@@ -44,6 +44,12 @@ jobs:
       - name: Login to Heroku Container Registry
         run: |
           heroku container:login
+      - name: Ensure backend app uses container stack
+        run: |
+          heroku stack:set container --app "$HEROKU_APP_BACKEND"
+      - name: Ensure frontend app uses container stack
+        run: |
+          heroku stack:set container --app "$HEROKU_APP_FRONTEND"
       - name: Push backend container
         run: |
           heroku container:push web --app "$HEROKU_APP_BACKEND" --context-path Backend/fastapi_app
