@@ -50,7 +50,7 @@ jobs:
 
       # ---------- Backend ----------
       - name: Set container stack (backend)
-        run: heroku stack:set container -a "$HEROKU_APP_BACKEND" --confirm "$HEROKU_APP_BACKEND"
+        run: heroku stack:set container -a "$HEROKU_APP_BACKEND" 
 
       - name: Build backend image
         run: |
@@ -70,7 +70,7 @@ jobs:
 
       # ---------- Frontend ----------
       - name: Set container stack (frontend)
-        run: heroku stack:set container -a "$HEROKU_APP_FRONTEND" --confirm "$HEROKU_APP_FRONTEND"
+        run: heroku stack:set container -a "$HEROKU_APP_FRONTEND" 
 
       - name: Build frontend image
         run: |
