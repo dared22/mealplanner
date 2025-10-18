@@ -22,6 +22,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Normalize Heroku secrets
+        run: |
+          {
+            printf 'HEROKU_API_KEY=%s\n' "$(printf %s "$HEROKU_API_KEY" | tr -d '\r\n')"
+            printf 'HEROKU_EMAIL=%s\n' "$(printf %s "$HEROKU_EMAIL" | tr -d '\r\n')"
+            printf 'HEROKU_APP_BACKEND=%s\n' "$(printf %s "$HEROKU_APP_BACKEND" | tr -d '\r\n')"
+            printf 'HEROKU_APP_FRONTEND=%s\n' "$(printf %s "$HEROKU_APP_FRONTEND" | tr -d '\r\n')"
+          } >> "$GITHUB_ENV"
+
       - name: Install Heroku CLI
         run: curl https://cli-assets.heroku.com/install.sh | sh
 
