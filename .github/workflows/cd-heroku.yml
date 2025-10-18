@@ -2,68 +2,75 @@ name: CD Heroku
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
   workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     env:
       HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
       HEROKU_EMAIL: ${{ secrets.HEROKU_EMAIL }}
       HEROKU_APP_BACKEND: ${{ secrets.HEROKU_APP_BACKEND }}
       HEROKU_APP_FRONTEND: ${{ secrets.HEROKU_APP_FRONTEND }}
+
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
-      - name: Normalize Heroku secrets
+
+      - name: Install & auth Heroku CLI
+        uses: heroku/actions/setup@v2
+        with:
+          heroku-api-key: ${{ env.HEROKU_API_KEY }}
+
+      # Optional first run: verify case-sensitive paths on Linux runner
+      - name: Sanity check paths
         run: |
-          {
-            echo "HEROKU_API_KEY=${HEROKU_API_KEY//$'\r'/}"
-            echo "HEROKU_EMAIL=${HEROKU_EMAIL//$'\r'/}"
-            echo "HEROKU_APP_BACKEND=${HEROKU_APP_BACKEND//$'\r'/}"
-            echo "HEROKU_APP_FRONTEND=${HEROKU_APP_FRONTEND//$'\r'/}"
-          } >> "$GITHUB_ENV"
-      - name: Install Heroku CLI
-        run: |
-          curl https://cli-assets.heroku.com/install.sh | sh
-      - name: Configure Heroku credentials
-        run: |
-          cat <<EOF > ~/.netrc
-          machine api.heroku.com
-            login $HEROKU_EMAIL
-            password $HEROKU_API_KEY
-          machine git.heroku.com
-            login $HEROKU_EMAIL
-            password $HEROKU_API_KEY
-          EOF
-          chmod 600 ~/.netrc
+          pwd && ls -la
+          ls -la Backend || true
+          ls -la Backend/fastapi_app || true
+          ls -la Frontend || true
+
       - name: Login to Heroku Container Registry
+        run: heroku container:login
+
+      # ---------- Backend ----------
+      - name: Set container stack (backend)
+        run: heroku stack:set container -a $HEROKU_APP_BACKEND
+
+      - name: Build backend image
         run: |
-          heroku container:login
-      - name: Ensure backend app uses container stack
+          docker build \
+            -f Backend/fastapi_app/Dockerfile \
+            -t registry.heroku.com/$HEROKU_APP_BACKEND/web \
+            Backend/fastapi_app
+
+      - name: Push backend image
+        run: docker push registry.heroku.com/$HEROKU_APP_BACKEND/web
+
+      - name: Release backend
+        run: heroku container:release web -a $HEROKU_APP_BACKEND
+
+      - name: Run Alembic migrations
+        run: heroku run "alembic upgrade head" -a $HEROKU_APP_BACKEND
+
+      # ---------- Frontend ----------
+      - name: Set container stack (frontend)
+        run: heroku stack:set container -a $HEROKU_APP_FRONTEND
+
+      - name: Build frontend image
         run: |
-          heroku stack:set container --app "$HEROKU_APP_BACKEND"
-      - name: Ensure frontend app uses container stack
-        run: |
-          heroku stack:set container --app "$HEROKU_APP_FRONTEND"
-      - name: Build backend image (explicit path)
-        run: |
-          docker build -f Backend/fastapi_app/Dockerfile \
-         -t registry.heroku.com/${{ secrets.HEROKU_APP_BACKEND }}/web \
-         Backend/fastapi_app
-      - name: Push backend container
-        run: |
-          heroku container:push web --app "$HEROKU_APP_BACKEND" --context-path Backend/fastapi_app
-      - name: Release backend container
-        run: |
-          heroku container:release web --app "$HEROKU_APP_BACKEND"
-      - name: Push frontend container
-        run: |
-          heroku container:push web --app "$HEROKU_APP_FRONTEND" --context-path Frontend
-      - name: Release frontend container
-        run: |
-          heroku container:release web --app "$HEROKU_APP_FRONTEND"
+          docker build \
+            -f Frontend/Dockerfile \
+            -t registry.heroku.com/$HEROKU_APP_FRONTEND/web \
+            Frontend
+
+      - name: Push frontend image
+        run: docker push registry.heroku.com/$HEROKU_APP_FRONTEND/web
+
+      - name: Release frontend
+        run: heroku container:release web -a $HEROKU_APP_FRONTEND
