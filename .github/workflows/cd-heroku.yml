@@ -50,6 +50,11 @@ jobs:
       - name: Ensure frontend app uses container stack
         run: |
           heroku stack:set container --app "$HEROKU_APP_FRONTEND"
+      - name: Build backend image (explicit path)
+        run: |
+          docker build -f Backend/fastapi_app/Dockerfile \
+         -t registry.heroku.com/${{ secrets.HEROKU_APP_BACKEND }}/web \
+         Backend/fastapi_app
       - name: Push backend container
         run: |
           heroku container:push web --app "$HEROKU_APP_BACKEND" --context-path Backend/fastapi_app
