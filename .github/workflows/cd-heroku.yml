@@ -22,10 +22,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install & auth Heroku CLI
-        uses: heroku/actions/setup@v2
-        with:
-          heroku-api-key: ${{ env.HEROKU_API_KEY }}
+      - name: Install Heroku CLI
+        run: curl https://cli-assets.heroku.com/install.sh | sh
+
+      - name: Authenticate Heroku CLI
+        run: |
+          cat <<EOF > ~/.netrc
+          machine api.heroku.com
+            login $HEROKU_EMAIL
+            password $HEROKU_API_KEY
+          machine git.heroku.com
+            login $HEROKU_EMAIL
+            password $HEROKU_API_KEY
+          EOF
+          chmod 600 ~/.netrc
 
       # Optional first run: verify case-sensitive paths on Linux runner
       - name: Sanity check paths
@@ -40,7 +50,7 @@ jobs:
 
       # ---------- Backend ----------
       - name: Set container stack (backend)
-        run: heroku stack:set container -a $HEROKU_APP_BACKEND
+        run: heroku stack:set container -a "$HEROKU_APP_BACKEND" --confirm "$HEROKU_APP_BACKEND"
 
       - name: Build backend image
         run: |
@@ -60,7 +70,7 @@ jobs:
 
       # ---------- Frontend ----------
       - name: Set container stack (frontend)
-        run: heroku stack:set container -a $HEROKU_APP_FRONTEND
+        run: heroku stack:set container -a "$HEROKU_APP_FRONTEND" --confirm "$HEROKU_APP_FRONTEND"
 
       - name: Build frontend image
         run: |
