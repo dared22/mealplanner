@@ -14,7 +14,7 @@ BASE_DIR = Path(__file__).resolve().parents[1]
 if str(BASE_DIR) not in sys.path:
     sys.path.append(str(BASE_DIR))
 
-from database import Base, engine
+from database import Base, DATABASE_URL, engine
 import models  # noqa: F401
 
 # this is the Alembic Config object, which provides
@@ -25,8 +25,8 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Set SQLAlchemy URL from environment or fallback to engine.url
-config.set_main_option("sqlalchemy.url", os.getenv("DATABASE_URL", str(engine.url)))
+# Set SQLAlchemy URL using the coerced value from database.py
+config.set_main_option("sqlalchemy.url", DATABASE_URL)
 
 # add your model's MetaData object here
 # for 'autogenerate' support
