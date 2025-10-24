@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowLeft, ArrowRight, Moon, Sun } from 'lucide-react'
-import { UserPreferences } from '@/entities/UserPreferences'
+import { UserPreferences } from '@/Entities/UserPreferences'
 
 // If you don’t use shadcn yet, use our simple Button below
 import { Button } from '@/components/ui/button'

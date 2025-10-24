@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Auth } from '@/entities/Auth'
+import { Auth } from '@/Entities/Auth'
 import { Button } from '@/components/ui/button'
 
 const modes = {
