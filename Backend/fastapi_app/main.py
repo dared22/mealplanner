@@ -1,3 +1,4 @@
+import os
 from typing import Any, Dict
 
 from fastapi import Body, Depends, FastAPI, HTTPException, status
@@ -9,6 +10,8 @@ from sqlalchemy.orm import Session
 
 from database import Base, engine, get_session
 from models import Preference, User
+
+ENSURE_SCHEMA_ON_STARTUP = os.getenv("ENSURE_SCHEMA_ON_STARTUP", "").lower() in {"1", "true", "yes"}
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -49,8 +52,9 @@ def health_check() -> Dict[str, str]:
 
 @app.on_event("startup")
 def on_startup() -> None:
-    # Ensures the table exists when running without Alembic migrations.
-    Base.metadata.create_all(bind=engine)
+    # Allow optional schema sync for lightweight local setups without Alembic.
+    if ENSURE_SCHEMA_ON_STARTUP:
+        Base.metadata.create_all(bind=engine)
 
 
 @app.post("/preferences")
