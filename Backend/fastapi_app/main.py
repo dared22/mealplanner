@@ -1,3 +1,4 @@
+import logging
 import os
 from typing import Any, Dict
 
@@ -10,10 +11,12 @@ from sqlalchemy.orm import Session
 
 from database import Base, engine, get_session
 from models import Preference, User
+from planner import generate_meal_plan_for_preference
 
 ENSURE_SCHEMA_ON_STARTUP = os.getenv("ENSURE_SCHEMA_ON_STARTUP", "").lower() in {"1", "true", "yes"}
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+logger = logging.getLogger(__name__)
 
 
 class AuthRequest(BaseModel):
@@ -65,6 +68,8 @@ def save_preferences(
     if not payload:
         raise HTTPException(status_code=400, detail="Request body cannot be empty")
 
+    print(f"Incoming preference payload: {payload}")
+
     user_id = payload.get("user_id")
     if user_id is None:
         raise HTTPException(status_code=400, detail="user_id is required")
@@ -92,6 +97,15 @@ def save_preferences(
     db.add(preference)
     db.commit()
     db.refresh(preference)
+
+    try:
+        plan_text = generate_meal_plan_for_preference(db, preference.id)
+    except ValueError:
+        logger.exception("Preference %s disappeared before plan generation", preference.id)
+    except Exception:
+        logger.exception("Meal plan generation failed for user_id=%s", user_id)
+    else:
+        print(f"Generated meal plan for user {user_id}:\n{plan_text}")
 
     return {"id": preference.id, "stored": True}
 
