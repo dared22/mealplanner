@@ -31,7 +31,7 @@ class Preference(Base):
     preferred_cuisines: Mapped[Optional[list[str]]] = mapped_column(ARRAY(String))
 
     raw_data: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=True)
     user: Mapped["User"] = relationship("User", back_populates="preferences")
 
 
