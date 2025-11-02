@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion as Motion } from 'framer-motion';
-import { CheckCircle, Sparkles, Calendar, Clock } from 'lucide-react';
+import { CheckCircle, Sparkles, Calendar, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const WEEK_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const MEAL_TYPES = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
@@ -359,72 +359,90 @@ function MealCard({ meal, mealType, showMealType = false, className = '' }) {
   );
 }
 
-function DayCard({ day, targetCalories, isActive, onSelect }) {
+function DayCard({ day, targetCalories, isActive, onSelect, className = '' }) {
+  const dayIndex = WEEK_DAYS.indexOf(day.name);
+  const dayNumber = dayIndex >= 0 ? dayIndex + 1 : '—';
+
   return (
-    <div
-      className={`relative overflow-hidden rounded-3xl border border-gray-200 bg-white/90 p-5 shadow-sm transition-all hover:-translate-y-1 hover:shadow-lg dark:border-slate-800 dark:bg-slate-900/80 ${
-        isActive ? 'ring-2 ring-offset-2 ring-[#A5D6A7]/70 dark:ring-emerald-400/60 dark:ring-offset-slate-950' : 'ring-0'
-      }`}
+    <Motion.button
+      type="button"
+      onClick={onSelect}
+      whileHover={{ y: -6 }}
+      whileTap={{ scale: 0.98 }}
+      className={`group relative flex min-w-[240px] max-w-[320px] flex-col gap-4 rounded-3xl border bg-white px-5 py-6 text-left shadow-sm transition-all duration-200 sm:min-w-[260px] sm:max-w-[340px] md:min-w-[280px] dark:bg-slate-900/90 ${
+        isActive
+          ? 'border-transparent ring-2 ring-offset-2 ring-[#A5D6A7] ring-offset-[#ECF5EE] dark:ring-emerald-400/70 dark:ring-offset-slate-950'
+          : 'border-gray-200 hover:border-[#A5D6A7]/70 hover:shadow-lg dark:border-slate-800'
+      } ${className}`}
     >
-      <div className="pointer-events-none absolute inset-x-2 top-2 h-24 rounded-3xl bg-gradient-to-br from-[#A5D6A7]/45 via-transparent to-transparent opacity-80" />
-      <div className="relative flex items-center gap-4">
-        <DailyDonut value={day.calories} target={targetCalories} />
+      <div className="flex items-center gap-4">
+        <div className="rounded-2xl bg-[#A5D6A7]/20 p-2 dark:bg-emerald-500/15">
+          <DailyDonut value={day.calories} target={targetCalories} />
+        </div>
         <div className="flex-1">
-          <div className="flex items-baseline justify-between gap-3">
-            <h4 className="text-base font-semibold text-[#2E3A59] dark:text-gray-100">
-              {day.name}
-            </h4>
-            <span className="text-xs text-gray-500 dark:text-gray-400">
-              {day.calories} / {targetCalories} kcal
-            </span>
-          </div>
-          <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-medium text-gray-500 dark:text-gray-400">
-            <span className="rounded-full bg-[#A5D6A7]/25 px-2.5 py-1 text-[#1B5E20] dark:bg-emerald-500/10 dark:text-emerald-200">
-              P {day.macros.protein}g
-            </span>
-            <span className="rounded-full bg-[#A5D6A7]/25 px-2.5 py-1 text-[#1B5E20] dark:bg-emerald-500/10 dark:text-emerald-200">
-              C {day.macros.carbs}g
-            </span>
-            <span className="rounded-full bg-[#A5D6A7]/25 px-2.5 py-1 text-[#1B5E20] dark:bg-emerald-500/10 dark:text-emerald-200">
-              F {day.macros.fat}g
-            </span>
-          </div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-[#97A0C2] dark:text-slate-400">
+            Day {dayNumber}
+          </p>
+          <h4 className="text-lg font-semibold text-[#1f2a44] dark:text-gray-100">
+            {day.name}
+          </h4>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            {day.calories} / {targetCalories} kcal planned
+          </p>
         </div>
       </div>
-      <button
-        onClick={onSelect}
-        className={`relative mt-6 w-full rounded-full px-4 py-2 text-sm font-semibold transition ${
-          isActive
-            ? 'bg-[#A5D6A7] text-[#1B5E20] shadow hover:bg-[#9bcf9d]'
-            : 'border border-[#A5D6A7]/60 text-[#2E3A59] hover:bg-[#A5D6A7]/15 dark:border-emerald-400/40 dark:text-emerald-200 dark:hover:bg-emerald-500/10'
-        }`}
-      >
-        {isActive ? 'Viewing day plan' : 'Show plan for this day'}
-      </button>
-    </div>
+      <div className="flex flex-wrap gap-2">
+        <span className="rounded-full bg-[#1B5E20]/10 px-3 py-1 text-[11px] font-semibold text-[#1B5E20] dark:bg-emerald-500/15 dark:text-emerald-200">
+          P {day.macros.protein}g
+        </span>
+        <span className="rounded-full bg-[#1B5E20]/10 px-3 py-1 text-[11px] font-semibold text-[#1B5E20] dark:bg-emerald-500/15 dark:text-emerald-200">
+          C {day.macros.carbs}g
+        </span>
+        <span className="rounded-full bg-[#1B5E20]/10 px-3 py-1 text-[11px] font-semibold text-[#1B5E20] dark:bg-emerald-500/15 dark:text-emerald-200">
+          F {day.macros.fat}g
+        </span>
+      </div>
+      <div className="mt-auto flex items-center justify-between rounded-2xl bg-[#F1F6F2] px-4 py-3 text-[11px] font-medium text-[#2E3A59] transition group-hover:bg-[#E5F1E6] dark:bg-slate-800/80 dark:text-emerald-100">
+        <span>View full plan</span>
+        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[#1B5E20] dark:text-emerald-300">
+          {isActive ? 'Active' : 'Preview'}
+        </span>
+      </div>
+    </Motion.button>
   );
 }
 
 function SelectedDayPlan({ day, targetCalories, macroTargets }) {
   if (!day) return null;
 
+  const highlightTags = Array.from(
+    new Set(
+      MEAL_TYPES.flatMap(type => day.meals[type]?.tags || [])
+    )
+  ).slice(0, 4);
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 rounded-3xl bg-gradient-to-br from-white via-white/70 to-white/40 p-6 shadow-inner dark:from-slate-900 dark:via-slate-900/70 dark:to-slate-900/40">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-center gap-4">
-            <DailyDonut value={day.calories} target={targetCalories} />
-            <div>
-              <h4 className="text-lg font-semibold text-[#2E3A59] dark:text-gray-100">
-                {day.name} overview
+      <div className="flex flex-col gap-6 rounded-3xl border border-[#A5D6A7]/25 bg-gradient-to-br from-white via-[#F8FBF8] to-white p-6 dark:border-slate-800 dark:from-slate-900 dark:via-slate-900/80 dark:to-slate-900">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-1 items-center gap-5">
+            <div className="rounded-3xl bg-[#A5D6A7]/25 p-4 dark:bg-emerald-500/10">
+              <DailyDonut value={day.calories} target={targetCalories} />
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#97A0C2] dark:text-slate-400">
+                Daily overview
+              </p>
+              <h4 className="text-xl font-semibold text-[#1f2a44] dark:text-gray-100">
+                {day.name}
               </h4>
               <p className="text-sm text-gray-500 dark:text-gray-400">
                 {day.calories} of {targetCalories} kcal planned • P {day.macros.protein}g • C {day.macros.carbs}g • F {day.macros.fat}g
               </p>
             </div>
           </div>
-          <div className="min-w-[220px] rounded-2xl border border-[#A5D6A7]/40 bg-white/50 p-4 dark:border-emerald-500/20 dark:bg-slate-900/60">
-            <h5 className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400 dark:text-gray-500">
+          <div className="min-w-[240px] rounded-2xl border border-[#A5D6A7]/40 bg-white/80 p-5 dark:border-emerald-500/15 dark:bg-slate-900/70">
+            <h5 className="text-xs font-semibold uppercase tracking-[0.25em] text-gray-400 dark:text-slate-500">
               Macro balance
             </h5>
             <div className="mt-3">
@@ -432,6 +450,21 @@ function SelectedDayPlan({ day, targetCalories, macroTargets }) {
             </div>
           </div>
         </div>
+        {highlightTags.length > 0 && (
+          <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
+            {highlightTags.map(tag => (
+              <span
+                key={tag}
+                className="rounded-full bg-[#A5D6A7]/25 px-3 py-1 font-semibold text-[#1B5E20] dark:bg-emerald-500/10 dark:text-emerald-200"
+              >
+                {tag}
+              </span>
+            ))}
+            <span className="text-[11px]">
+              Tuning each meal to your cooking time and budget preferences.
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -445,6 +478,86 @@ function SelectedDayPlan({ day, targetCalories, macroTargets }) {
           />
         ))}
       </div>
+    </div>
+  );
+}
+
+function DayCarousel({ days, targetCalories, selectedIndex, onSelect }) {
+  const trackRef = useRef(null);
+  const [scrollState, setScrollState] = useState({ prev: false, next: false });
+
+  const computeScrollState = useCallback(() => {
+    const track = trackRef.current;
+    if (!track) return;
+    const { scrollLeft, scrollWidth, clientWidth } = track;
+    const maxScroll = scrollWidth - clientWidth;
+    setScrollState({
+      prev: scrollLeft > 12,
+      next: scrollLeft < maxScroll - 12
+    });
+  }, []);
+
+  useEffect(() => {
+    computeScrollState();
+  }, [computeScrollState, days.length]);
+
+  useEffect(() => {
+    const track = trackRef.current;
+    if (!track) return;
+    const handle = () => computeScrollState();
+    track.addEventListener('scroll', handle, { passive: true });
+    return () => track.removeEventListener('scroll', handle);
+  }, [computeScrollState]);
+
+  useEffect(() => {
+    const track = trackRef.current;
+    if (!track) return;
+    const node = track.children[selectedIndex];
+    if (node instanceof HTMLElement) {
+      node.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    }
+  }, [selectedIndex]);
+
+  const scrollBy = (direction) => {
+    const track = trackRef.current;
+    if (!track) return;
+    const amount = track.clientWidth * 0.8;
+    track.scrollBy({ left: direction * amount, behavior: 'smooth' });
+  };
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => scrollBy(-1)}
+        disabled={!scrollState.prev}
+        className="absolute left-0 top-1/2 z-10 hidden -translate-y-1/2 items-center justify-center rounded-full border border-[#A5D6A7]/60 bg-white/90 p-2 text-[#1B5E20] shadow-lg transition hover:bg-[#A5D6A7]/20 disabled:pointer-events-none disabled:opacity-30 dark:border-emerald-400/40 dark:bg-slate-900/90 dark:text-emerald-200 lg:flex"
+      >
+        <ChevronLeft className="h-4 w-4" />
+      </button>
+      <div
+        ref={trackRef}
+        className="flex snap-x snap-mandatory gap-4 overflow-x-auto overflow-y-visible scroll-smooth pb-3 pr-2 pl-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
+        {days.map((day, index) => (
+          <DayCard
+            key={day.name}
+            day={day}
+            targetCalories={targetCalories}
+            isActive={index === selectedIndex}
+            onSelect={() => onSelect(index)}
+            className="snap-center"
+          />
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={() => scrollBy(1)}
+        disabled={!scrollState.next}
+        className="absolute right-0 top-1/2 z-10 hidden -translate-y-1/2 items-center justify-center rounded-full border border-[#A5D6A7]/60 bg-white/90 p-2 text-[#1B5E20] shadow-lg transition hover:bg-[#A5D6A7]/20 disabled:pointer-events-none disabled:opacity-30 dark:border-emerald-400/40 dark:bg-slate-900/90 dark:text-emerald-200 lg:flex"
+      >
+        <ChevronRight className="h-4 w-4" />
+      </button>
     </div>
   );
 }
@@ -614,14 +727,14 @@ export default function ResultsStep({ data }) {
         transition={{ delay: 0.8 }}
         className="space-y-6"
       >
-        <div className="flex flex-col gap-4 rounded-3xl border border-gray-200 bg-white/95 p-6 shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-900/80">
+        <div className="flex flex-col gap-6 rounded-3xl border border-gray-200 bg-white/95 p-6 shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-900/80">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
               <h3 className="text-lg font-semibold text-[#2E3A59] dark:text-gray-100">
                 Explore your week
               </h3>
               <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Tap a day to reveal its full menu, nutrition breakdown, and quick actions.
+                Swipe through the week and pick a day to reveal its full menu, nutrition breakdown, and quick actions.
               </p>
             </div>
             <div className="rounded-2xl bg-[#A5D6A7]/20 px-4 py-3 text-sm text-[#2E3A59] dark:bg-emerald-500/10 dark:text-emerald-200">
@@ -632,17 +745,12 @@ export default function ResultsStep({ data }) {
             </div>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {plan.days.map((day, index) => (
-              <DayCard
-                key={day.name}
-                day={day}
-                targetCalories={plan.calorieTarget}
-                isActive={index === selectedDayIndex}
-                onSelect={() => setSelectedDayIndex(index)}
-              />
-            ))}
-          </div>
+          <DayCarousel
+            days={plan.days}
+            targetCalories={plan.calorieTarget}
+            selectedIndex={selectedDayIndex}
+            onSelect={setSelectedDayIndex}
+          />
         </div>
 
         <div className="rounded-3xl border border-gray-200 bg-white/95 p-6 shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-900/80">
