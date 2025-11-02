@@ -1,12 +1,12 @@
 import React from 'react';
-import { motion } from 'framer-motion';
+import { motion as Motion } from 'framer-motion';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Clock, Users, DollarSign } from 'lucide-react';
 
 export default function PreferencesStep({ data, onChange }) {
   return (
-    <motion.div
+    <Motion.div
       initial={{ opacity: 0, x: 50 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -50 }}
@@ -14,7 +14,7 @@ export default function PreferencesStep({ data, onChange }) {
       className="space-y-6"
     >
       <div className="text-center mb-8">
-        <motion.div
+        <Motion.div
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
           transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
@@ -22,7 +22,7 @@ export default function PreferencesStep({ data, onChange }) {
           style={{ backgroundColor: '#A5D6A7' }}
         >
           <Clock className="w-8 h-8 text-white" />
-        </motion.div>
+        </Motion.div>
         <h2 className="text-2xl font-bold mb-2" style={{ color: '#2E3A59' }}>
           Final preferences
         </h2>
@@ -32,7 +32,7 @@ export default function PreferencesStep({ data, onChange }) {
       </div>
 
       <div className="space-y-6">
-        <motion.div 
+        <Motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
@@ -56,9 +56,9 @@ export default function PreferencesStep({ data, onChange }) {
               <SelectItem value="over_60_min">Over 60 minutes</SelectItem>
             </SelectContent>
           </Select>
-        </motion.div>
+        </Motion.div>
 
-        <motion.div 
+        <Motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
@@ -82,9 +82,9 @@ export default function PreferencesStep({ data, onChange }) {
               <SelectItem value="6">6 meals (Small frequent meals)</SelectItem>
             </SelectContent>
           </Select>
-        </motion.div>
+        </Motion.div>
 
-        <motion.div 
+        <Motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5 }}
@@ -108,8 +108,8 @@ export default function PreferencesStep({ data, onChange }) {
               <SelectItem value="no_limit">No budget limit</SelectItem>
             </SelectContent>
           </Select>
-        </motion.div>
+        </Motion.div>
       </div>
-    </motion.div>
+    </Motion.div>
   );
 }

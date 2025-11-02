@@ -68,15 +68,9 @@ def save_preferences(
     if not payload:
         raise HTTPException(status_code=400, detail="Request body cannot be empty")
 
-    print(f"Incoming preference payload: {payload}")
-
     user_id = payload.get("user_id")
-    if user_id is None:
-        raise HTTPException(status_code=400, detail="user_id is required")
+    user = db.get(User, user_id) if user_id is not None else None
 
-    user = db.get(User, user_id)
-    if user is None:
-        raise HTTPException(status_code=404, detail="User not found")
 
     preference = Preference(
         age=payload.get("age"),

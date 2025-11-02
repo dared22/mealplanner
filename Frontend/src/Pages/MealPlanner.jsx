@@ -1,6 +1,6 @@
 // src/pages/MealPlanner.jsx
 import React, { useEffect, useState } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, motion as Motion } from 'framer-motion'
 import { ArrowLeft, ArrowRight, Moon, Sun } from 'lucide-react'
 import { UserPreferences } from '@/Entities/UserPreferences'
 
@@ -144,7 +144,7 @@ export default function MealPlanner({ onLogout, user }) {
             <span className="sr-only">Toggle dark mode</span>
           </Button>
         </div>
-        <motion.div
+        <Motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           className="text-center mb-8"
@@ -155,9 +155,9 @@ export default function MealPlanner({ onLogout, user }) {
           <p className="text-gray-600 dark:text-gray-300">
             Answer a few questions to get your customized weekly meal plan
           </p>
-        </motion.div>
+        </Motion.div>
 
-        <motion.div
+        <Motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
@@ -172,7 +172,7 @@ export default function MealPlanner({ onLogout, user }) {
           </AnimatePresence>
 
           {currentStep < 7 && (
-            <motion.div
+            <Motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.5 }}
@@ -207,9 +207,9 @@ export default function MealPlanner({ onLogout, user }) {
                   <ArrowRight className="w-4 h-4" />
                 </Button>
               )}
-            </motion.div>
+            </Motion.div>
           )}
-        </motion.div>
+        </Motion.div>
       </div>
     </div>
   );
