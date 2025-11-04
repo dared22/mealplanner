@@ -1,5 +1,5 @@
 import React from 'react';
-import { motion } from 'framer-motion';
+import { motion as Motion } from 'framer-motion';
 import { Globe } from 'lucide-react';
 
 export default function CuisineStep({ data, onChange }) {
@@ -26,7 +26,7 @@ export default function CuisineStep({ data, onChange }) {
   };
 
   return (
-    <motion.div
+    <Motion.div
       initial={{ opacity: 0, x: 50 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -50 }}
@@ -34,7 +34,7 @@ export default function CuisineStep({ data, onChange }) {
       className="space-y-6"
     >
       <div className="text-center mb-8">
-        <motion.div
+        <Motion.div
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
           transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
@@ -42,7 +42,7 @@ export default function CuisineStep({ data, onChange }) {
           style={{ backgroundColor: '#A5D6A7' }}
         >
           <Globe className="w-8 h-8 text-white" />
-        </motion.div>
+        </Motion.div>
         <h2 className="text-2xl font-bold mb-2" style={{ color: '#2E3A59' }}>
           What cuisines do you enjoy?
         </h2>
@@ -53,7 +53,7 @@ export default function CuisineStep({ data, onChange }) {
 
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
         {cuisines.map((cuisine, index) => (
-          <motion.div
+          <Motion.div
             key={cuisine.value}
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -74,9 +74,9 @@ export default function CuisineStep({ data, onChange }) {
                 {cuisine.title}
               </h3>
             </div>
-          </motion.div>
+          </Motion.div>
         ))}
       </div>
-    </motion.div>
+    </Motion.div>
   );
 }

@@ -1,5 +1,5 @@
 import React from 'react';
-import { motion } from 'framer-motion';
+import { motion as Motion } from 'framer-motion';
 import { Target } from 'lucide-react';
 
 export default function GoalsStep({ data, onChange }) {
@@ -42,7 +42,7 @@ export default function GoalsStep({ data, onChange }) {
   ];
 
   return (
-    <motion.div
+    <Motion.div
       initial={{ opacity: 0, x: 50 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -50 }}
@@ -50,7 +50,7 @@ export default function GoalsStep({ data, onChange }) {
       className="space-y-6"
     >
       <div className="text-center mb-8">
-        <motion.div
+        <Motion.div
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
           transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
@@ -58,7 +58,7 @@ export default function GoalsStep({ data, onChange }) {
           style={{ backgroundColor: '#A5D6A7' }}
         >
           <Target className="w-8 h-8 text-white" />
-        </motion.div>
+        </Motion.div>
         <h2 className="text-2xl font-bold mb-2" style={{ color: '#2E3A59' }}>
           What's your main goal?
         </h2>
@@ -69,7 +69,7 @@ export default function GoalsStep({ data, onChange }) {
 
       <div className="grid md:grid-cols-2 gap-4">
         {goals.map((goal, index) => (
-          <motion.div
+          <Motion.div
             key={goal.value}
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -88,9 +88,9 @@ export default function GoalsStep({ data, onChange }) {
               </h3>
               <p className="text-sm text-gray-600">{goal.description}</p>
             </div>
-          </motion.div>
+          </Motion.div>
         ))}
       </div>
-    </motion.div>
+    </Motion.div>
   );
 }

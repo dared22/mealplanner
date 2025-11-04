@@ -1,5 +1,5 @@
 import React from 'react';
-import { motion } from 'framer-motion';
+import { motion as Motion } from 'framer-motion';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -7,7 +7,7 @@ import { User, Ruler, Weight, Calendar } from 'lucide-react';
 
 export default function PersonalInfoStep({ data, onChange }) {
   return (
-    <motion.div
+    <Motion.div
       initial={{ opacity: 0, x: 50 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -50 }}
@@ -15,7 +15,7 @@ export default function PersonalInfoStep({ data, onChange }) {
       className="space-y-6"
     >
       <div className="text-center mb-8">
-        <motion.div
+        <Motion.div
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
           transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
@@ -23,7 +23,7 @@ export default function PersonalInfoStep({ data, onChange }) {
           style={{ backgroundColor: '#A5D6A7' }}
         >
           <User className="w-8 h-8 text-white" />
-        </motion.div>
+        </Motion.div>
         <h2 className="text-2xl font-bold mb-2" style={{ color: '#2E3A59' }}>
           Tell us about yourself
         </h2>
@@ -33,7 +33,7 @@ export default function PersonalInfoStep({ data, onChange }) {
       </div>
 
       <div className="grid md:grid-cols-2 gap-6">
-        <motion.div 
+        <Motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
@@ -50,9 +50,9 @@ export default function PersonalInfoStep({ data, onChange }) {
             onChange={(e) => onChange({ age: parseInt(e.target.value) || '' })}
             className="border-gray-200 focus:border-[#A5D6A7] transition-colors"
           />
-        </motion.div>
+        </Motion.div>
 
-        <motion.div 
+        <Motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
@@ -72,9 +72,9 @@ export default function PersonalInfoStep({ data, onChange }) {
               <SelectItem value="other">Other</SelectItem>
             </SelectContent>
           </Select>
-        </motion.div>
+        </Motion.div>
 
-        <motion.div 
+        <Motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5 }}
@@ -91,9 +91,9 @@ export default function PersonalInfoStep({ data, onChange }) {
             onChange={(e) => onChange({ height: parseInt(e.target.value) || '' })}
             className="border-gray-200 focus:border-[#A5D6A7] transition-colors"
           />
-        </motion.div>
+        </Motion.div>
 
-        <motion.div 
+        <Motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.6 }}
@@ -110,8 +110,8 @@ export default function PersonalInfoStep({ data, onChange }) {
             onChange={(e) => onChange({ weight: parseInt(e.target.value) || '' })}
             className="border-gray-200 focus:border-[#A5D6A7] transition-colors"
           />
-        </motion.div>
+        </Motion.div>
       </div>
-    </motion.div>
+    </Motion.div>
   );
 }

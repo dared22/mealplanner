@@ -17,6 +17,7 @@ export const Auth = {
     const response = await fetch(`${API_URL}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ email, password }),
     });
 
@@ -26,7 +27,27 @@ export const Auth = {
     const response = await fetch(`${API_URL}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ email, password }),
+    });
+
+    return handleResponse(response);
+  },
+  logout: async () => {
+    const response = await fetch(`${API_URL}/auth/logout`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(text || 'Failed to logout');
+    }
+  },
+  session: async () => {
+    const response = await fetch(`${API_URL}/auth/session`, {
+      method: 'GET',
+      credentials: 'include',
     });
 
     return handleResponse(response);

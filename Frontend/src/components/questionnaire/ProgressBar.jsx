@@ -1,5 +1,5 @@
 import React from "react"
-import { motion } from "framer-motion"
+import { motion as Motion } from "framer-motion"
 
 export default function ProgressBar({ currentStep = 1, totalSteps = 6 }) {
   const raw = (Number(currentStep) / Number(totalSteps)) * 100
@@ -21,7 +21,7 @@ export default function ProgressBar({ currentStep = 1, totalSteps = 6 }) {
         aria-valuenow={Math.round(pct)}
         aria-label={label}
       >
-        <motion.div
+        <Motion.div
           className="h-full rounded-full bg-primary"
           initial={{ width: 0 }}
           animate={{ width: `${pct}%` }}

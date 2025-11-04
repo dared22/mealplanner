@@ -1,5 +1,5 @@
 import React from 'react';
-import { motion } from 'framer-motion';
+import { motion as Motion } from 'framer-motion';
 import { Activity } from 'lucide-react';
 
 export default function ActivityStep({ data, onChange }) {
@@ -37,7 +37,7 @@ export default function ActivityStep({ data, onChange }) {
   ];
 
   return (
-    <motion.div
+    <Motion.div
       initial={{ opacity: 0, x: 50 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -50 }}
@@ -45,7 +45,7 @@ export default function ActivityStep({ data, onChange }) {
       className="space-y-6"
     >
       <div className="text-center mb-8">
-        <motion.div
+        <Motion.div
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
           transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
@@ -53,7 +53,7 @@ export default function ActivityStep({ data, onChange }) {
           style={{ backgroundColor: '#A5D6A7' }}
         >
           <Activity className="w-8 h-8 text-white" />
-        </motion.div>
+        </Motion.div>
         <h2 className="text-2xl font-bold mb-2" style={{ color: '#2E3A59' }}>
           What's your activity level?
         </h2>
@@ -64,7 +64,7 @@ export default function ActivityStep({ data, onChange }) {
 
       <div className="space-y-4">
         {activityLevels.map((level, index) => (
-          <motion.div
+          <Motion.div
             key={level.value}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -92,9 +92,9 @@ export default function ActivityStep({ data, onChange }) {
                 }`}
               />
             </div>
-          </motion.div>
+          </Motion.div>
         ))}
       </div>
-    </motion.div>
+    </Motion.div>
   );
 }
