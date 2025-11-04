@@ -6,7 +6,14 @@ from models import Preference
 from dataclasses import dataclass
 from openai import OpenAI
 
-client = OpenAI()
+logger = logging.getLogger(__name__)
+
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+if not OPENAI_API_KEY:
+    logger.warning("OPENAI_API_KEY is not configured; AI meal plan generation will be disabled.")
+    client: Optional[OpenAI] = None
+else:
+    client = OpenAI(api_key=OPENAI_API_KEY)
 
 @dataclass(frozen=True)
 class PreferenceDTO:
@@ -19,6 +26,11 @@ class PreferenceDTO:
 
 
 def generate_meal_plan(pref: PreferenceDTO) -> str:
+    if client is None:
+        return (
+            "Meal plan generator is disabled because OPENAI_API_KEY is not configured. "
+            "Please set the environment variable to enable AI-generated plans."
+        )
     plan_text = f"""
                     You are a professional nutritionist creating a personalized meal plan.
 
