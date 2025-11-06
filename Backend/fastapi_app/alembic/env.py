@@ -9,27 +9,22 @@ from sqlalchemy import engine_from_config, pool
 
 from alembic import context
 
-# Ensure the project root is on sys.path so `database` can be imported
+
 BASE_DIR = Path(__file__).resolve().parents[1]
 if str(BASE_DIR) not in sys.path:
     sys.path.append(str(BASE_DIR))
 
 from database import Base, DATABASE_URL, engine
-import models  # noqa: F401
+import models  
 
-# this is the Alembic Config object, which provides
-# access to the values within the .ini file in use.
 config = context.config
 
-# Interpret the config file for Python logging.
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Set SQLAlchemy URL using the coerced value from database.py
 config.set_main_option("sqlalchemy.url", DATABASE_URL)
 
-# add your model's MetaData object here
-# for 'autogenerate' support
+
 target_metadata = Base.metadata
 
 

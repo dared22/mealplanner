@@ -77,7 +77,7 @@ def set_session_cookie(response: Response, user_id: int) -> None:
         path="/",
         secure=SESSION_COOKIE_SECURE,
         httponly=True,
-        samesite=SESSION_COOKIE_SAMESITE,  # type: ignore[arg-type]
+        samesite=SESSION_COOKIE_SAMESITE,  
     )
 
 
@@ -132,7 +132,6 @@ def health_check() -> Dict[str, str]:
 
 @app.on_event("startup")
 def on_startup() -> None:
-    # Allow optional schema sync for lightweight local setups without Alembic.
     if ENSURE_SCHEMA_ON_STARTUP:
         Base.metadata.create_all(bind=engine)
 
