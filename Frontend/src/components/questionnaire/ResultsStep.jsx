@@ -437,23 +437,22 @@ function DayCard({ day, targetCalories, isActive, onSelect, className = '' }) {
     <Motion.button
       type="button"
       onClick={onSelect}
-      whileHover={{ y: -6 }}
-      whileTap={{ scale: 0.98 }}
-      className={`group relative flex min-w-[240px] max-w-[320px] flex-col gap-4 rounded-3xl border bg-white px-5 py-6 text-left shadow-sm transition-all duration-200 sm:min-w-[260px] sm:max-w-[340px] md:min-w-[280px] dark:bg-slate-900/90 ${
+      whileTap={{ scale: 0.99 }}
+      className={`group relative flex min-w-[240px] max-w-[320px] flex-col gap-5 rounded-3xl border px-6 py-6 text-left shadow-sm transition-all duration-200 sm:min-w-[260px] sm:max-w-[340px] md:min-w-[280px] ${
         isActive
-          ? 'border-transparent ring-2 ring-offset-2 ring-[#A5D6A7] ring-offset-[#ECF5EE] dark:ring-emerald-400/70 dark:ring-offset-slate-950'
-          : 'border-gray-200 hover:border-[#A5D6A7]/70 hover:shadow-lg dark:border-slate-800'
+          ? 'border-[#7ad3a5] bg-gradient-to-br from-[#F1FBF4] via-white to-white shadow-[0_18px_35px_rgba(97,202,140,0.2)] dark:border-emerald-400/50 dark:from-emerald-900/20 dark:via-slate-900 dark:to-slate-900'
+          : 'border-gray-200 bg-white hover:-translate-y-1 hover:border-[#A5D6A7]/80 hover:shadow-lg dark:border-slate-800 dark:bg-slate-900/90'
       } ${className}`}
     >
-      <div className="flex items-center gap-4">
-        <div className="rounded-2xl bg-[#A5D6A7]/20 p-2 dark:bg-emerald-500/15">
+      <div className="flex items-start gap-4">
+        <div className="rounded-2xl bg-[#A5D6A7]/20 p-2.5 dark:bg-emerald-500/15">
           <DailyDonut value={day.calories} target={targetCalories} />
         </div>
         <div className="flex-1">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-[#97A0C2] dark:text-slate-400">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-[#8ea0c8] dark:text-slate-400">
             Day {dayNumber}
           </p>
-          <h4 className="text-lg font-semibold text-[#1f2a44] dark:text-gray-100">
+          <h4 className="text-lg font-semibold text-[#1f2d4c] dark:text-gray-100">
             {day.name}
           </h4>
           <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -462,18 +461,18 @@ function DayCard({ day, targetCalories, isActive, onSelect, className = '' }) {
         </div>
       </div>
       <div className="flex flex-wrap gap-2">
-        <span className="rounded-full bg-[#1B5E20]/10 px-3 py-1 text-[11px] font-semibold text-[#1B5E20] dark:bg-emerald-500/15 dark:text-emerald-200">
+        <span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-[#1B5E20] shadow-sm dark:bg-emerald-500/10 dark:text-emerald-200">
           P {day.macros.protein}g
         </span>
-        <span className="rounded-full bg-[#1B5E20]/10 px-3 py-1 text-[11px] font-semibold text-[#1B5E20] dark:bg-emerald-500/15 dark:text-emerald-200">
+        <span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-[#1B5E20] shadow-sm dark:bg-emerald-500/10 dark:text-emerald-200">
           C {day.macros.carbs}g
         </span>
-        <span className="rounded-full bg-[#1B5E20]/10 px-3 py-1 text-[11px] font-semibold text-[#1B5E20] dark:bg-emerald-500/15 dark:text-emerald-200">
+        <span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-[#1B5E20] shadow-sm dark:bg-emerald-500/10 dark:text-emerald-200">
           F {day.macros.fat}g
         </span>
       </div>
       <div className="mt-auto flex items-center justify-between rounded-2xl bg-[#F1F6F2] px-4 py-3 text-[11px] font-medium text-[#2E3A59] transition group-hover:bg-[#E5F1E6] dark:bg-slate-800/80 dark:text-emerald-100">
-        <span>View full plan</span>
+        <span>{isActive ? 'View full plan' : 'Tap to preview'}</span>
         <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[#1B5E20] dark:text-emerald-300">
           {isActive ? 'Active' : 'Preview'}
         </span>

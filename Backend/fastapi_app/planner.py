@@ -29,6 +29,36 @@ class PreferenceDTO:
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_PLAN_MODEL = os.getenv("OPENAI_PLAN_MODEL", "gpt-4.1-mini")
+
+TS_SCHEMA = """
+{
+  "calorieTarget": number;
+  "macroTargets": { "protein": number; "carbs": number; "fat": number };
+  "days": Array<{
+    "name": "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday" | "Saturday" | "Sunday";
+    "calories": number;
+    "macros": { "protein": number; "carbs": number; "fat": number };
+    "meals": {
+      "Breakfast": Meal;
+      "Lunch": Meal;
+      "Dinner": Meal;
+      "Snacks": Meal;
+    };
+  }>;
+}
+
+type Meal = {
+  "name": string;
+  "calories": number;
+  "protein": number;
+  "carbs": number;
+  "fat": number;
+  "cookTime": string;
+  "tags": string[];
+  "ingredients": string[];
+  "instructions": string;
+};
+""".strip()
 if not OPENAI_API_KEY:
     logger.warning("OPENAI_API_KEY is not configured; AI meal plan generation will be disabled.")
     client: Optional[OpenAI] = None
@@ -70,33 +100,7 @@ Create a 7-day meal plan that fits this individual:
 - Preferred cuisines: {', '.join(pref.preferred_cuisines) if pref.preferred_cuisines else 'no specific preference'}
 
 Return JSON matching this TypeScript type:
-{{
-  "calorieTarget": number;
-  "macroTargets": {{ "protein": number; "carbs": number; "fat": number }};
-  "days": Array<{
-    "name": "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday" | "Saturday" | "Sunday";
-    "calories": number;
-    "macros": {{ "protein": number; "carbs": number; "fat": number }};
-    "meals": {{
-      "Breakfast": Meal;
-      "Lunch": Meal;
-      "Dinner": Meal;
-      "Snacks": Meal;
-    }};
-  }>;
-}}
-
-type Meal = {{
-  "name": string;
-  "calories": number;
-  "protein": number;
-  "carbs": number;
-  "fat": number;
-  "cookTime": string;
-  "tags": string[];
-  "ingredients": string[];
-  "instructions": string;
-}};
+{TS_SCHEMA}
 
 Rules:
 - Ensure each day has realistic calories near the user's target and macros that sum reasonably.
@@ -109,8 +113,8 @@ Rules:
     response = client.responses.create(
         model=OPENAI_PLAN_MODEL,
         input=[
-            {"role": "system", "content": [{"type": "text", "text": system_prompt}]},
-            {"role": "user", "content": [{"type": "text", "text": user_prompt}]},
+            {"role": "system", "content": [{"type": "input_text", "text": system_prompt}]},
+            {"role": "user", "content": [{"type": "input_text", "text": user_prompt}]},
         ],
     )
 
