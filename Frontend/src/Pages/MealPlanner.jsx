@@ -22,6 +22,8 @@ import ResultsStep from '@/components/questionnaire/ResultsStep'
 export default function MealPlanner({ onLogout, user }) {
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState({});
+  const [planData, setPlanData] = useState(null);
+  const [rawPlanText, setRawPlanText] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(() => {
     if (typeof window === 'undefined') return false;
@@ -88,7 +90,17 @@ export default function MealPlanner({ onLogout, user }) {
 
     setIsSubmitting(true);
     try {
-      await UserPreferences.create({ ...formData, user_id: user.id });
+      const result = await UserPreferences.create({ ...formData, user_id: user.id });
+      if (result?.plan) {
+        setPlanData(result.plan);
+      } else {
+        setPlanData(null);
+      }
+      if (result?.raw_plan) {
+        setRawPlanText(result.raw_plan);
+      } else {
+        setRawPlanText('');
+      }
       setCurrentStep(7);
     } catch (error) {
       console.error('Error saving preferences:', error);
@@ -111,13 +123,17 @@ export default function MealPlanner({ onLogout, user }) {
       case 6:
         return <PreferencesStep data={formData} onChange={updateFormData} />;
       case 7:
-        return <ResultsStep data={formData} />;
+        return <ResultsStep data={formData} plan={planData} rawPlanText={rawPlanText} />;
       default:
         return null;
     }
   };
 
   const handleLogoutClick = () => {
+    setPlanData(null)
+    setRawPlanText('')
+    setFormData({})
+    setCurrentStep(1)
     onLogout?.()
   }
 
