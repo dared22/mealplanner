@@ -1,10 +1,8 @@
-// src/pages/MealPlanner.jsx
 import React, { useEffect, useState } from 'react'
 import { AnimatePresence, motion as Motion } from 'framer-motion'
 import { ArrowLeft, ArrowRight, Moon, Sun } from 'lucide-react'
 import { UserPreferences } from '@/Entities/UserPreferences'
 
-// If you don’t use shadcn yet, use our simple Button below
 import { Button } from '@/components/ui/button'
 
 import ProgressBar from '@/components/questionnaire/ProgressBar'
@@ -16,14 +14,12 @@ import CuisineStep from '@/components/questionnaire/CuisineStep'
 import PreferencesStep from '@/components/questionnaire/PreferencesStep'
 import ResultsStep from '@/components/questionnaire/ResultsStep'
 
-// …paste your MealPlanner component code here unchanged…
+
 
 
 export default function MealPlanner({ onLogout, user }) {
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState({});
-  const [planData, setPlanData] = useState(null);
-  const [rawPlanText, setRawPlanText] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(() => {
     if (typeof window === 'undefined') return false;
@@ -90,17 +86,7 @@ export default function MealPlanner({ onLogout, user }) {
 
     setIsSubmitting(true);
     try {
-      const result = await UserPreferences.create({ ...formData, user_id: user.id });
-      if (result?.plan) {
-        setPlanData(result.plan);
-      } else {
-        setPlanData(null);
-      }
-      if (result?.raw_plan) {
-        setRawPlanText(result.raw_plan);
-      } else {
-        setRawPlanText('');
-      }
+      await UserPreferences.create({ ...formData, user_id: user.id });
       setCurrentStep(7);
     } catch (error) {
       console.error('Error saving preferences:', error);
@@ -123,17 +109,13 @@ export default function MealPlanner({ onLogout, user }) {
       case 6:
         return <PreferencesStep data={formData} onChange={updateFormData} />;
       case 7:
-        return <ResultsStep data={formData} plan={planData} rawPlanText={rawPlanText} />;
+        return <ResultsStep data={formData} />;
       default:
         return null;
     }
   };
 
   const handleLogoutClick = () => {
-    setPlanData(null)
-    setRawPlanText('')
-    setFormData({})
-    setCurrentStep(1)
     onLogout?.()
   }
 
