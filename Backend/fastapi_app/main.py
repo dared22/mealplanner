@@ -6,7 +6,7 @@ from fastapi import Body, Depends, FastAPI, HTTPException, Request, Response, st
 from fastapi.middleware.cors import CORSMiddleware
 from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 from itsdangerous import BadSignature, BadTimeSignature, URLSafeTimedSerializer
 
@@ -42,6 +42,10 @@ def hash_password(password: str) -> str:
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
+
+
+def normalize_email(value: str) -> str:
+    return value.strip().lower()
 
 SESSION_COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "mealplanner_session")
 SESSION_SECRET_KEY = os.getenv("SESSION_SECRET_KEY", "please-change-me")
@@ -240,11 +244,14 @@ def register_user(
     response: Response,
     db: Session = Depends(get_session),
 ) -> AuthResponse:
-    existing_user = db.scalar(select(User).where(User.email == payload.email))
+    normalized_email = normalize_email(payload.email)
+    existing_user = db.scalar(
+        select(User).where(func.lower(User.email) == normalized_email)
+    )
     if existing_user is not None:
         raise HTTPException(status_code=409, detail="User already exists")
 
-    user = User(email=payload.email, password_hash=hash_password(payload.password))
+    user = User(email=normalized_email, password_hash=hash_password(payload.password))
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -260,7 +267,10 @@ def login_user(
     response: Response,
     db: Session = Depends(get_session),
 ) -> AuthResponse:
-    user = db.scalar(select(User).where(User.email == payload.email))
+    normalized_email = normalize_email(payload.email)
+    user = db.scalar(
+        select(User).where(func.lower(User.email) == normalized_email)
+    )
     if user is None or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
