@@ -1,10 +1,8 @@
-// src/pages/MealPlanner.jsx
 import React, { useEffect, useState } from 'react'
 import { AnimatePresence, motion as Motion } from 'framer-motion'
 import { ArrowLeft, ArrowRight, Moon, Sun } from 'lucide-react'
 import { UserPreferences } from '@/Entities/UserPreferences'
 
-// If you don’t use shadcn yet, use our simple Button below
 import { Button } from '@/components/ui/button'
 
 import ProgressBar from '@/components/questionnaire/ProgressBar'
@@ -16,7 +14,7 @@ import CuisineStep from '@/components/questionnaire/CuisineStep'
 import PreferencesStep from '@/components/questionnaire/PreferencesStep'
 import ResultsStep from '@/components/questionnaire/ResultsStep'
 
-// …paste your MealPlanner component code here unchanged…
+
 
 
 export default function MealPlanner({ onLogout, user }) {

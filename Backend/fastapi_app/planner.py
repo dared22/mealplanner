@@ -1,10 +1,13 @@
+import json
 import logging
 import os
-from typing import Any, Dict, Optional
-from sqlalchemy.orm import Session
-from models import Preference
 from dataclasses import dataclass
+from typing import Any, Dict, Optional
+
 from openai import OpenAI
+from sqlalchemy.orm import Session
+
+from models import Preference
 
 logger = logging.getLogger(__name__)
 
@@ -17,9 +20,14 @@ else:
 
 @dataclass(frozen=True)
 class PreferenceDTO:
-    age: int; gender: str; height_cm: int; weight_kg: int
-    activity_level: str; nutrition_goal: str
-    meals_per_day: int; budget_range: str
+    age: int
+    gender: str
+    height_cm: int
+    weight_kg: int
+    activity_level: str
+    nutrition_goal: str
+    meals_per_day: int
+    budget_range: str
     cooking_time_preference: str
     dietary_restrictions: list[str]; preferred_cuisines: list[str]
 
@@ -62,12 +70,25 @@ def generate_meal_plan(pref: PreferenceDTO) -> str:
                     Return the plan in a readable, well-formatted text output.
                     """
     response = client.responses.create(
-    model="gpt-5-nano",
-    input=plan_text
+        model=OPENAI_PLAN_MODEL,
+        input=[
+            {"role": "system", "content": [{"type": "input_text", "text": system_prompt}]},
+            {"role": "user", "content": [{"type": "input_text", "text": user_prompt}]},
+        ],
     )
-    return response.output_text
 
-def generate_meal_plan_for_preference(db: Session, pref_id: int) -> str:
+    raw_text = response.output_text.strip()
+    plan_payload: Optional[Dict[str, Any]] = None
+    if raw_text:
+        try:
+            plan_payload = json.loads(raw_text)
+        except json.JSONDecodeError:
+            logger.warning("Failed to parse meal plan JSON. Returning raw text instead.")
+
+    return {"plan": plan_payload, "raw_text": raw_text}
+
+
+def generate_meal_plan_for_preference(db: Session, pref_id: int) -> Dict[str, Any]:
     pref = db.get(Preference, pref_id)
     if pref is None:
         raise ValueError(f"Preference {pref_id} not found")

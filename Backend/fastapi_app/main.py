@@ -178,16 +178,35 @@ def save_preferences(
     db.commit()
     db.refresh(preference)
 
+    plan_result: Optional[Dict[str, Any]] = None
     try:
-        plan_text = generate_meal_plan_for_preference(db, preference.id)
+        plan_result = generate_meal_plan_for_preference(db, preference.id)
     except ValueError:
         logger.exception("Preference %s disappeared before plan generation", preference.id)
     except Exception:
         logger.exception("Meal plan generation failed for user_id=%s", user_id)
     else:
-        print(f"Generated meal plan for user {user_id}:\n{plan_text}")
+        if plan_result:
+            try:
+                existing_raw = preference.raw_data or {}
+                existing_raw["generated_plan"] = plan_result
+                preference.raw_data = existing_raw
+                db.add(preference)
+                db.commit()
+                db.refresh(preference)
+            except Exception:
+                logger.exception("Failed to update raw_data with generated plan for preference %s", preference.id)
+        logger.info("Generated meal plan for user %s", user_id)
 
-    return {"id": preference.id, "stored": True}
+    plan_payload = plan_result.get("plan") if isinstance(plan_result, dict) else None
+    raw_plan_text = plan_result.get("raw_text") if isinstance(plan_result, dict) else None
+
+    return {
+        "id": preference.id,
+        "stored": True,
+        "plan": plan_payload,
+        "raw_plan": raw_plan_text,
+    }
 
 
 @app.get("/preferences/{pref_id}")
