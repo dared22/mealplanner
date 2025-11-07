@@ -2,7 +2,7 @@ import json
 import logging
 import os
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 from openai import OpenAI
 from sqlalchemy.orm import Session
@@ -12,11 +12,36 @@ from models import Preference
 logger = logging.getLogger(__name__)
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_PLAN_MODEL = os.getenv("OPENAI_PLAN_MODEL", "gpt-4.1-mini")
+
 if not OPENAI_API_KEY:
     logger.warning("OPENAI_API_KEY is not configured; AI meal plan generation will be disabled.")
     client: Optional[OpenAI] = None
 else:
     client = OpenAI(api_key=OPENAI_API_KEY)
+
+SYSTEM_PROMPT = (
+    "You are a professional nutrition coach. Always respond with valid JSON matching the schema:\n"
+    "{\n"
+    '  "calorieTarget": number,\n'
+    '  "macroTargets": {"protein": number, "carbs": number, "fat": number},\n'
+    '  "days": [\n'
+    '    {\n'
+    '      "name": "Monday",\n'
+    '      "calories": number,\n'
+    '      "macros": {"protein": number, "carbs": number, "fat": number},\n'
+    '      "meals": {\n'
+    '        "Breakfast": {"name": string, "calories": number, "protein": number, "carbs": number, "fat": number, "cookTime": string, "tags": [string], "ingredients": [string], "instructions": string},\n'
+    '        "Lunch": {...},\n'
+    '        "Dinner": {...},\n'
+    '        "Snacks": {...}\n'
+    "      }\n"
+    "    }\n"
+    "  ]\n"
+    "}\n"
+    "Ensure each day totals roughly the calorie target, respect dietary restrictions and cuisines, "
+    "and keep instructions concise."
+)
 
 @dataclass(frozen=True)
 class PreferenceDTO:
@@ -33,47 +58,39 @@ class PreferenceDTO:
 
 
 
-def generate_meal_plan(pref: PreferenceDTO) -> str:
+def generate_meal_plan(pref: PreferenceDTO) -> Union[Dict[str, Any], str]:
     if client is None:
         return (
             "Meal plan generator is disabled because OPENAI_API_KEY is not configured. "
             "Please set the environment variable to enable AI-generated plans."
         )
-    plan_text = f"""
-                    You are a professional nutritionist creating a personalized meal plan.
+    plan_prompt = f"""
+Create a personalized meal plan for this profile:
+- Age: {pref.age}
+- Gender: {pref.gender}
+- Height: {pref.height_cm} cm
+- Weight: {pref.weight_kg} kg
+- Activity level: {pref.activity_level}
+- Nutrition goal: {pref.nutrition_goal}
+- Meals per day: {pref.meals_per_day}
+- Budget range: {pref.budget_range}
+- Cooking time preference: {pref.cooking_time_preference.replace('_', ' ')}
+- Dietary restrictions: {', '.join(pref.dietary_restrictions) if pref.dietary_restrictions else 'none'}
+- Preferred cuisines: {', '.join(pref.preferred_cuisines) if pref.preferred_cuisines else 'no specific preference'}
 
-                    User profile:
-                    - Age: {pref.age}
-                    - Gender: {pref.gender}
-                    - Height: {pref.height_cm} cm
-                    - Weight: {pref.weight_kg} kg
-                    - Activity level: {pref.activity_level}
-                    - Nutrition goal: {pref.nutrition_goal} (e.g. lose, maintain, or gain weight)
-                    - Meals per day: {pref.meals_per_day}
-                    - Budget range: {pref.budget_range}
-                    - Cooking time preference: {pref.cooking_time_preference.replace('_', ' ')}
-                    - Dietary restrictions: {', '.join(pref.dietary_restrictions) if pref.dietary_restrictions else 'none'}
-                    - Preferred cuisines: {', '.join(pref.preferred_cuisines) if pref.preferred_cuisines else 'no specific preference'}
-
-                    Task:
-                    1. Generate a 5-day meal plan that fits these preferences.
-                    2. Include {pref.meals_per_day} meals (e.g., breakfast, lunch, dinner, snacks).
-                    3. Each meal should list:
-                       - The dish name
-                       - Main ingredients
-                       - Approximate calories
-                       - Brief preparation instructions
-                    4. Make sure total daily calories align with the user's goal and activity level.
-                    5. Keep the plan {pref.budget_range.replace('_', ' ')} and suitable for {pref.cooking_time_preference.replace('_', ' ')} meals.
-                    6. All the ingredients should be availible for purchase in Norway.
-
-                    Return the plan in a readable, well-formatted text output.
-                    """
+Guidelines:
+1. Produce exactly 5 days named Monday through Friday (extend naturally if user needs more).
+2. Provide {pref.meals_per_day} meals per day, covering Breakfast, Lunch, Dinner, and Snacks where applicable.
+3. Each meal needs calories plus protein/carbs/fat estimates, cook time, up to 6 short tags, and optional ingredients/instructions.
+4. Daily calories must align with the user's goal and activity level, staying within ±7%.
+5. Keep ingredients accessible in Norway and respect dietary restrictions/cuisines.
+6. Return ONLY JSON matching the schema from the system prompt—no markdown or commentary.
+"""
     response = client.responses.create(
         model=OPENAI_PLAN_MODEL,
         input=[
-            {"role": "system", "content": [{"type": "input_text", "text": system_prompt}]},
-            {"role": "user", "content": [{"type": "input_text", "text": user_prompt}]},
+            {"role": "system", "content": [{"type": "input_text", "text": SYSTEM_PROMPT}]},
+            {"role": "user", "content": [{"type": "input_text", "text": plan_prompt}]},
         ],
     )
 

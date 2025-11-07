@@ -1,4 +1,15 @@
-const API_URL = import.meta?.env?.VITE_API_URL || '/api';
+const resolveApiUrl = () => {
+  const configured = import.meta.env?.VITE_API_URL;
+  if (configured) return configured.replace(/\/$/, '');
+
+  if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+    return 'http://localhost:8000';
+  }
+
+  return '/api';
+};
+
+const API_URL = resolveApiUrl();
 
 export const UserPreferences = {
   create: async (data) => {

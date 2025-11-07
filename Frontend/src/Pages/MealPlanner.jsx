@@ -21,6 +21,10 @@ export default function MealPlanner({ onLogout, user }) {
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [planPayload, setPlanPayload] = useState(null);
+  const [rawPlanText, setRawPlanText] = useState('');
+  const [planStatus, setPlanStatus] = useState('idle');
+  const [planError, setPlanError] = useState(null);
   const [isDarkMode, setIsDarkMode] = useState(() => {
     if (typeof window === 'undefined') return false;
     const stored = window.localStorage.getItem('theme');
@@ -79,19 +83,40 @@ export default function MealPlanner({ onLogout, user }) {
   };
 
   const handleFinish = async () => {
-    if (!user?.id) {
+    const userId = user?.id ?? user?.user_id ?? user?.userId;
+    if (!userId) {
       console.error('Cannot submit preferences without user context.')
       return
     }
 
+    setPlanError(null);
+    setPlanPayload(null);
+    setRawPlanText('');
+    setPlanStatus('loading');
     setIsSubmitting(true);
+    setCurrentStep(7);
+
     try {
-      await UserPreferences.create({ ...formData, user_id: user.id });
-      setCurrentStep(7);
+      const response = await UserPreferences.create({ ...formData, user_id: userId });
+      const serverPlan = response?.plan ?? null;
+      const rawText = response?.raw_plan ?? '';
+
+      setPlanPayload(serverPlan);
+      setRawPlanText(rawText);
+
+      if (serverPlan) {
+        setPlanStatus('success');
+      } else {
+        setPlanStatus('error');
+        setPlanError('The AI response did not include a plan. Please try again.');
+      }
     } catch (error) {
       console.error('Error saving preferences:', error);
+      setPlanStatus('error');
+      setPlanError(error.message || 'Something went wrong while creating your plan.');
+    } finally {
+      setIsSubmitting(false);
     }
-    setIsSubmitting(false);
   };
 
   const renderStep = () => {
@@ -109,7 +134,15 @@ export default function MealPlanner({ onLogout, user }) {
       case 6:
         return <PreferencesStep data={formData} onChange={updateFormData} />;
       case 7:
-        return <ResultsStep data={formData} />;
+        return (
+          <ResultsStep
+            data={formData}
+            plan={planPayload}
+            rawPlanText={rawPlanText}
+            status={planStatus}
+            errorMessage={planError}
+          />
+        );
       default:
         return null;
     }
