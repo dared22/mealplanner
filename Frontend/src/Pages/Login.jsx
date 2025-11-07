@@ -49,15 +49,31 @@ export default function Login({ onAuthSuccess }) {
 
     try {
       if (mode === 'login') {
-        const data = await Auth.login(formData)
+        const authData = await Auth.login(formData)
+        let effectiveUser = authData
+        try {
+          const sessionData = await Auth.session()
+          if (sessionData?.user_id && sessionData?.email) {
+            effectiveUser = sessionData
+          }
+        } catch (sessionError) {
+          console.warn('Unable to refresh session after login, using login payload', sessionError)
+        }
+
+        const normalizedUser = {
+          id: effectiveUser?.user_id ?? effectiveUser?.id ?? effectiveUser?.userId,
+          email: effectiveUser?.email,
+        }
+
+        if (!normalizedUser.id || !normalizedUser.email) {
+          throw new Error('Login succeeded but no user profile was returned. Please try again.')
+        }
+
         if (typeof window !== 'undefined') {
           window.localStorage.setItem('auth_status', 'authenticated')
-          window.localStorage.setItem(
-            'auth_user',
-            JSON.stringify({ id: data.user_id, email: data.email })
-          )
+          window.localStorage.setItem('auth_user', JSON.stringify(normalizedUser))
         }
-        onAuthSuccess?.({ id: data.user_id, email: data.email })
+        onAuthSuccess?.(normalizedUser)
       } else {
         const data = await Auth.register(formData)
         setInfo('Account created successfully. You can log in now.')
