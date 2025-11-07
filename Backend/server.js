@@ -90,11 +90,11 @@ Ensure numeric fields are numbers (not strings).
 
     const data = await r.json();
 
-    // Robustly extract text from Responses API
+    
     const text =
       data.output_text ??
       data?.output?.[0]?.content?.[0]?.text ??
-      data?.choices?.[0]?.message?.content ?? // (older shapes)
+      data?.choices?.[0]?.message?.content ?? 
       '';
 
     let json;
@@ -104,13 +104,12 @@ Ensure numeric fields are numbers (not strings).
       return res.status(502).json({ error: 'Model did not return valid JSON', raw: text });
     }
 
-    // Validate shape
     const parsed = PlanSchema.safeParse(json);
     if (!parsed.success) {
       return res.status(422).json({ error: 'Invalid plan schema', issues: parsed.error.issues, raw: json });
     }
 
-    // Optional: Calories sanity check — if out of bounds, you could re-ask the model to fix.
+
     res.json(parsed.data);
 
   } catch (err) {

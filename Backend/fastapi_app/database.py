@@ -6,7 +6,7 @@ from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 
 def _coerce_database_url(url: str) -> str:
-    """Ensure the SQLAlchemy URL uses the psycopg driver when coming from Heroku-style env vars."""
+    """Heroku-style env vars."""
     if url.startswith("postgres://"):
         return url.replace("postgres://", "postgresql+psycopg://", 1)
     if url.startswith("postgresql://") and "+psycopg" not in url:
@@ -15,7 +15,7 @@ def _coerce_database_url(url: str) -> str:
 
 
 DATABASE_URL = _coerce_database_url(
-    os.getenv("DATABASE_URL", "postgresql+psycopg://postgres:postgres@localhost:5432/mealplanner")
+    os.getenv("DATABASE_URL")
 )
 
 engine = create_engine(DATABASE_URL, echo=False, future=True)

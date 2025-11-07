@@ -11,6 +11,12 @@ from models import Preference
 
 logger = logging.getLogger(__name__)
 
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+if not OPENAI_API_KEY:
+    logger.warning("OPENAI_API_KEY is not configured; AI meal plan generation will be disabled.")
+    client: Optional[OpenAI] = None
+else:
+    client = OpenAI(api_key=OPENAI_API_KEY)
 
 @dataclass(frozen=True)
 class PreferenceDTO:
@@ -23,93 +29,46 @@ class PreferenceDTO:
     meals_per_day: int
     budget_range: str
     cooking_time_preference: str
-    dietary_restrictions: list[str]
-    preferred_cuisines: list[str]
+    dietary_restrictions: list[str]; preferred_cuisines: list[str]
 
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OPENAI_PLAN_MODEL = os.getenv("OPENAI_PLAN_MODEL", "gpt-4.1-mini")
 
-TS_SCHEMA = """
-{
-  "calorieTarget": number;
-  "macroTargets": { "protein": number; "carbs": number; "fat": number };
-  "days": Array<{
-    "name": "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday" | "Saturday" | "Sunday";
-    "calories": number;
-    "macros": { "protein": number; "carbs": number; "fat": number };
-    "meals": {
-      "Breakfast": Meal;
-      "Lunch": Meal;
-      "Dinner": Meal;
-      "Snacks": Meal;
-    };
-  }>;
-}
-
-type Meal = {
-  "name": string;
-  "calories": number;
-  "protein": number;
-  "carbs": number;
-  "fat": number;
-  "cookTime": string;
-  "tags": string[];
-  "ingredients": string[];
-  "instructions": string;
-};
-""".strip()
-if not OPENAI_API_KEY:
-    logger.warning("OPENAI_API_KEY is not configured; AI meal plan generation will be disabled.")
-    client: Optional[OpenAI] = None
-else:
-    client = OpenAI(api_key=OPENAI_API_KEY)
-
-
-def _disabled_payload(pref: PreferenceDTO) -> Dict[str, Any]:
-    return {
-        "plan": None,
-        "raw_text": (
+def generate_meal_plan(pref: PreferenceDTO) -> str:
+    if client is None:
+        return (
             "Meal plan generator is disabled because OPENAI_API_KEY is not configured. "
             "Please set the environment variable to enable AI-generated plans."
-        ),
-    }
+        )
+    plan_text = f"""
+                    You are a professional nutritionist creating a personalized meal plan.
 
+                    User profile:
+                    - Age: {pref.age}
+                    - Gender: {pref.gender}
+                    - Height: {pref.height_cm} cm
+                    - Weight: {pref.weight_kg} kg
+                    - Activity level: {pref.activity_level}
+                    - Nutrition goal: {pref.nutrition_goal} (e.g. lose, maintain, or gain weight)
+                    - Meals per day: {pref.meals_per_day}
+                    - Budget range: {pref.budget_range}
+                    - Cooking time preference: {pref.cooking_time_preference.replace('_', ' ')}
+                    - Dietary restrictions: {', '.join(pref.dietary_restrictions) if pref.dietary_restrictions else 'none'}
+                    - Preferred cuisines: {', '.join(pref.preferred_cuisines) if pref.preferred_cuisines else 'no specific preference'}
 
-def generate_meal_plan(pref: PreferenceDTO) -> Dict[str, Any]:
-    if client is None:
-        return _disabled_payload(pref)
+                    Task:
+                    1. Generate a 5-day meal plan that fits these preferences.
+                    2. Include {pref.meals_per_day} meals (e.g., breakfast, lunch, dinner, snacks).
+                    3. Each meal should list:
+                       - The dish name
+                       - Main ingredients
+                       - Approximate calories
+                       - Brief preparation instructions
+                    4. Make sure total daily calories align with the user's goal and activity level.
+                    5. Keep the plan {pref.budget_range.replace('_', ' ')} and suitable for {pref.cooking_time_preference.replace('_', ' ')} meals.
+                    6. All the ingredients should be availible for purchase in Norway.
 
-    system_prompt = (
-        "You are a registered dietitian who creates balanced weekly meal plans. "
-        "You MUST return strictly valid JSON and nothing else."
-    )
-
-    user_prompt = f"""
-Create a 7-day meal plan that fits this individual:
-- Age: {pref.age}
-- Gender: {pref.gender}
-- Height: {pref.height_cm} cm
-- Weight: {pref.weight_kg} kg
-- Activity level: {pref.activity_level}
-- Primary goal: {pref.nutrition_goal}
-- Meals per day: {pref.meals_per_day}
-- Budget: {pref.budget_range}
-- Typical cooking time: {pref.cooking_time_preference.replace('_', ' ')}
-- Dietary restrictions: {', '.join(pref.dietary_restrictions) if pref.dietary_restrictions else 'none'}
-- Preferred cuisines: {', '.join(pref.preferred_cuisines) if pref.preferred_cuisines else 'no specific preference'}
-
-Return JSON matching this TypeScript type:
-{TS_SCHEMA}
-
-Rules:
-- Ensure each day has realistic calories near the user's target and macros that sum reasonably.
-- Tags should include budget or timing notes when relevant.
-- Instructions must be concise (max 2 sentences).
-- Use ingredients available in Norway.
-- Respond with JSON only, no markdown fences.
-"""
-
+                    Return the plan in a readable, well-formatted text output.
+                    """
     response = client.responses.create(
         model=OPENAI_PLAN_MODEL,
         input=[
