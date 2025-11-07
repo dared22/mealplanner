@@ -63,4 +63,13 @@ export const Auth = {
 
     return handleResponse(response);
   },
+  profileInfo: async ({ email, password }) => {
+    const response = await fetch(`${API_URL}/auth/profile-info`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+
+    return handleResponse(response);
+  },
 };

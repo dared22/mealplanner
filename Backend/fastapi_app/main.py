@@ -279,6 +279,30 @@ def login_user(
     return AuthResponse(message="Login successful", user_id=user.id, email=user.email)
 
 
+@app.post("/auth/profile-info", response_model=AuthResponse)
+def fetch_profile_info(
+    payload: AuthRequest,
+    db: Session = Depends(get_session),
+) -> AuthResponse:
+    """
+    Secondary lookup endpoint that lets the client confirm the user id/email
+    using the supplied credentials. This is useful when cross-site cookies
+    prevent us from reading the session immediately after login.
+    """
+    normalized_email = normalize_email(payload.email)
+    user = db.scalar(
+        select(User).where(func.lower(User.email) == normalized_email)
+    )
+    if user is None or not verify_password(payload.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    return AuthResponse(
+        message="Profile lookup successful",
+        user_id=user.id,
+        email=user.email,
+    )
+
+
 @app.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
 def logout_user(response: Response) -> None:
     clear_session_cookie(response)

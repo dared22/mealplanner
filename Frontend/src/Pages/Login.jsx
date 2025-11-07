@@ -60,6 +60,17 @@ export default function Login({ onAuthSuccess }) {
           console.warn('Unable to refresh session after login, using login payload', sessionError)
         }
 
+        if (!effectiveUser?.user_id || !effectiveUser?.email) {
+          try {
+            const profileData = await Auth.profileInfo(formData)
+            if (profileData?.user_id && profileData?.email) {
+              effectiveUser = profileData
+            }
+          } catch (profileError) {
+            console.warn('Profile lookup failed after login', profileError)
+          }
+        }
+
         const normalizedUser = {
           id: effectiveUser?.user_id ?? effectiveUser?.id ?? effectiveUser?.userId,
           email: effectiveUser?.email,
