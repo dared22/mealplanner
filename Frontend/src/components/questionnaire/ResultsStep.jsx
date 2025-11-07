@@ -233,6 +233,65 @@ function generateMockMealPlan(data) {
   };
 }
 
+function normalizeServerPlan(plan) {
+  if (!plan || typeof plan !== 'object' || !Array.isArray(plan.days) || !plan.days.length) {
+    return null;
+  }
+
+  const normalizedDays = WEEK_DAYS.map((weekday) => {
+    const match = plan.days.find(
+      (day) => typeof day?.name === 'string' && day.name.toLowerCase() === weekday.toLowerCase()
+    );
+
+    const macros = match?.macros || {};
+    const meals = MEAL_TYPES.reduce((acc, mealType) => {
+      const sourceMeal = match?.meals?.[mealType] || {};
+      acc[mealType] = {
+        name: sourceMeal.name || `${mealType} option`,
+        calories: Number(sourceMeal.calories) || 0,
+        protein: Number(sourceMeal.protein) || 0,
+        carbs: Number(sourceMeal.carbs) || 0,
+        fat: Number(sourceMeal.fat) || 0,
+        cookTime: sourceMeal.cookTime || '20 min',
+        tags: Array.isArray(sourceMeal.tags) ? sourceMeal.tags.slice(0, 6) : [],
+        ingredients: Array.isArray(sourceMeal.ingredients) ? sourceMeal.ingredients : [],
+        instructions: typeof sourceMeal.instructions === 'string' ? sourceMeal.instructions : ''
+      };
+      return acc;
+    }, {});
+
+    return {
+      name: match?.name || weekday,
+      calories: Number(match?.calories) || 0,
+      macros: {
+        protein: Number(macros.protein) || 0,
+        carbs: Number(macros.carbs) || 0,
+        fat: Number(macros.fat) || 0
+      },
+      meals
+    };
+  });
+
+  const macroTargets = {
+    protein: Number(plan?.macroTargets?.protein) || 0,
+    carbs: Number(plan?.macroTargets?.carbs) || 0,
+    fat: Number(plan?.macroTargets?.fat) || 0
+  };
+
+  const calorieTarget =
+    Number(plan?.calorieTarget) ||
+    Math.round(
+      normalizedDays.reduce((sum, day) => sum + (day.calories || 0), 0) /
+        Math.max(normalizedDays.length, 1)
+    );
+
+  return {
+    calorieTarget,
+    macroTargets,
+    days: normalizedDays
+  };
+}
+
 function DailyDonut({ value, target }) {
   const radius = 26;
   const circumference = 2 * Math.PI * radius;
@@ -344,6 +403,17 @@ function MealCard({ meal, mealType, showMealType = false, className = '' }) {
           </span>
         ))}
       </div>
+      {!!meal.ingredients?.length && (
+        <div className="text-[11px] text-gray-500 dark:text-gray-400">
+          <span className="font-semibold text-[#2E3A59] dark:text-gray-200">Ingredients:</span>{' '}
+          {meal.ingredients.slice(0, 6).join(', ')}
+        </div>
+      )}
+      {meal.instructions && (
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          {meal.instructions}
+        </p>
+      )}
       <div className="mt-auto flex flex-wrap gap-2 pt-1">
         <button className="flex-1 rounded-full border border-[#A5D6A7]/60 px-3 py-1.5 text-xs font-medium text-[#2E3A59] transition hover:bg-[#A5D6A7]/20 dark:border-emerald-400/40 dark:text-emerald-200 dark:hover:bg-emerald-500/10">
           Swap
@@ -367,23 +437,22 @@ function DayCard({ day, targetCalories, isActive, onSelect, className = '' }) {
     <Motion.button
       type="button"
       onClick={onSelect}
-      whileHover={{ y: -6 }}
-      whileTap={{ scale: 0.98 }}
-      className={`group relative flex min-w-[240px] max-w-[320px] flex-col gap-4 rounded-3xl border bg-white px-5 py-6 text-left shadow-sm transition-all duration-200 sm:min-w-[260px] sm:max-w-[340px] md:min-w-[280px] dark:bg-slate-900/90 ${
+      whileTap={{ scale: 0.99 }}
+      className={`group relative flex min-w-[240px] max-w-[320px] flex-col gap-5 rounded-3xl border px-6 py-6 text-left shadow-sm transition-all duration-200 sm:min-w-[260px] sm:max-w-[340px] md:min-w-[280px] ${
         isActive
-          ? 'border-transparent ring-2 ring-offset-2 ring-[#A5D6A7] ring-offset-[#ECF5EE] dark:ring-emerald-400/70 dark:ring-offset-slate-950'
-          : 'border-gray-200 hover:border-[#A5D6A7]/70 hover:shadow-lg dark:border-slate-800'
+          ? 'border-[#7ad3a5] bg-gradient-to-br from-[#F1FBF4] via-white to-white shadow-[0_18px_35px_rgba(97,202,140,0.2)] dark:border-emerald-400/50 dark:from-emerald-900/20 dark:via-slate-900 dark:to-slate-900'
+          : 'border-gray-200 bg-white hover:-translate-y-1 hover:border-[#A5D6A7]/80 hover:shadow-lg dark:border-slate-800 dark:bg-slate-900/90'
       } ${className}`}
     >
-      <div className="flex items-center gap-4">
-        <div className="rounded-2xl bg-[#A5D6A7]/20 p-2 dark:bg-emerald-500/15">
+      <div className="flex items-start gap-4">
+        <div className="rounded-2xl bg-[#A5D6A7]/20 p-2.5 dark:bg-emerald-500/15">
           <DailyDonut value={day.calories} target={targetCalories} />
         </div>
         <div className="flex-1">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-[#97A0C2] dark:text-slate-400">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-[#8ea0c8] dark:text-slate-400">
             Day {dayNumber}
           </p>
-          <h4 className="text-lg font-semibold text-[#1f2a44] dark:text-gray-100">
+          <h4 className="text-lg font-semibold text-[#1f2d4c] dark:text-gray-100">
             {day.name}
           </h4>
           <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -392,18 +461,18 @@ function DayCard({ day, targetCalories, isActive, onSelect, className = '' }) {
         </div>
       </div>
       <div className="flex flex-wrap gap-2">
-        <span className="rounded-full bg-[#1B5E20]/10 px-3 py-1 text-[11px] font-semibold text-[#1B5E20] dark:bg-emerald-500/15 dark:text-emerald-200">
+        <span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-[#1B5E20] shadow-sm dark:bg-emerald-500/10 dark:text-emerald-200">
           P {day.macros.protein}g
         </span>
-        <span className="rounded-full bg-[#1B5E20]/10 px-3 py-1 text-[11px] font-semibold text-[#1B5E20] dark:bg-emerald-500/15 dark:text-emerald-200">
+        <span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-[#1B5E20] shadow-sm dark:bg-emerald-500/10 dark:text-emerald-200">
           C {day.macros.carbs}g
         </span>
-        <span className="rounded-full bg-[#1B5E20]/10 px-3 py-1 text-[11px] font-semibold text-[#1B5E20] dark:bg-emerald-500/15 dark:text-emerald-200">
+        <span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-[#1B5E20] shadow-sm dark:bg-emerald-500/10 dark:text-emerald-200">
           F {day.macros.fat}g
         </span>
       </div>
       <div className="mt-auto flex items-center justify-between rounded-2xl bg-[#F1F6F2] px-4 py-3 text-[11px] font-medium text-[#2E3A59] transition group-hover:bg-[#E5F1E6] dark:bg-slate-800/80 dark:text-emerald-100">
-        <span>View full plan</span>
+        <span>{isActive ? 'View full plan' : 'Tap to preview'}</span>
         <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[#1B5E20] dark:text-emerald-300">
           {isActive ? 'Active' : 'Preview'}
         </span>
@@ -562,10 +631,21 @@ function DayCarousel({ days, targetCalories, selectedIndex, onSelect }) {
   );
 }
 
-export default function ResultsStep({ data }) {
-  const plan = useMemo(() => generateMockMealPlan(data), [data]);
+export default function ResultsStep({ data, plan, rawPlanText }) {
+  const { activePlan, planSource } = useMemo(() => {
+    const fromServer = normalizeServerPlan(plan);
+    if (fromServer) {
+      return { activePlan: fromServer, planSource: 'server' };
+    }
+    return { activePlan: generateMockMealPlan(data), planSource: 'mock' };
+  }, [plan, data]);
+
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
-  const selectedDay = plan.days[selectedDayIndex] || plan.days[0];
+  const selectedDay = activePlan.days[selectedDayIndex] || activePlan.days[0];
+
+  useEffect(() => {
+    setSelectedDayIndex(0);
+  }, [activePlan]);
 
   const getActivityText = (level) => {
     const levels = {
@@ -623,6 +703,18 @@ export default function ResultsStep({ data }) {
         >
           Here’s a full week of meals aligned with your goals, taste, and schedule.
         </Motion.p>
+        {planSource === 'server' && (
+          <Motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5 }}
+            className="mt-3 flex justify-center"
+          >
+            <span className="rounded-full bg-white/70 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-[#1B5E20] dark:bg-emerald-500/20 dark:text-emerald-200">
+              AI generated
+            </span>
+          </Motion.div>
+        )}
       </div>
 
       <Motion.div
@@ -651,7 +743,7 @@ export default function ResultsStep({ data }) {
           <div className="rounded-xl bg-white/15 p-4 text-white shadow-inner">
             <div className="font-medium">Daily Targets</div>
             <div className="text-sm opacity-90">
-              {plan.calorieTarget} kcal • P {plan.macroTargets.protein}g • C {plan.macroTargets.carbs}g • F {plan.macroTargets.fat}g
+              {activePlan.calorieTarget} kcal • P {activePlan.macroTargets.protein}g • C {activePlan.macroTargets.carbs}g • F {activePlan.macroTargets.fat}g
             </div>
           </div>
         </div>
@@ -746,8 +838,8 @@ export default function ResultsStep({ data }) {
           </div>
 
           <DayCarousel
-            days={plan.days}
-            targetCalories={plan.calorieTarget}
+            days={activePlan.days}
+            targetCalories={activePlan.calorieTarget}
             selectedIndex={selectedDayIndex}
             onSelect={setSelectedDayIndex}
           />
@@ -756,9 +848,22 @@ export default function ResultsStep({ data }) {
         <div className="rounded-3xl border border-gray-200 bg-white/95 p-6 shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-900/80">
           <SelectedDayPlan
             day={selectedDay}
-            targetCalories={plan.calorieTarget}
-            macroTargets={plan.macroTargets}
+            targetCalories={activePlan.calorieTarget}
+            macroTargets={activePlan.macroTargets}
           />
+          {planSource === 'mock' && (
+            <div className="mt-6 rounded-2xl border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-800 dark:border-yellow-500/40 dark:bg-yellow-500/10 dark:text-yellow-100">
+              This preview currently shows a generated sample. Your AI-powered plan will appear here once created successfully.
+            </div>
+          )}
+          {planSource === 'server' && rawPlanText && (
+            <details className="mt-6 select-text rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600 dark:border-slate-700 dark:bg-slate-900/60 dark:text-gray-300">
+              <summary className="cursor-pointer font-semibold text-[#2E3A59] dark:text-gray-100">
+                View full AI response
+              </summary>
+              <pre className="mt-3 whitespace-pre-wrap text-xs leading-relaxed">{rawPlanText}</pre>
+            </details>
+          )}
         </div>
       </Motion.div>
     </Motion.div>
