@@ -49,27 +49,19 @@ export default function Login({ onAuthSuccess }) {
 
     try {
       if (mode === 'login') {
-        const authData = await Auth.login(formData)
-        let effectiveUser = authData
-        try {
-          const sessionData = await Auth.session()
-          if (sessionData?.user_id && sessionData?.email) {
-            effectiveUser = sessionData
-          }
-        } catch (sessionError) {
-          console.warn('Unable to refresh session after login, using login payload', sessionError)
-        }
+        const loginPayload = await Auth.login(formData)
 
-        if (!effectiveUser?.user_id || !effectiveUser?.email) {
-          try {
-            const profileData = await Auth.profileInfo(formData)
-            if (profileData?.user_id && profileData?.email) {
-              effectiveUser = profileData
-            }
-          } catch (profileError) {
-            console.warn('Profile lookup failed after login', profileError)
-          }
-        }
+        const [sessionResult, profileResult] = await Promise.allSettled([
+          Auth.session(),
+          Auth.profileInfo(formData),
+        ])
+
+        const sessionData =
+          sessionResult.status === 'fulfilled' ? sessionResult.value : null
+        const profileData =
+          profileResult.status === 'fulfilled' ? profileResult.value : null
+
+        const effectiveUser = sessionData || profileData || loginPayload
 
         const normalizedUser = {
           id: effectiveUser?.user_id ?? effectiveUser?.id ?? effectiveUser?.userId,

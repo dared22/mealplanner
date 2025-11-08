@@ -59,6 +59,7 @@ export const Auth = {
     const response = await fetch(`${API_URL}/auth/session`, {
       method: 'GET',
       credentials: 'include',
+      cache: 'no-store',
     });
 
     return handleResponse(response);
@@ -67,6 +68,7 @@ export const Auth = {
     const response = await fetch(`${API_URL}/auth/profile-info`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ email, password }),
     });
 
