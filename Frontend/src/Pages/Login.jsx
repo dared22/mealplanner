@@ -61,6 +61,12 @@ export default function Login({ onAuthSuccess }) {
         const profileData =
           profileResult.status === 'fulfilled' ? profileResult.value : null
 
+        console.debug('Auth debug payloads', {
+          loginPayload,
+          sessionData,
+          profileData,
+        })
+
         const effectiveUser = sessionData || profileData || loginPayload
 
         const normalizedUser = {
