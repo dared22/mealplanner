@@ -78,12 +78,12 @@ jobs:
         run: heroku run "alembic upgrade head" -a $HEROKU_APP_BACKEND
 
       # ---------- Frontend ----------
-      - name: Set container stack (frontend)
-        run: heroku stack:set container -a "$HEROKU_APP_FRONTEND" 
-
       - name: Build frontend image
+        env:
+          VITE_API_URL: https://mealplanner-backend-d6ab87c9c7b5.herokuapp.com
         run: |
           docker build \
+            --build-arg VITE_API_URL=$VITE_API_URL \
             -f Frontend/Dockerfile \
             -t registry.heroku.com/$HEROKU_APP_FRONTEND/web \
             Frontend
