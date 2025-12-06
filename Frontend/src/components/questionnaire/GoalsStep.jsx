@@ -6,38 +6,33 @@ export default function GoalsStep({ data, onChange }) {
   const goals = [
     {
       value: 'lose_weight',
-      title: 'Lose Weight',
-      description: 'Reduce body weight in a healthy way',
-      icon: '📉',
-      color: '#FF6F61'
+      title: 'Lose weight',
+      description: 'Gradual, sustainable weight reduction',
+      icon: 'LW'
     },
     {
       value: 'maintain_weight',
-      title: 'Maintain Weight',
-      description: 'Keep current weight stable',
-      icon: '⚖️',
-      color: '#A5D6A7'
+      title: 'Maintain weight',
+      description: 'Keep your current weight stable',
+      icon: 'MW'
     },
     {
       value: 'gain_weight',
-      title: 'Gain Weight',
-      description: 'Increase body weight healthily',
-      icon: '📈',
-      color: '#4CAF50'
+      title: 'Gain weight',
+      description: 'Increase weight in a healthy way',
+      icon: 'GW'
     },
     {
       value: 'build_muscle',
-      title: 'Build Muscle',
+      title: 'Build muscle',
       description: 'Increase muscle mass and strength',
-      icon: '💪',
-      color: '#2196F3'
+      icon: 'BM'
     },
     {
       value: 'improve_health',
-      title: 'Improve Health',
-      description: 'Focus on overall wellness',
-      icon: '❤️',
-      color: '#9C27B0'
+      title: 'Improve health',
+      description: 'Support overall metabolic health',
+      icon: 'IH'
     }
   ];
 
@@ -54,16 +49,15 @@ export default function GoalsStep({ data, onChange }) {
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
           transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
-          className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center"
-          style={{ backgroundColor: '#A5D6A7' }}
+          className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center bg-primary/20 text-primary"
         >
-          <Target className="w-8 h-8 text-white" />
+          <Target className="w-8 h-8" />
         </Motion.div>
-        <h2 className="text-2xl font-bold mb-2" style={{ color: '#2E3A59' }}>
-          What's your main goal?
+        <h2 className="text-2xl font-semibold mb-2 text-slate-900 dark:text-slate-100">
+          What's your primary goal?
         </h2>
-        <p className="text-gray-600">
-          Choose your primary nutrition objective
+        <p className="text-gray-600 dark:text-gray-300">
+          We'll tune calories and macros to match.
         </p>
       </div>
 
@@ -76,17 +70,19 @@ export default function GoalsStep({ data, onChange }) {
             transition={{ delay: 0.1 * index }}
             className={`p-6 rounded-xl border-2 cursor-pointer transition-all duration-200 ${
               data.nutrition_goal === goal.value
-                ? 'border-[#A5D6A7] bg-[#A5D6A7] bg-opacity-10 transform scale-105'
-                : 'border-gray-200 hover:border-[#A5D6A7] hover:bg-gray-50'
+                ? 'border-primary bg-primary/10 shadow-sm'
+                : 'border-gray-200 hover:border-primary/70 hover:bg-gray-50 dark:border-slate-700 dark:hover:border-primary/60 dark:hover:bg-slate-800'
             }`}
             onClick={() => onChange({ nutrition_goal: goal.value })}
           >
             <div className="text-center">
-              <div className="text-3xl mb-3">{goal.icon}</div>
-              <h3 className="font-semibold mb-1" style={{ color: '#2E3A59' }}>
+              <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-secondary text-xs font-semibold uppercase tracking-wide text-slate-900 dark:text-slate-100">
+                {goal.icon}
+              </div>
+              <h3 className="font-semibold mb-1 text-slate-900 dark:text-slate-50">
                 {goal.title}
               </h3>
-              <p className="text-sm text-gray-600">{goal.description}</p>
+              <p className="text-sm text-gray-600 dark:text-gray-300">{goal.description}</p>
             </div>
           </Motion.div>
         ))}

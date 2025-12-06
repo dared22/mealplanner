@@ -4,14 +4,14 @@ import { Leaf } from 'lucide-react';
 
 export default function DietaryStep({ data, onChange }) {
   const dietaryOptions = [
-    { value: 'none', title: 'No Restrictions', icon: '🍽️' },
-    { value: 'vegetarian', title: 'Vegetarian', icon: '🥬' },
-    { value: 'vegan', title: 'Vegan', icon: '🌱' },
-    { value: 'gluten_free', title: 'Gluten-Free', icon: '🌾' },
-    { value: 'dairy_free', title: 'Dairy-Free', icon: '🥛' },
-    { value: 'nut_free', title: 'Nut-Free', icon: '🥜' },
-    { value: 'keto', title: 'Keto', icon: '🥑' },
-    { value: 'paleo', title: 'Paleo', icon: '🦴' }
+    { value: 'none', title: 'No specific needs', badge: 'None' },
+    { value: 'vegetarian', title: 'Vegetarian', badge: 'Veg' },
+    { value: 'vegan', title: 'Vegan', badge: 'VGN' },
+    { value: 'gluten_free', title: 'Gluten-free', badge: 'GF' },
+    { value: 'dairy_free', title: 'Dairy-free', badge: 'DF' },
+    { value: 'nut_free', title: 'Nut-free', badge: 'NF' },
+    { value: 'keto', title: 'Keto', badge: 'Keto' },
+    { value: 'paleo', title: 'Paleo', badge: 'Paleo' }
   ];
 
   const currentRestrictions = data.dietary_restrictions || [];
@@ -48,16 +48,15 @@ export default function DietaryStep({ data, onChange }) {
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
           transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
-          className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center"
-          style={{ backgroundColor: '#A5D6A7' }}
+          className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center bg-primary/20 text-primary"
         >
-          <Leaf className="w-8 h-8 text-white" />
+          <Leaf className="w-8 h-8" />
         </Motion.div>
-        <h2 className="text-2xl font-bold mb-2" style={{ color: '#2E3A59' }}>
-          Any dietary preferences?
+        <h2 className="text-2xl font-semibold mb-2 text-slate-900 dark:text-slate-100">
+          Any dietary needs?
         </h2>
-        <p className="text-gray-600">
-          Select all that apply (you can choose multiple)
+        <p className="text-gray-600 dark:text-gray-300">
+          Select all that apply.
         </p>
       </div>
 
@@ -70,22 +69,24 @@ export default function DietaryStep({ data, onChange }) {
             transition={{ delay: 0.1 * index }}
             className={`p-4 rounded-xl border-2 cursor-pointer transition-all duration-200 ${
               currentRestrictions.includes(option.value)
-                ? 'border-[#A5D6A7] bg-[#A5D6A7] bg-opacity-10'
-                : 'border-gray-200 hover:border-[#A5D6A7] hover:bg-gray-50'
+                ? 'border-primary bg-primary/10 shadow-sm'
+                : 'border-gray-200 hover:border-primary/70 hover:bg-gray-50 dark:border-slate-700 dark:hover:border-primary/60 dark:hover:bg-slate-800'
             }`}
             onClick={() => toggleRestriction(option.value)}
           >
             <div className="flex items-center space-x-4">
-              <div className="text-2xl">{option.icon}</div>
+              <div className="flex h-10 w-14 items-center justify-center rounded-lg bg-secondary text-xs font-semibold uppercase tracking-wide text-slate-900 dark:text-slate-100">
+                {option.badge}
+              </div>
               <div className="flex-1">
-                <h3 className="font-semibold" style={{ color: '#2E3A59' }}>
+                <h3 className="font-semibold text-slate-900 dark:text-slate-50">
                   {option.title}
                 </h3>
               </div>
               <div
                 className={`w-4 h-4 rounded border-2 flex items-center justify-center ${
                   currentRestrictions.includes(option.value)
-                    ? 'border-[#A5D6A7] bg-[#A5D6A7]'
+                    ? 'border-primary bg-primary/80'
                     : 'border-gray-300'
                 }`}
               >

@@ -18,16 +18,15 @@ export default function PreferencesStep({ data, onChange }) {
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
           transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
-          className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center"
-          style={{ backgroundColor: '#A5D6A7' }}
+          className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center bg-primary/20 text-primary"
         >
-          <Clock className="w-8 h-8 text-white" />
+          <Clock className="w-8 h-8" />
         </Motion.div>
-        <h2 className="text-2xl font-bold mb-2" style={{ color: '#2E3A59' }}>
-          Final preferences
+        <h2 className="text-2xl font-semibold mb-2 text-slate-900 dark:text-slate-100">
+          How do you like to cook?
         </h2>
-        <p className="text-gray-600">
-          Let's customize your meal planning experience
+        <p className="text-gray-600 dark:text-gray-300">
+          Time, meal cadence, and budget preferences.
         </p>
       </div>
 
@@ -38,22 +37,22 @@ export default function PreferencesStep({ data, onChange }) {
           transition={{ delay: 0.3 }}
           className="space-y-2"
         >
-          <Label className="flex items-center gap-2 text-sm font-medium" style={{ color: '#2E3A59' }}>
+          <Label className="flex items-center gap-2 text-sm font-medium text-slate-800 dark:text-slate-100">
             <Clock className="w-4 h-4" />
-            Preferred cooking time
+            Cooking time preference
           </Label>
           <Select 
             value={data.cooking_time_preference || ''} 
             onValueChange={(value) => onChange({ cooking_time_preference: value })}
           >
-            <SelectTrigger className="border-gray-200 focus:border-[#A5D6A7]">
-              <SelectValue placeholder="How much time do you like to spend cooking?" />
+            <SelectTrigger className="border-gray-200 focus:border-[#A5D6A7] focus:ring-2 focus:ring-[#A5D6A7]/40">
+              <SelectValue placeholder="Select typical cooking time" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="under_15_min">Under 15 minutes</SelectItem>
-              <SelectItem value="15_30_min">15-30 minutes</SelectItem>
-              <SelectItem value="30_60_min">30-60 minutes</SelectItem>
-              <SelectItem value="over_60_min">Over 60 minutes</SelectItem>
+              <SelectItem value="under_15_min">Ready in under 15 minutes</SelectItem>
+              <SelectItem value="15_30_min">Ready in 15–30 minutes</SelectItem>
+              <SelectItem value="30_60_min">Ready in 30–60 minutes</SelectItem>
+              <SelectItem value="over_60_min">Takes over 60 minutes</SelectItem>
             </SelectContent>
           </Select>
         </Motion.div>
@@ -64,22 +63,22 @@ export default function PreferencesStep({ data, onChange }) {
           transition={{ delay: 0.4 }}
           className="space-y-2"
         >
-          <Label className="flex items-center gap-2 text-sm font-medium" style={{ color: '#2E3A59' }}>
+          <Label className="flex items-center gap-2 text-sm font-medium text-slate-800 dark:text-slate-100">
             <Users className="w-4 h-4" />
-            Meals per day
+            Daily meal count
           </Label>
           <Select 
             value={data.meals_per_day?.toString() || ''} 
             onValueChange={(value) => onChange({ meals_per_day: parseInt(value) })}
           >
-            <SelectTrigger className="border-gray-200 focus:border-[#A5D6A7]">
-              <SelectValue placeholder="How many meals do you prefer per day?" />
+            <SelectTrigger className="border-gray-200 focus:border-[#A5D6A7] focus:ring-2 focus:ring-[#A5D6A7]/40">
+              <SelectValue placeholder="Select meals per day" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="3">3 meals (Breakfast, Lunch, Dinner)</SelectItem>
-              <SelectItem value="4">4 meals (3 meals + 1 snack)</SelectItem>
-              <SelectItem value="5">5 meals (3 meals + 2 snacks)</SelectItem>
-              <SelectItem value="6">6 meals (Small frequent meals)</SelectItem>
+              <SelectItem value="3">3 meals (breakfast, lunch, dinner)</SelectItem>
+              <SelectItem value="4">4 meals (3 meals plus 1 snack)</SelectItem>
+              <SelectItem value="5">5 meals (3 meals plus 2 snacks)</SelectItem>
+              <SelectItem value="6">6 smaller, frequent meals</SelectItem>
             </SelectContent>
           </Select>
         </Motion.div>
@@ -90,22 +89,22 @@ export default function PreferencesStep({ data, onChange }) {
           transition={{ delay: 0.5 }}
           className="space-y-2"
         >
-          <Label className="flex items-center gap-2 text-sm font-medium" style={{ color: '#2E3A59' }}>
+          <Label className="flex items-center gap-2 text-sm font-medium text-slate-800 dark:text-slate-100">
             <DollarSign className="w-4 h-4" />
-            Budget preference
+            Budget focus
           </Label>
           <Select 
             value={data.budget_range || ''} 
             onValueChange={(value) => onChange({ budget_range: value })}
           >
-            <SelectTrigger className="border-gray-200 focus:border-[#A5D6A7]">
-              <SelectValue placeholder="What's your preferred budget range?" />
+            <SelectTrigger className="border-gray-200 focus:border-[#A5D6A7] focus:ring-2 focus:ring-[#A5D6A7]/40">
+              <SelectValue placeholder="Select your budget focus" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="budget_friendly">Budget-friendly ($5-10 per meal)</SelectItem>
-              <SelectItem value="moderate">Moderate ($10-20 per meal)</SelectItem>
-              <SelectItem value="premium">Premium ($20+ per meal)</SelectItem>
-              <SelectItem value="no_limit">No budget limit</SelectItem>
+              <SelectItem value="budget friendly">Cost-efficient options</SelectItem>
+              <SelectItem value="moderate">Balanced budget</SelectItem>
+              <SelectItem value="premium">Premium ingredients</SelectItem>
+              <SelectItem value="no_limit">No defined budget</SelectItem>
             </SelectContent>
           </Select>
         </Motion.div>

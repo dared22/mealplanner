@@ -4,16 +4,16 @@ import { Globe } from 'lucide-react';
 
 export default function CuisineStep({ data, onChange }) {
   const cuisines = [
-    { value: 'mediterranean', title: 'Mediterranean', icon: '🫒', flag: '🇬🇷' },
-    { value: 'asian', title: 'Asian', icon: '🍜', flag: '🌏' },
-    { value: 'mexican', title: 'Mexican', icon: '🌮', flag: '🇲🇽' },
-    { value: 'italian', title: 'Italian', icon: '🍝', flag: '🇮🇹' },
-    { value: 'indian', title: 'Indian', icon: '🍛', flag: '🇮🇳' },
-    { value: 'american', title: 'American', icon: '🍔', flag: '🇺🇸' },
-    { value: 'french', title: 'French', icon: '🥖', flag: '🇫🇷' },
-    { value: 'thai', title: 'Thai', icon: '🍤', flag: '🇹🇭' },
-    { value: 'japanese', title: 'Japanese', icon: '🍣', flag: '🇯🇵' },
-    { value: 'middle_eastern', title: 'Middle Eastern', icon: '🥙', flag: '🏛️' }
+    { value: 'mediterranean', title: 'Mediterranean', badge: 'MED' },
+    { value: 'asian', title: 'Asian', badge: 'ASIA' },
+    { value: 'mexican', title: 'Mexican', badge: 'MEX' },
+    { value: 'italian', title: 'Italian', badge: 'ITA' },
+    { value: 'indian', title: 'Indian', badge: 'IND' },
+    { value: 'american', title: 'American', badge: 'USA' },
+    { value: 'french', title: 'French', badge: 'FRA' },
+    { value: 'thai', title: 'Thai', badge: 'THA' },
+    { value: 'japanese', title: 'Japanese', badge: 'JPN' },
+    { value: 'middle_eastern', title: 'Middle Eastern', badge: 'ME' }
   ];
 
   const currentCuisines = data.preferred_cuisines || [];
@@ -38,16 +38,15 @@ export default function CuisineStep({ data, onChange }) {
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
           transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
-          className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center"
-          style={{ backgroundColor: '#A5D6A7' }}
+          className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center bg-primary/20 text-primary"
         >
-          <Globe className="w-8 h-8 text-white" />
+          <Globe className="w-8 h-8" />
         </Motion.div>
-        <h2 className="text-2xl font-bold mb-2" style={{ color: '#2E3A59' }}>
-          What cuisines do you enjoy?
+        <h2 className="text-2xl font-semibold mb-2 text-slate-900 dark:text-slate-100">
+          Which cuisines do you prefer?
         </h2>
-        <p className="text-gray-600">
-          Select your favorite cuisines (choose multiple)
+        <p className="text-gray-600 dark:text-gray-300">
+          Choose your go-to flavors. Select multiple.
         </p>
       </div>
 
@@ -60,17 +59,16 @@ export default function CuisineStep({ data, onChange }) {
             transition={{ delay: 0.05 * index }}
             className={`p-4 rounded-xl border-2 cursor-pointer transition-all duration-200 ${
               currentCuisines.includes(cuisine.value)
-                ? 'border-[#A5D6A7] bg-[#A5D6A7] bg-opacity-10 transform scale-105'
-                : 'border-gray-200 hover:border-[#A5D6A7] hover:bg-gray-50'
+                ? 'border-primary bg-primary/10 shadow-sm'
+                : 'border-gray-200 hover:border-primary/70 hover:bg-gray-50 dark:border-slate-700 dark:hover:border-primary/60 dark:hover:bg-slate-800'
             }`}
             onClick={() => toggleCuisine(cuisine.value)}
           >
             <div className="text-center">
-              <div className="flex justify-center items-center gap-1 mb-2">
-                <span className="text-2xl">{cuisine.icon}</span>
-                <span className="text-lg">{cuisine.flag}</span>
+              <div className="mx-auto mb-2 flex h-10 w-14 items-center justify-center rounded-lg bg-secondary text-xs font-semibold uppercase tracking-wide text-slate-900 dark:text-slate-100">
+                {cuisine.badge}
               </div>
-              <h3 className="font-semibold" style={{ color: '#2E3A59' }}>
+              <h3 className="font-semibold text-slate-900 dark:text-slate-50">
                 {cuisine.title}
               </h3>
             </div>

@@ -180,11 +180,11 @@ export default function MealPlanner({ onLogout, user }) {
           animate={{ opacity: 1, y: 0 }}
           className="text-center mb-8"
         >
-          <h1 className="text-3xl md:text-4xl font-bold mb-2 text-[#2E3A59] dark:text-gray-100">
-            Personal Meal Planner
+          <h1 className="text-3xl md:text-4xl font-semibold mb-3 text-[#0f172a] dark:text-gray-100">
+            Meal Intelligence
           </h1>
           <p className="text-gray-600 dark:text-gray-300">
-            Answer a few questions to get your customized weekly meal plan
+            Answer a few focused questions to tailor your weekly plan. Clear, structured, and ready to use.
           </p>
         </Motion.div>
 
@@ -216,7 +216,7 @@ export default function MealPlanner({ onLogout, user }) {
                 className="flex items-center gap-2 dark:border-slate-700 dark:text-gray-200"
               >
                 <ArrowLeft className="w-4 h-4" />
-                Previous
+                Back
               </Button>
 
               {currentStep === 6 ? (
@@ -225,7 +225,7 @@ export default function MealPlanner({ onLogout, user }) {
                   disabled={!isStepValid() || isSubmitting}
                   className="flex items-center gap-2 px-8"
                 >
-                  {isSubmitting ? 'Creating Plan...' : 'Create My Plan'}
+                  {isSubmitting ? 'Preparing your plan...' : 'Generate my plan'}
                   <ArrowRight className="w-4 h-4" />
                 </Button>
               ) : (
@@ -234,7 +234,7 @@ export default function MealPlanner({ onLogout, user }) {
                   disabled={!isStepValid()}
                   className="flex items-center gap-2"
                 >
-                  Next
+                  Continue
                   <ArrowRight className="w-4 h-4" />
                 </Button>
               )}

@@ -9,8 +9,8 @@ export default function ProgressBar({ currentStep = 1, totalSteps = 6 }) {
   return (
     <div className="mb-6" role="region" aria-label="Progress">
       <div className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-300 mb-2">
-        <span>{label}</span>
-        <span>{Math.round(pct)}% Complete</span>
+        <span className="font-medium text-slate-700 dark:text-slate-200">{label}</span>
+        <span className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">{Math.round(pct)}% complete</span>
       </div>
 
       <div

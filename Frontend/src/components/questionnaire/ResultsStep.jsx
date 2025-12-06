@@ -126,6 +126,11 @@ function normalizeServerPlan(plan) {
   };
 }
 
+function formatTagLabel(tag) {
+  if (!tag) return '';
+  return toTitleCase(tag).replace(/\b(Budgetfriendly)\b/i, 'Budget friendly');
+}
+
 function DailyDonut({ value, target }) {
   const radius = 26;
   const circumference = 2 * Math.PI * radius;
@@ -231,19 +236,19 @@ function MealCard({
             {meal.calories} kcal • P {meal.protein}g • C {meal.carbs}g • F {meal.fat}g
           </div>
         </div>
-        <span className="rounded-full bg-[#A5D6A7]/20 px-3 py-1 text-[11px] font-semibold text-[#1B5E20] shadow-sm dark:bg-emerald-500/10 dark:text-emerald-200">
-          {meal.cookTime || '—'}
+        <span className="inline-flex items-center gap-1 rounded-full bg-[#A5D6A7]/20 px-3 py-1 text-[11px] font-semibold text-[#1B5E20] shadow-sm whitespace-nowrap dark:bg-emerald-500/10 dark:text-emerald-200">
+          {meal.cookTime ? `${meal.cookTime}` : 'Timing not provided'}
         </span>
       </div>
 
       {tags.length > 0 && (
-        <div className="flex flex-wrap gap-2">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(110px,max-content))] gap-2">
           {tags.map(tag => (
             <span
               key={tag}
               className="rounded-full bg-[#A5D6A7]/25 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-[#1B5E20] dark:bg-emerald-500/10 dark:text-emerald-200"
             >
-              {tag}
+              {formatTagLabel(tag)}
             </span>
           ))}
         </div>
@@ -334,7 +339,7 @@ function DayCard({ day, targetCalories, isActive, onSelect, className = '' }) {
         </span>
       </div>
       <div className="mt-auto flex items-center justify-between rounded-2xl bg-[#F1F6F2] px-4 py-3 text-[11px] font-medium text-[#2E3A59] transition group-hover:bg-[#E5F1E6] dark:bg-slate-800/80 dark:text-emerald-100">
-        <span>{isActive ? 'View full plan' : 'Tap to preview'}</span>
+        <span>{isActive ? 'Viewing full plan' : 'Preview this day'}</span>
         <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[#1B5E20] dark:text-emerald-300">
           {isActive ? 'Active' : 'Preview'}
         </span>
@@ -363,7 +368,7 @@ function SelectedDayPlan({ day, targetCalories, macroTargets, onSwapMeal, swapAv
             </div>
             <div className="space-y-1">
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#97A0C2] dark:text-slate-400">
-                Daily overview
+                Daily summary
               </p>
               <h4 className="text-xl font-semibold text-[#1f2a44] dark:text-gray-100">
                 {day.name}
@@ -383,17 +388,19 @@ function SelectedDayPlan({ day, targetCalories, macroTargets, onSwapMeal, swapAv
           </div>
         </div>
         {highlightTags.length > 0 && (
-          <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
-            {highlightTags.map(tag => (
-              <span
-                key={tag}
-                className="rounded-full bg-[#A5D6A7]/25 px-3 py-1 font-semibold text-[#1B5E20] dark:bg-emerald-500/10 dark:text-emerald-200"
-              >
-                {tag}
-              </span>
-            ))}
-            <span className="text-[11px]">
-              Tuning each meal to your cooking time and budget preferences.
+          <div className="text-xs text-gray-500 dark:text-gray-400">
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(110px,max-content))] gap-2">
+              {highlightTags.map(tag => (
+                <span
+                  key={tag}
+                  className="rounded-full bg-[#A5D6A7]/25 px-3 py-1 font-semibold text-[#1B5E20] dark:bg-emerald-500/10 dark:text-emerald-200"
+                >
+                  {formatTagLabel(tag)}
+                </span>
+              ))}
+            </div>
+            <span className="mt-2 block text-[11px]">
+              Aligned to your cooking time and budget preferences.
             </span>
           </div>
         )}
@@ -500,6 +507,8 @@ export default function ResultsStep({ data, plan, rawPlanText, status = 'idle', 
   const activePlan = useMemo(() => normalizeServerPlan(plan), [plan]);
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
   const [planOverrides, setPlanOverrides] = useState({});
+  const [showAllCuisines, setShowAllCuisines] = useState(false);
+  const [showAllDietary, setShowAllDietary] = useState(false);
 
   const displayPlan = useMemo(() => {
     if (!activePlan) return null;
@@ -550,20 +559,20 @@ export default function ResultsStep({ data, plan, rawPlanText, status = 'idle', 
   const preparedErrorMessage =
     errorMessage ||
     (!hasPlan && status === 'success'
-      ? 'We could not format the AI plan. Please try again.'
+      ? 'We could not finalize your plan. Please try again.'
       : 'We were unable to generate your plan. Please try again.');
 
   const heroTitle = isReady
-    ? 'Your personalized meal plan is ready! 🎉'
+    ? 'Your customized weekly meal plan is prepared.'
     : isLoadingPlan
-      ? 'Your plan is being prepared'
-      : 'We hit a snag generating your plan';
+      ? 'Preparing your plan'
+      : "We couldn't finalize your plan";
 
   const heroSubtitle = isReady
-    ? 'Here’s a full week of meals aligned with your goals, taste, and schedule.'
+    ? 'Balanced menus aligned with your goals, schedule, and preferences.'
     : isLoadingPlan
-      ? 'Hang tight while our AI chef assembles the perfect routine for you.'
-      : 'Please try again in a moment or tweak your answers.';
+      ? "We're assembling your plan. This usually takes less than a minute."
+      : 'Please adjust your answers or try again.';
 
   const dailyTargetsText = hasPlan
     ? `${displayPlan.calorieTarget} kcal • P ${displayPlan.macroTargets.protein}g • C ${displayPlan.macroTargets.carbs}g • F ${displayPlan.macroTargets.fat}g`
@@ -580,6 +589,11 @@ export default function ResultsStep({ data, plan, rawPlanText, status = 'idle', 
       ? data.dietary_restrictions
       : ['None']
   ).map(toTitleCase);
+
+  useEffect(() => {
+    setShowAllCuisines(false);
+    setShowAllDietary(false);
+  }, [cuisineList.join('|'), dietaryList.join('|')]);
 
   const handleSwap = useCallback((dayIndex, mealType) => {
     const pool = swapPools[mealType] || [];
@@ -630,7 +644,7 @@ export default function ResultsStep({ data, plan, rawPlanText, status = 'idle', 
       className="space-y-6"
     >
       <div className="text-center mb-8">
-        <Motion.div
+          <Motion.div
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
           transition={{ delay: 0.2, type: 'spring', stiffness: 200 }}
@@ -664,7 +678,7 @@ export default function ResultsStep({ data, plan, rawPlanText, status = 'idle', 
             className="mt-3 flex justify-center"
           >
             <span className="rounded-full bg-white/70 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-[#1B5E20] dark:bg-emerald-500/20 dark:text-emerald-200">
-              AI generated
+              AI-assisted plan
             </span>
           </Motion.div>
         )}
@@ -716,14 +730,14 @@ export default function ResultsStep({ data, plan, rawPlanText, status = 'idle', 
             </h3>
           </div>
           <div className="grid grid-cols-[minmax(140px,1fr)_2fr] gap-y-3 gap-x-4 text-sm text-gray-600 dark:text-gray-300">
-            <span className="text-gray-500">Meals per day</span>
+            <span className="text-gray-500">Daily meal count</span>
             <span className="font-semibold text-[#2E3A59] dark:text-gray-100">
               {data.meals_per_day || 4}
             </span>
 
             <span className="text-gray-500">Preferred cuisines</span>
-            <div className="flex flex-wrap gap-2">
-              {cuisineList.map(cuisine => (
+            <div className="flex flex-col gap-2">
+              {(showAllCuisines ? cuisineList : cuisineList.slice(0, 3)).map(cuisine => (
                 <span
                   key={cuisine}
                   className="rounded-full bg-[#E9F7EC] px-3 py-1 text-[12px] font-semibold text-[#1B5E20] shadow-sm dark:bg-emerald-500/10 dark:text-emerald-100"
@@ -731,11 +745,20 @@ export default function ResultsStep({ data, plan, rawPlanText, status = 'idle', 
                   {cuisine}
                 </span>
               ))}
+              {cuisineList.length > 3 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllCuisines(prev => !prev)}
+                  className="self-start text-[12px] font-semibold text-[#1B5E20] underline-offset-4 hover:underline dark:text-emerald-200"
+                >
+                  {showAllCuisines ? 'Show less' : `...more (${cuisineList.length - 3})`}
+                </button>
+              )}
             </div>
 
             <span className="text-gray-500">Dietary needs</span>
-            <div className="flex flex-wrap gap-2">
-              {dietaryList.map(restriction => (
+            <div className="flex flex-col gap-2">
+              {(showAllDietary ? dietaryList : dietaryList.slice(0, 3)).map(restriction => (
                 <span
                   key={restriction}
                   className={`rounded-full px-3 py-1 text-[12px] font-semibold shadow-sm ${
@@ -747,6 +770,15 @@ export default function ResultsStep({ data, plan, rawPlanText, status = 'idle', 
                   {restriction}
                 </span>
               ))}
+              {dietaryList.length > 3 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllDietary(prev => !prev)}
+                  className="self-start text-[12px] font-semibold text-[#1B5E20] underline-offset-4 hover:underline dark:text-emerald-200"
+                >
+                  {showAllDietary ? 'Show less' : `...more (${dietaryList.length - 3})`}
+                </button>
+              )}
             </div>
           </div>
         </Motion.div>
@@ -760,7 +792,7 @@ export default function ResultsStep({ data, plan, rawPlanText, status = 'idle', 
           <div className="flex items-center gap-2 mb-4">
             <Clock className="w-5 h-5 text-[#FF6F61] dark:text-[#fb7185]" />
             <h3 className="font-semibold text-[#2E3A59] dark:text-gray-100">
-              Cooking Preferences
+              Cooking preferences
             </h3>
           </div>
           <div className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
@@ -789,10 +821,10 @@ export default function ResultsStep({ data, plan, rawPlanText, status = 'idle', 
         >
           <div className="mx-auto mb-4 h-16 w-16 rounded-full border-4 border-[#A5D6A7]/40 border-t-[#2E3A59] animate-spin" />
           <h3 className="text-xl font-semibold text-[#2E3A59] dark:text-gray-100">
-            Your plan is being prepared
+            Preparing your plan
           </h3>
           <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-            This usually takes under a minute. We’ll drop your meals here the second they’re ready.
+            This usually takes under a minute. We'll surface your plan the moment it's ready.
           </p>
         </Motion.div>
       )}
@@ -804,10 +836,10 @@ export default function ResultsStep({ data, plan, rawPlanText, status = 'idle', 
           transition={{ delay: 0.7 }}
           className="rounded-3xl border border-red-200 bg-red-50/80 p-6 text-red-900 shadow-sm dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-100"
         >
-          <h3 className="text-lg font-semibold">We couldn’t finish your plan</h3>
+          <h3 className="text-lg font-semibold">We couldn't finalize your plan</h3>
           <p className="mt-2 text-sm">{preparedErrorMessage}</p>
           <p className="mt-1 text-sm">
-            You can go back to adjust your answers or hit “Create My Plan” again to retry.
+            Please adjust your answers or try generating your plan again.
           </p>
           {rawPlanText && (
             <details className="mt-4 select-text rounded-2xl border border-red-200/70 bg-white/40 px-4 py-3 text-sm text-gray-700 dark:border-red-500/30 dark:bg-slate-900/60 dark:text-gray-300">
@@ -831,16 +863,16 @@ export default function ResultsStep({ data, plan, rawPlanText, status = 'idle', 
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div>
                 <h3 className="text-lg font-semibold text-[#2E3A59] dark:text-gray-100">
-                  Explore your week
+                  Weekly overview
                 </h3>
                 <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                  Swipe through the week and pick a day to reveal its full menu, nutrition breakdown, and quick actions.
+                  Navigate through your weekly overview and select a day to see nutrition details and actions.
                 </p>
               </div>
               <div className="rounded-2xl bg-[#A5D6A7]/20 px-4 py-3 text-sm text-[#2E3A59] dark:bg-emerald-500/10 dark:text-emerald-200">
                 <div className="font-semibold">Daily target</div>
                 <div>
-                  {activePlan.calorieTarget} kcal • P {activePlan.macroTargets.protein}g • C {activePlan.macroTargets.carbs}g • F {activePlan.macroTargets.fat}g
+                  {displayPlan.calorieTarget} kcal • P {displayPlan.macroTargets.protein}g • C {displayPlan.macroTargets.carbs}g • F {displayPlan.macroTargets.fat}g
                 </div>
               </div>
             </div>
