@@ -26,3 +26,4 @@ dist-ssr
 
 environments
 .env
+.DS_Store
