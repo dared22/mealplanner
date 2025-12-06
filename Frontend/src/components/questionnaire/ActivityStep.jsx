@@ -85,12 +85,16 @@ export default function ActivityStep({ data, onChange }) {
                 <p className="text-sm text-gray-600">{level.description}</p>
               </div>
               <div
-                className={`w-4 h-4 rounded-full border-2 ${
+                className={`relative flex h-5 w-5 items-center justify-center rounded-full border-2 transition-colors duration-200 ${
                   data.activity_level === level.value
-                    ? 'border-[#A5D6A7] bg-[#A5D6A7]'
-                    : 'border-gray-300'
+                    ? 'border-white bg-white/30 shadow-[0_0_0_3px_rgba(165,214,167,0.4)]'
+                    : 'border-gray-300 bg-white'
                 }`}
-              />
+              >
+                {data.activity_level === level.value && (
+                  <span className="block h-2.5 w-2.5 rounded-full bg-white" />
+                )}
+              </div>
             </div>
           </Motion.div>
         ))}

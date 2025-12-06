@@ -20,6 +20,34 @@ function toTitleCase(value) {
     .join(' ');
 }
 
+function buildInstructionSteps(meal = {}) {
+  const baseText = typeof meal.instructions === 'string' ? meal.instructions : '';
+  const cleaned = baseText.replace(/\s+/g, ' ').trim();
+  const sentences = cleaned
+    ? cleaned
+        .split(/(?<=[.!?])\s+(?=[A-Z0-9])/)
+        .map(step => step.replace(/^\d+\.\s*/, '').trim())
+        .filter(Boolean)
+    : [];
+
+  const ingredients = Array.isArray(meal.ingredients) ? meal.ingredients.filter(Boolean) : [];
+
+  if (ingredients.length) {
+    const preview = ingredients.slice(0, 6).join(', ');
+    sentences.unshift(`Gather ingredients: ${preview}.`);
+  }
+
+  if (meal.cookTime) {
+    sentences.push(`Aim to finish in about ${meal.cookTime}.`);
+  }
+
+  if (!sentences.length) {
+    sentences.push('Follow your go-to method for this dish and season to taste.');
+  }
+
+  return sentences.slice(0, 6);
+}
+
 function normalizeServerPlan(plan) {
   if (!plan || typeof plan !== 'object' || !Array.isArray(plan.days) || !plan.days.length) {
     return null;
@@ -32,17 +60,36 @@ function normalizeServerPlan(plan) {
 
     const macros = match?.macros || {};
     const meals = MEAL_TYPES.reduce((acc, mealType) => {
-      const sourceMeal = match?.meals?.[mealType] || {};
+      const sourceMeal = match?.meals?.[mealType] || null;
+      const hasContent =
+        sourceMeal &&
+        (
+          sourceMeal.name ||
+          (Array.isArray(sourceMeal.ingredients) && sourceMeal.ingredients.length > 0) ||
+          (Array.isArray(sourceMeal.tags) && sourceMeal.tags.length > 0) ||
+          sourceMeal.instructions ||
+          sourceMeal.calories ||
+          sourceMeal.protein ||
+          sourceMeal.carbs ||
+          sourceMeal.fat
+        );
+
+      if (mealType === 'Snacks' && !hasContent) {
+        acc[mealType] = null;
+        return acc;
+      }
+
+      const safeMeal = sourceMeal || {};
       acc[mealType] = {
-        name: sourceMeal.name || `${mealType} option`,
-        calories: Number(sourceMeal.calories) || 0,
-        protein: Number(sourceMeal.protein) || 0,
-        carbs: Number(sourceMeal.carbs) || 0,
-        fat: Number(sourceMeal.fat) || 0,
-        cookTime: sourceMeal.cookTime || '20 min',
-        tags: Array.isArray(sourceMeal.tags) ? sourceMeal.tags.slice(0, 6) : [],
-        ingredients: Array.isArray(sourceMeal.ingredients) ? sourceMeal.ingredients : [],
-        instructions: typeof sourceMeal.instructions === 'string' ? sourceMeal.instructions : ''
+        name: safeMeal.name || `${mealType} option`,
+        calories: Number(safeMeal.calories) || 0,
+        protein: Number(safeMeal.protein) || 0,
+        carbs: Number(safeMeal.carbs) || 0,
+        fat: Number(safeMeal.fat) || 0,
+        cookTime: safeMeal.cookTime || '20 min',
+        tags: Array.isArray(safeMeal.tags) ? safeMeal.tags.slice(0, 6) : [],
+        ingredients: Array.isArray(safeMeal.ingredients) ? safeMeal.ingredients : [],
+        instructions: typeof safeMeal.instructions === 'string' ? safeMeal.instructions.trim() : ''
       };
       return acc;
     }, {});
@@ -152,61 +199,89 @@ function DailyMacroBars({ macros, targets }) {
   );
 }
 
-function MealCard({ meal, mealType, showMealType = false, className = '' }) {
-  if (!meal) {
-    return (
-      <div className={`rounded-2xl border border-dashed border-gray-200 bg-white/60 p-4 text-sm text-gray-400 dark:border-slate-700 dark:bg-slate-900 ${className}`}>
-        Plan coming soon
-      </div>
-    );
-  }
+function MealCard({
+  meal,
+  mealType,
+  showMealType = false,
+  className = '',
+  onSwap,
+  isSwapAvailable = true
+}) {
+  const [showDetails, setShowDetails] = useState(false);
+
+  if (!meal) return null;
+
+  const tags = Array.isArray(meal.tags) ? meal.tags.filter(Boolean) : [];
+  const hasIngredients = Array.isArray(meal.ingredients) && meal.ingredients.length > 0;
+  const instructionSteps = useMemo(() => buildInstructionSteps(meal), [meal]);
 
   return (
     <div className={`flex h-full flex-col gap-3 rounded-2xl border border-gray-200 bg-white/90 p-4 shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-900/80 ${className}`}>
-      {showMealType && (
-        <div className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
-          {mealType}
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          {showMealType && (
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+              {mealType}
+            </div>
+          )}
+          <div className="text-sm font-semibold text-[#2E3A59] dark:text-gray-100">
+            {meal.name}
+          </div>
+          <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            {meal.calories} kcal • P {meal.protein}g • C {meal.carbs}g • F {meal.fat}g
+          </div>
+        </div>
+        <span className="rounded-full bg-[#A5D6A7]/20 px-3 py-1 text-[11px] font-semibold text-[#1B5E20] shadow-sm dark:bg-emerald-500/10 dark:text-emerald-200">
+          {meal.cookTime || '—'}
+        </span>
+      </div>
+
+      {tags.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {tags.map(tag => (
+            <span
+              key={tag}
+              className="rounded-full bg-[#A5D6A7]/25 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-[#1B5E20] dark:bg-emerald-500/10 dark:text-emerald-200"
+            >
+              {tag}
+            </span>
+          ))}
         </div>
       )}
-      <div>
-        <div className="text-sm font-semibold text-[#2E3A59] dark:text-gray-100">
-          {meal.name}
-        </div>
-        <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-          {meal.calories} kcal • P {meal.protein}g • C {meal.carbs}g • F {meal.fat}g
-        </div>
-      </div>
-      <div className="flex items-center justify-between rounded-xl bg-[#A5D6A7]/15 px-3 py-2 text-xs text-[#2E3A59] dark:bg-emerald-500/10 dark:text-emerald-200">
-        <span>Cook time</span>
-        <span className="font-semibold">{meal.cookTime}</span>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {meal.tags.map(tag => (
-          <span
-            key={tag}
-            className="rounded-full bg-[#A5D6A7]/25 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-[#1B5E20] dark:bg-emerald-500/10 dark:text-emerald-200"
-          >
-            {tag}
-          </span>
-        ))}
-      </div>
-      {!!meal.ingredients?.length && (
+
+      {hasIngredients && (
         <div className="text-[11px] text-gray-500 dark:text-gray-400">
           <span className="font-semibold text-[#2E3A59] dark:text-gray-200">Ingredients:</span>{' '}
           {meal.ingredients.slice(0, 6).join(', ')}
         </div>
       )}
-      {meal.instructions && (
-        <p className="text-xs text-gray-500 dark:text-gray-400">
-          {meal.instructions}
-        </p>
+
+      {showDetails && (
+        <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-[11px] text-gray-600 shadow-inner transition-colors dark:border-slate-700 dark:bg-slate-800/60 dark:text-gray-300">
+          <div className="font-semibold text-[#2E3A59] dark:text-gray-100">Instructions</div>
+          <ol className="mt-1 list-decimal list-inside space-y-1 leading-relaxed">
+            {instructionSteps.map((step, idx) => (
+              <li key={`${meal.name}-step-${idx}`}>{step}</li>
+            ))}
+          </ol>
+        </div>
       )}
+
       <div className="mt-auto flex flex-wrap gap-2 pt-1">
-        <button className="flex-1 rounded-full border border-[#A5D6A7]/60 px-3 py-1.5 text-xs font-medium text-[#2E3A59] transition hover:bg-[#A5D6A7]/20 dark:border-emerald-400/40 dark:text-emerald-200 dark:hover:bg-emerald-500/10">
+        <button
+          type="button"
+          onClick={onSwap}
+          disabled={!isSwapAvailable}
+          className="flex-1 rounded-full border border-[#A5D6A7]/60 px-3 py-1.5 text-xs font-medium text-[#2E3A59] transition hover:bg-[#A5D6A7]/20 disabled:pointer-events-none disabled:opacity-50 dark:border-emerald-400/40 dark:text-emerald-200 dark:hover:bg-emerald-500/10"
+        >
           Swap
         </button>
-        <button className="flex-1 rounded-full border border-[#A5D6A7]/60 px-3 py-1.5 text-xs font-medium text-[#2E3A59] transition hover:bg-[#A5D6A7]/20 dark:border-emerald-400/40 dark:text-emerald-200 dark:hover:bg-emerald-500/10">
-          Details
+        <button
+          type="button"
+          onClick={() => setShowDetails(prev => !prev)}
+          className="flex-1 rounded-full border border-[#A5D6A7]/60 px-3 py-1.5 text-xs font-medium text-[#2E3A59] transition hover:bg-[#A5D6A7]/20 dark:border-emerald-400/40 dark:text-emerald-200 dark:hover:bg-emerald-500/10"
+        >
+          {showDetails ? 'Hide details' : 'Details'}
         </button>
         <button className="flex-1 rounded-full border border-[#FF6F61]/60 px-3 py-1.5 text-xs font-semibold text-[#FF6F61] transition hover:bg-[#FF6F61]/10 dark:border-rose-400/50 dark:text-rose-300 dark:hover:bg-rose-500/10">
           Add to list
@@ -268,12 +343,13 @@ function DayCard({ day, targetCalories, isActive, onSelect, className = '' }) {
   );
 }
 
-function SelectedDayPlan({ day, targetCalories, macroTargets }) {
+function SelectedDayPlan({ day, targetCalories, macroTargets, onSwapMeal, swapAvailability }) {
   if (!day) return null;
 
+  const availableMealTypes = MEAL_TYPES.filter(type => day.meals?.[type]);
   const highlightTags = Array.from(
     new Set(
-      MEAL_TYPES.flatMap(type => day.meals[type]?.tags || [])
+      availableMealTypes.flatMap(type => day.meals[type]?.tags || [])
     )
   ).slice(0, 4);
 
@@ -324,13 +400,15 @@ function SelectedDayPlan({ day, targetCalories, macroTargets }) {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        {MEAL_TYPES.map(mealType => (
+        {availableMealTypes.map(mealType => (
           <MealCard
             key={`${day.name}-${mealType}`}
             meal={day.meals[mealType]}
             mealType={mealType}
             showMealType
             className="md:min-h-[240px]"
+            onSwap={onSwapMeal ? () => onSwapMeal(mealType) : undefined}
+            isSwapAvailable={swapAvailability?.[mealType]}
           />
         ))}
       </div>
@@ -420,12 +498,50 @@ function DayCarousel({ days, targetCalories, selectedIndex, onSelect }) {
 
 export default function ResultsStep({ data, plan, rawPlanText, status = 'idle', errorMessage }) {
   const activePlan = useMemo(() => normalizeServerPlan(plan), [plan]);
-  const hasPlan = Boolean(activePlan?.days?.length);
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
-  const selectedDay = hasPlan ? activePlan.days[selectedDayIndex] || activePlan.days[0] : null;
+  const [planOverrides, setPlanOverrides] = useState({});
+
+  const displayPlan = useMemo(() => {
+    if (!activePlan) return null;
+    return {
+      ...activePlan,
+      days: activePlan.days.map((day, index) => {
+        const overrides = planOverrides[index];
+        if (!overrides) return day;
+        return {
+          ...day,
+          meals: {
+            ...day.meals,
+            ...overrides
+          }
+        };
+      })
+    };
+  }, [activePlan, planOverrides]);
+
+  const swapPools = useMemo(() => {
+    if (!activePlan?.days) return {};
+    return MEAL_TYPES.reduce((acc, mealType) => {
+      acc[mealType] = activePlan.days
+        .map(day => day?.meals?.[mealType])
+        .filter(Boolean);
+      return acc;
+    }, {});
+  }, [activePlan]);
+
+  const swapAvailability = useMemo(() => {
+    return MEAL_TYPES.reduce((acc, mealType) => {
+      acc[mealType] = (swapPools[mealType] || []).length > 1;
+      return acc;
+    }, {});
+  }, [swapPools]);
+
+  const hasPlan = Boolean(displayPlan?.days?.length);
+  const selectedDay = hasPlan ? displayPlan.days[selectedDayIndex] || displayPlan.days[0] : null;
 
   useEffect(() => {
     setSelectedDayIndex(0);
+    setPlanOverrides({});
   }, [activePlan]);
 
   const isLoadingPlan = status === 'loading';
@@ -450,8 +566,39 @@ export default function ResultsStep({ data, plan, rawPlanText, status = 'idle', 
       : 'Please try again in a moment or tweak your answers.';
 
   const dailyTargetsText = hasPlan
-    ? `${activePlan.calorieTarget} kcal • P ${activePlan.macroTargets.protein}g • C ${activePlan.macroTargets.carbs}g • F ${activePlan.macroTargets.fat}g`
+    ? `${displayPlan.calorieTarget} kcal • P ${displayPlan.macroTargets.protein}g • C ${displayPlan.macroTargets.carbs}g • F ${displayPlan.macroTargets.fat}g`
     : 'Waiting for the AI plan...';
+
+  const cuisineList = (
+    Array.isArray(data.preferred_cuisines) && data.preferred_cuisines.length
+      ? data.preferred_cuisines
+      : ['Seasonal']
+  ).map(toTitleCase);
+
+  const dietaryList = (
+    Array.isArray(data.dietary_restrictions) && data.dietary_restrictions.length
+      ? data.dietary_restrictions
+      : ['None']
+  ).map(toTitleCase);
+
+  const handleSwap = useCallback((dayIndex, mealType) => {
+    const pool = swapPools[mealType] || [];
+    if (!pool.length) return;
+
+    const currentMeal = displayPlan?.days?.[dayIndex]?.meals?.[mealType];
+    const filtered = currentMeal ? pool.filter(option => option?.name !== currentMeal.name) : pool;
+    const candidates = filtered.length ? filtered : pool;
+    const next = candidates[Math.floor(Math.random() * candidates.length)];
+    if (!next) return;
+
+    setPlanOverrides(prev => ({
+      ...prev,
+      [dayIndex]: {
+        ...(prev[dayIndex] || {}),
+        [mealType]: { ...next }
+      }
+    }));
+  }, [displayPlan, swapPools]);
 
   const getActivityText = (level) => {
     const levels = {
@@ -568,24 +715,38 @@ export default function ResultsStep({ data, plan, rawPlanText, status = 'idle', 
               Weekly Plan Snapshot
             </h3>
           </div>
-          <div className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
-            <div className="flex justify-between">
-              <span>Meals per day</span>
-              <span className="font-medium">{data.meals_per_day || 4}</span>
+          <div className="grid grid-cols-[minmax(140px,1fr)_2fr] gap-y-3 gap-x-4 text-sm text-gray-600 dark:text-gray-300">
+            <span className="text-gray-500">Meals per day</span>
+            <span className="font-semibold text-[#2E3A59] dark:text-gray-100">
+              {data.meals_per_day || 4}
+            </span>
+
+            <span className="text-gray-500">Preferred cuisines</span>
+            <div className="flex flex-wrap gap-2">
+              {cuisineList.map(cuisine => (
+                <span
+                  key={cuisine}
+                  className="rounded-full bg-[#E9F7EC] px-3 py-1 text-[12px] font-semibold text-[#1B5E20] shadow-sm dark:bg-emerald-500/10 dark:text-emerald-100"
+                >
+                  {cuisine}
+                </span>
+              ))}
             </div>
-            <div className="flex justify-between">
-              <span>Preferred cuisines</span>
-              <span className="font-medium">
-                {(data.preferred_cuisines || ['Seasonal']).map(toTitleCase).join(', ')}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span>Dietary needs</span>
-              <span className="font-medium">
-                {(data.dietary_restrictions || ['None'])
-                  .map(toTitleCase)
-                  .join(', ')}
-              </span>
+
+            <span className="text-gray-500">Dietary needs</span>
+            <div className="flex flex-wrap gap-2">
+              {dietaryList.map(restriction => (
+                <span
+                  key={restriction}
+                  className={`rounded-full px-3 py-1 text-[12px] font-semibold shadow-sm ${
+                    restriction.toLowerCase() === 'none'
+                      ? 'bg-gray-100 text-gray-600 dark:bg-slate-800/80 dark:text-gray-300'
+                      : 'bg-orange-50 text-orange-800 dark:bg-amber-500/10 dark:text-amber-100'
+                  }`}
+                >
+                  {restriction}
+                </span>
+              ))}
             </div>
           </div>
         </Motion.div>
@@ -685,8 +846,8 @@ export default function ResultsStep({ data, plan, rawPlanText, status = 'idle', 
             </div>
 
             <DayCarousel
-              days={activePlan.days}
-              targetCalories={activePlan.calorieTarget}
+              days={displayPlan.days}
+              targetCalories={displayPlan.calorieTarget}
               selectedIndex={selectedDayIndex}
               onSelect={setSelectedDayIndex}
             />
@@ -695,8 +856,10 @@ export default function ResultsStep({ data, plan, rawPlanText, status = 'idle', 
           <div className="rounded-3xl border border-gray-200 bg-white/95 p-6 shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-900/80">
             <SelectedDayPlan
               day={selectedDay}
-              targetCalories={activePlan.calorieTarget}
-              macroTargets={activePlan.macroTargets}
+              targetCalories={displayPlan.calorieTarget}
+              macroTargets={displayPlan.macroTargets}
+              onSwapMeal={(mealType) => handleSwap(selectedDayIndex, mealType)}
+              swapAvailability={swapAvailability}
             />
             {rawPlanText && (
               <details className="mt-6 select-text rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600 dark:border-slate-700 dark:bg-slate-900/60 dark:text-gray-300">
