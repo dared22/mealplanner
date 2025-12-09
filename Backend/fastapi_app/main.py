@@ -114,15 +114,20 @@ def current_user_dependency(
 
 app = FastAPI(title="Meal Planner API")
 
+default_allowed_origins = {
+    "http://localhost:5173",
+    "https://mealplanner-frontend-cc0005e5d9b0.herokuapp.com",
+}
 allowed_origins_env = os.getenv("CORS_ALLOWED_ORIGINS")
+allowed_origins = set(default_allowed_origins)
 if allowed_origins_env:
-    allowed_origins = [origin.strip() for origin in allowed_origins_env.split(",") if origin.strip()]
-else:
-    allowed_origins = ["http://localhost:5173"]
+    allowed_origins.update(
+        origin.strip() for origin in allowed_origins_env.split(",") if origin.strip()
+    )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
+    allow_origins=sorted(allowed_origins),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
