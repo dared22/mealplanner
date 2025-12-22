@@ -107,7 +107,6 @@ Guidelines:
         response = client.responses.create(
             model=OPENAI_PLAN_MODEL,
             max_output_tokens=OPENAI_PLAN_MAX_TOKENS,
-            response_format={"type": "json_object"},
             input=[
                 {"role": "system", "content": [{"type": "input_text", "text": SYSTEM_PROMPT}]},
                 {"role": "user", "content": [{"type": "input_text", "text": plan_prompt}]},
