@@ -116,21 +116,37 @@ app = FastAPI(title="Meal Planner API")
 
 default_allowed_origins = {
     "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:4173",
+    "http://127.0.0.1:4173",
     "https://mealplanner-frontend-cc0005e5d9b0.herokuapp.com",
 }
 allowed_origins_env = os.getenv("CORS_ALLOWED_ORIGINS")
+allowed_origin_regex = os.getenv("CORS_ALLOWED_ORIGIN_REGEX")
+frontend_url = os.getenv("FRONTEND_URL")
+
 allowed_origins = set(default_allowed_origins)
 if allowed_origins_env:
     allowed_origins.update(
         origin.strip() for origin in allowed_origins_env.split(",") if origin.strip()
     )
+if frontend_url:
+    allowed_origins.add(frontend_url.strip().rstrip("/"))
+
+cors_kwargs = {
+    "allow_credentials": True,
+    "allow_methods": ["*"],
+    "allow_headers": ["*"],
+}
+
+if allowed_origin_regex:
+    cors_kwargs["allow_origin_regex"] = allowed_origin_regex
+else:
+    cors_kwargs["allow_origins"] = sorted(allowed_origins)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=sorted(allowed_origins),
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    **cors_kwargs,
 )
 
 
