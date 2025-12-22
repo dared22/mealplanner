@@ -8,7 +8,7 @@ const resolveApiUrl = () => {
     }
 
     if (window.location.hostname === 'mealplanner-frontend-cc0005e5d9b0.herokuapp.com') {
-      return 'https://mealplanner-backend-d6ab87c9c7b5.herokuapp.com';
+      return 'https://mealplanner-backend.herokuapp.com';
     }
   }
 
