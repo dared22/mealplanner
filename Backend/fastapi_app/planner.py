@@ -1,10 +1,12 @@
 import json
 import logging
 import os
+import time
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Union
 
 from openai import OpenAI
+from openai import OpenAIError
 from sqlalchemy.orm import Session
 
 from models import Preference
@@ -13,12 +15,14 @@ logger = logging.getLogger(__name__)
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_PLAN_MODEL = os.getenv("OPENAI_PLAN_MODEL", "gpt-4.1-mini")
+OPENAI_REQUEST_TIMEOUT = float(os.getenv("OPENAI_REQUEST_TIMEOUT", "20"))
+OPENAI_PLAN_MAX_TOKENS = int(os.getenv("OPENAI_PLAN_MAX_TOKENS", "1500"))
 
 if not OPENAI_API_KEY:
     logger.warning("OPENAI_API_KEY is not configured; AI meal plan generation will be disabled.")
     client: Optional[OpenAI] = None
 else:
-    client = OpenAI(api_key=OPENAI_API_KEY)
+    client = OpenAI(api_key=OPENAI_API_KEY, timeout=OPENAI_REQUEST_TIMEOUT)
 
 SYSTEM_PROMPT = (
     "You are a professional nutrition coach. Always respond with valid JSON matching the schema:\n"
@@ -60,10 +64,14 @@ class PreferenceDTO:
 
 def generate_meal_plan(pref: PreferenceDTO) -> Union[Dict[str, Any], str]:
     if client is None:
-        return (
-            "Meal plan generator is disabled because OPENAI_API_KEY is not configured. "
-            "Please set the environment variable to enable AI-generated plans."
-        )
+        return {
+            "plan": None,
+            "raw_text": None,
+            "error": (
+                "Meal plan generator is disabled because OPENAI_API_KEY is not configured. "
+                "Please set the environment variable to enable AI-generated plans."
+            ),
+        }
     plan_prompt = f"""
 Create a personalized meal plan for this profile:
 - Age: {pref.age}
@@ -86,13 +94,26 @@ Guidelines:
 5. Keep ingredients accessible in Norway and respect dietary restrictions/cuisines.
 6. Return ONLY JSON matching the schema from the system prompt—no markdown or commentary.
 """
-    response = client.responses.create(
-        model=OPENAI_PLAN_MODEL,
-        input=[
-            {"role": "system", "content": [{"type": "input_text", "text": SYSTEM_PROMPT}]},
-            {"role": "user", "content": [{"type": "input_text", "text": plan_prompt}]},
-        ],
-    )
+    start_time = time.perf_counter()
+    try:
+        response = client.responses.create(
+            model=OPENAI_PLAN_MODEL,
+            max_output_tokens=OPENAI_PLAN_MAX_TOKENS,
+            input=[
+                {"role": "system", "content": [{"type": "input_text", "text": SYSTEM_PROMPT}]},
+                {"role": "user", "content": [{"type": "input_text", "text": plan_prompt}]},
+            ],
+            timeout=OPENAI_REQUEST_TIMEOUT,
+        )
+    except OpenAIError as exc:
+        logger.exception("OpenAI meal plan request failed: %s", exc)
+        return {"plan": None, "raw_text": None, "error": str(exc)}
+    except Exception as exc:  # pragma: no cover
+        logger.exception("Unexpected failure during meal plan generation")
+        return {"plan": None, "raw_text": None, "error": str(exc)}
+    finally:
+        elapsed = time.perf_counter() - start_time
+        logger.info("Meal plan response generation finished in %.2fs", elapsed)
 
     raw_text = response.output_text.strip()
     plan_payload: Optional[Dict[str, Any]] = None
@@ -102,7 +123,7 @@ Guidelines:
         except json.JSONDecodeError:
             logger.warning("Failed to parse meal plan JSON. Returning raw text instead.")
 
-    return {"plan": plan_payload, "raw_text": raw_text}
+    return {"plan": plan_payload, "raw_text": raw_text, "error": None}
 
 
 def generate_meal_plan_for_preference(db: Session, pref_id: int) -> Dict[str, Any]:

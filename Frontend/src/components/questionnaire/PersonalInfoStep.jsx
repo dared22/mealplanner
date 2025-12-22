@@ -5,7 +5,66 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { User, Ruler, Weight, Calendar } from 'lucide-react';
 
+export const validatePersonalInfo = (info = {}) => {
+  const errors = {};
+
+  const parseNumber = (value) => {
+    if (value === '' || value === null || value === undefined) return null;
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : null;
+  };
+
+  const age = parseNumber(info.age);
+  if (age === null) {
+    errors.age = 'Age is required.';
+  } else if (age < 10 || age > 100) {
+    errors.age = 'Age must be between 10 and 100.';
+  }
+
+  const height = parseNumber(info.height);
+  if (height === null) {
+    errors.height = 'Height is required.';
+  } else if (height < 140 || height > 210) {
+    errors.height = 'Height should be between 140 cm and 210 cm.';
+  }
+
+  const weight = parseNumber(info.weight);
+  if (weight === null) {
+    errors.weight = 'Weight is required.';
+  } else if (weight < 30 || weight > 400) {
+    errors.weight = 'Weight should be between 30 kg and 400 kg.';
+  }
+
+  if (height !== null && weight !== null) {
+    const bmi = weight / Math.pow(height / 100, 2);
+    if (bmi < 10 || bmi > 80) {
+      errors.logic = 'These numbers look unusual. Double-check that the units are correct.';
+    }
+  }
+
+  if (!info.gender) {
+    errors.gender = 'Please select a sex.';
+  }
+
+  return { errors, isValid: Object.keys(errors).length === 0 };
+};
+
 export default function PersonalInfoStep({ data, onChange }) {
+  const { errors } = validatePersonalInfo(data);
+
+  const handleNumberChange = (field, value) => {
+    const numericValue = value === '' ? '' : Number(value);
+    onChange({ [field]: Number.isFinite(numericValue) ? numericValue : '' });
+  };
+
+  const showAgeError = Boolean(errors.age && data.age !== undefined);
+  const showHeightError = Boolean(errors.height && data.height !== undefined);
+  const showWeightError = Boolean(errors.weight && data.weight !== undefined);
+  const showGenderError = Boolean(
+    errors.gender && (data.age !== undefined || data.height !== undefined || data.weight !== undefined)
+  );
+  const showLogicError = Boolean(errors.logic && data.height !== undefined && data.weight !== undefined);
+
   return (
     <Motion.div
       initial={{ opacity: 0, x: 50 }}
@@ -46,9 +105,16 @@ export default function PersonalInfoStep({ data, onChange }) {
             type="number"
             placeholder="Enter your age"
             value={data.age || ''}
-            onChange={(e) => onChange({ age: parseInt(e.target.value) || '' })}
-            className="border-gray-200 focus:border-[#A5D6A7] focus:ring-2 focus:ring-[#A5D6A7]/40 transition-colors"
+            min={10}
+            max={100}
+            onChange={(e) => handleNumberChange('age', e.target.value)}
+            className={`border-gray-200 focus:border-[#A5D6A7] focus:ring-2 focus:ring-[#A5D6A7]/40 transition-colors ${
+              showAgeError ? 'border-red-500 focus:border-red-500 focus:ring-red-500/40' : ''
+            }`}
           />
+          {showAgeError && (
+            <p className="text-sm text-red-600 dark:text-red-400">{errors.age}</p>
+          )}
         </Motion.div>
 
         <Motion.div 
@@ -62,7 +128,11 @@ export default function PersonalInfoStep({ data, onChange }) {
             Sex
           </Label>
           <Select value={data.gender || ''} onValueChange={(value) => onChange({ gender: value })}>
-            <SelectTrigger className="border-gray-200 focus:border-[#A5D6A7] focus:ring-2 focus:ring-[#A5D6A7]/40">
+            <SelectTrigger
+              className={`border-gray-200 focus:border-[#A5D6A7] focus:ring-2 focus:ring-[#A5D6A7]/40 ${
+                showGenderError ? 'border-red-500 focus:border-red-500 focus:ring-red-500/40' : ''
+              }`}
+            >
               <SelectValue placeholder="Select an option" />
             </SelectTrigger>
             <SelectContent>
@@ -71,6 +141,9 @@ export default function PersonalInfoStep({ data, onChange }) {
               <SelectItem value="other">Prefer to self-describe</SelectItem>
             </SelectContent>
           </Select>
+          {showGenderError && (
+            <p className="text-sm text-red-600 dark:text-red-400">{errors.gender}</p>
+          )}
         </Motion.div>
 
         <Motion.div 
@@ -87,9 +160,16 @@ export default function PersonalInfoStep({ data, onChange }) {
             type="number"
             placeholder="e.g., 175"
             value={data.height || ''}
-            onChange={(e) => onChange({ height: parseInt(e.target.value) || '' })}
-            className="border-gray-200 focus:border-[#A5D6A7] focus:ring-2 focus:ring-[#A5D6A7]/40 transition-colors"
+            min={140}
+            max={210}
+            onChange={(e) => handleNumberChange('height', e.target.value)}
+            className={`border-gray-200 focus:border-[#A5D6A7] focus:ring-2 focus:ring-[#A5D6A7]/40 transition-colors ${
+              showHeightError || showLogicError ? 'border-red-500 focus:border-red-500 focus:ring-red-500/40' : ''
+            }`}
           />
+          {showHeightError && (
+            <p className="text-sm text-red-600 dark:text-red-400">{errors.height}</p>
+          )}
         </Motion.div>
 
         <Motion.div 
@@ -106,9 +186,19 @@ export default function PersonalInfoStep({ data, onChange }) {
             type="number"
             placeholder="e.g., 70"
             value={data.weight || ''}
-            onChange={(e) => onChange({ weight: parseInt(e.target.value) || '' })}
-            className="border-gray-200 focus:border-[#A5D6A7] focus:ring-2 focus:ring-[#A5D6A7]/40 transition-colors"
+            min={30}
+            max={400}
+            onChange={(e) => handleNumberChange('weight', e.target.value)}
+            className={`border-gray-200 focus:border-[#A5D6A7] focus:ring-2 focus:ring-[#A5D6A7]/40 transition-colors ${
+              showWeightError || showLogicError ? 'border-red-500 focus:border-red-500 focus:ring-red-500/40' : ''
+            }`}
           />
+          {showWeightError && (
+            <p className="text-sm text-red-600 dark:text-red-400">{errors.weight}</p>
+          )}
+          {showLogicError && (
+            <p className="text-sm text-red-600 dark:text-red-400">{errors.logic}</p>
+          )}
         </Motion.div>
       </div>
     </Motion.div>

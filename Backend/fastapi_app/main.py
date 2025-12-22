@@ -209,12 +209,14 @@ def save_preferences(
 
     plan_payload = plan_result.get("plan") if isinstance(plan_result, dict) else None
     raw_plan_text = plan_result.get("raw_text") if isinstance(plan_result, dict) else None
+    plan_error = plan_result.get("error") if isinstance(plan_result, dict) else None
 
     return {
         "id": preference.id,
         "stored": True,
         "plan": plan_payload,
         "raw_plan": raw_plan_text,
+        "error": plan_error,
     }
 
 

@@ -6,7 +6,7 @@ import { UserPreferences } from '@/Entities/UserPreferences'
 import { Button } from '@/components/ui/button'
 
 import ProgressBar from '@/components/questionnaire/ProgressBar'
-import PersonalInfoStep from '@/components/questionnaire/PersonalInfoStep'
+import PersonalInfoStep, { validatePersonalInfo } from '@/components/questionnaire/PersonalInfoStep'
 import ActivityStep from '@/components/questionnaire/ActivityStep'
 import GoalsStep from '@/components/questionnaire/GoalsStep'
 import DietaryStep from '@/components/questionnaire/DietaryStep'
@@ -66,7 +66,7 @@ export default function MealPlanner({ onLogout, user }) {
   const isStepValid = () => {
     switch (currentStep) {
       case 1:
-        return formData.age && formData.gender && formData.height && formData.weight;
+        return validatePersonalInfo(formData).isValid;
       case 2:
         return formData.activity_level;
       case 3:
@@ -100,6 +100,7 @@ export default function MealPlanner({ onLogout, user }) {
       const response = await UserPreferences.create({ ...formData, user_id: userId });
       const serverPlan = response?.plan ?? null;
       const rawText = response?.raw_plan ?? '';
+      const serverError = response?.error ?? '';
 
       setPlanPayload(serverPlan);
       setRawPlanText(rawText);
@@ -108,7 +109,9 @@ export default function MealPlanner({ onLogout, user }) {
         setPlanStatus('success');
       } else {
         setPlanStatus('error');
-        setPlanError('The AI response did not include a plan. Please try again.');
+        setPlanError(
+          serverError || 'The AI response did not include a plan. Please try again.'
+        );
       }
     } catch (error) {
       console.error('Error saving preferences:', error);
