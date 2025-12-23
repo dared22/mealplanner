@@ -17,5 +17,19 @@ export const UserPreferences = {
     }
 
     return response.json();
+  },
+  fetch: async (preferenceId) => {
+    const response = await fetch(`${API_URL}/preferences/${preferenceId}`, {
+      method: 'GET',
+      credentials: 'include',
+      cache: 'no-store',
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(`Failed to fetch preferences: ${response.status} ${errorBody}`);
+    }
+
+    return response.json();
   }
 };

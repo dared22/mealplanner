@@ -82,6 +82,39 @@ export default function MealPlanner({ onLogout, user }) {
     }
   };
 
+  const pollForPlan = async (preferenceId) => {
+    const maxAttempts = 30;
+    const delayMs = 2000;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const response = await UserPreferences.fetch(preferenceId);
+      const status = response?.plan_status;
+      const serverPlan = response?.plan ?? null;
+      const rawText = response?.raw_plan ?? '';
+      const serverError = response?.error ?? '';
+
+      if (status === 'success' || serverPlan) {
+        setPlanPayload(serverPlan);
+        setRawPlanText(rawText);
+        setPlanStatus('success');
+        return;
+      }
+
+      if (status === 'error') {
+        setPlanStatus('error');
+        setPlanError(
+          serverError || 'The AI response did not include a plan. Please try again.'
+        );
+        return;
+      }
+
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+
+    setPlanStatus('error');
+    setPlanError('Plan generation is taking longer than expected. Please try again soon.');
+  };
+
   const handleFinish = async () => {
     const userId = user?.id ?? user?.user_id ?? user?.userId;
     if (!userId) {
@@ -102,16 +135,20 @@ export default function MealPlanner({ onLogout, user }) {
       const rawText = response?.raw_plan ?? '';
       const serverError = response?.error ?? '';
 
-      setPlanPayload(serverPlan);
-      setRawPlanText(rawText);
-
       if (serverPlan) {
+        setPlanPayload(serverPlan);
+        setRawPlanText(rawText);
         setPlanStatus('success');
-      } else {
+      } else if (response?.plan_status === 'error') {
         setPlanStatus('error');
         setPlanError(
           serverError || 'The AI response did not include a plan. Please try again.'
         );
+      } else if (response?.id) {
+        await pollForPlan(response.id);
+      } else {
+        setPlanStatus('error');
+        setPlanError('Unable to start plan generation. Please try again.');
       }
     } catch (error) {
       console.error('Error saving preferences:', error);

@@ -2,7 +2,7 @@ import logging
 import os
 from typing import Any, Dict, Optional
 
-from fastapi import Body, Depends, FastAPI, HTTPException, Request, Response, status
+from fastapi import BackgroundTasks, Body, Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr, Field
@@ -10,7 +10,7 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 from itsdangerous import BadSignature, BadTimeSignature, URLSafeTimedSerializer
 
-from database import Base, engine, get_session
+from database import Base, SessionLocal, engine, get_session
 from models import Preference, User
 from planner import generate_meal_plan_for_preference
 
@@ -114,6 +114,41 @@ def current_user_dependency(
 
 app = FastAPI(title="Meal Planner API")
 
+
+def _persist_plan_result(db: Session, preference: Preference, plan_result: Dict[str, Any]) -> None:
+    existing_raw = preference.raw_data or {}
+    existing_raw["generated_plan"] = plan_result
+    preference.raw_data = existing_raw
+    db.add(preference)
+    db.commit()
+    db.refresh(preference)
+
+
+def _generate_plan_in_background(pref_id: int) -> None:
+    db = SessionLocal()
+    try:
+        try:
+            plan_result = generate_meal_plan_for_preference(db, pref_id)
+        except ValueError:
+            logger.exception("Preference %s disappeared before plan generation", pref_id)
+            return
+        except Exception as exc:
+            logger.exception("Meal plan generation failed for preference %s", pref_id)
+            plan_result = {"plan": None, "raw_text": None, "error": str(exc)}
+
+        preference = db.get(Preference, pref_id)
+        if preference is None:
+            logger.warning("Preference %s missing when storing generated plan", pref_id)
+            return
+
+        _persist_plan_result(db, preference, plan_result)
+        logger.info("Generated meal plan for preference %s", pref_id)
+    except Exception:
+        logger.exception("Failed to update raw_data with generated plan for preference %s", pref_id)
+        db.rollback()
+    finally:
+        db.close()
+
 default_allowed_origins = {
     "http://localhost:5173",
     "http://127.0.0.1:5173",
@@ -165,6 +200,7 @@ def on_startup() -> None:
 def save_preferences(
     payload: Dict[str, Any] = Body(...),
     db: Session = Depends(get_session),
+    background_tasks: BackgroundTasks,
     current_user: Optional[User] = Depends(optional_current_user),
 ) -> Dict[str, Any]:
     if not payload:
@@ -202,37 +238,15 @@ def save_preferences(
     db.add(preference)
     db.commit()
     db.refresh(preference)
-
-    plan_result: Optional[Dict[str, Any]] = None
-    try:
-        plan_result = generate_meal_plan_for_preference(db, preference.id)
-    except ValueError:
-        logger.exception("Preference %s disappeared before plan generation", preference.id)
-    except Exception:
-        logger.exception("Meal plan generation failed for user_id=%s", user_id)
-    else:
-        if plan_result:
-            try:
-                existing_raw = preference.raw_data or {}
-                existing_raw["generated_plan"] = plan_result
-                preference.raw_data = existing_raw
-                db.add(preference)
-                db.commit()
-                db.refresh(preference)
-            except Exception:
-                logger.exception("Failed to update raw_data with generated plan for preference %s", preference.id)
-        logger.info("Generated meal plan for user %s", user_id)
-
-    plan_payload = plan_result.get("plan") if isinstance(plan_result, dict) else None
-    raw_plan_text = plan_result.get("raw_text") if isinstance(plan_result, dict) else None
-    plan_error = plan_result.get("error") if isinstance(plan_result, dict) else None
+    background_tasks.add_task(_generate_plan_in_background, preference.id)
 
     return {
         "id": preference.id,
         "stored": True,
-        "plan": plan_payload,
-        "raw_plan": raw_plan_text,
-        "error": plan_error,
+        "plan": None,
+        "raw_plan": None,
+        "error": None,
+        "plan_status": "pending",
     }
 
 
@@ -241,6 +255,19 @@ def get_preferences(pref_id: int, db: Session = Depends(get_session)) -> Dict[st
     entry = db.get(Preference, pref_id)
     if entry is None:
         raise HTTPException(status_code=404, detail="Preferences not found")
+
+    generated_plan = entry.raw_data.get("generated_plan") if isinstance(entry.raw_data, dict) else None
+    plan_payload = generated_plan.get("plan") if isinstance(generated_plan, dict) else None
+    raw_plan_text = generated_plan.get("raw_text") if isinstance(generated_plan, dict) else None
+    plan_error = generated_plan.get("error") if isinstance(generated_plan, dict) else None
+    if generated_plan is None:
+        plan_status = "pending"
+    elif plan_payload:
+        plan_status = "success"
+    elif plan_error:
+        plan_status = "error"
+    else:
+        plan_status = "pending"
 
     return {
         "id": entry.id,
@@ -258,6 +285,10 @@ def get_preferences(pref_id: int, db: Session = Depends(get_session)) -> Dict[st
         "preferred_cuisines": entry.preferred_cuisines,
         "raw_data": entry.raw_data,
         "user_id": entry.user_id,
+        "plan_status": plan_status,
+        "plan": plan_payload,
+        "raw_plan": raw_plan_text,
+        "error": plan_error,
     }
 
 
