@@ -1,21 +1,4 @@
-const resolveApiUrl = () => {
-  const configured = import.meta.env?.VITE_API_URL;
-  if (configured) return configured.replace(/\/$/, '');
-
-  if (typeof window !== 'undefined') {
-    if (window.location.hostname === 'localhost') {
-      return 'http://localhost:8000';
-    }
-
-    if (window.location.hostname === 'mealplanner-frontend-cc0005e5d9b0.herokuapp.com') {
-      return 'https://mealplanner-backend-d6ab87c9c7b5.herokuapp.com';
-    }
-  }
-
-  return '/api';
-};
-
-const API_URL = resolveApiUrl();
+import { API_URL } from './api';
 
 async function handleResponse(response) {
   const data = await response.json().catch(() => ({}));
