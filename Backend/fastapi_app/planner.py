@@ -104,17 +104,24 @@ Guidelines:
 """
     start_time = time.perf_counter()
     try:
-        response = client.responses.create(
-            model=OPENAI_PLAN_MODEL,
-            max_output_tokens=OPENAI_PLAN_MAX_TOKENS,
-            response_format={"type": "json_object"},
-            temperature=0.2,
-            input=[
+        request_kwargs = {
+            "model": OPENAI_PLAN_MODEL,
+            "max_output_tokens": OPENAI_PLAN_MAX_TOKENS,
+            "response_format": {"type": "json_object"},
+            "temperature": 0.2,
+            "input": [
                 {"role": "system", "content": [{"type": "input_text", "text": SYSTEM_PROMPT}]},
                 {"role": "user", "content": [{"type": "input_text", "text": plan_prompt}]},
             ],
-            timeout=OPENAI_REQUEST_TIMEOUT,
-        )
+            "timeout": OPENAI_REQUEST_TIMEOUT,
+        }
+        try:
+            response = client.responses.create(**request_kwargs)
+        except TypeError as exc:
+            if "response_format" not in str(exc):
+                raise
+            request_kwargs.pop("response_format", None)
+            response = client.responses.create(**request_kwargs)
     except OpenAIError as exc:
         logger.exception("OpenAI meal plan request failed: %s", exc)
         return {"plan": None, "raw_text": None, "error": str(exc)}
