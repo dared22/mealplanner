@@ -116,9 +116,10 @@ app = FastAPI(title="Meal Planner API")
 
 
 def _persist_plan_result(db: Session, preference: Preference, plan_result: Dict[str, Any]) -> None:
-    existing_raw = preference.raw_data or {}
-    existing_raw["generated_plan"] = plan_result
-    preference.raw_data = existing_raw
+    existing_raw = preference.raw_data if isinstance(preference.raw_data, dict) else {}
+    updated_raw = dict(existing_raw)
+    updated_raw["generated_plan"] = plan_result
+    preference.raw_data = updated_raw
     db.add(preference)
     db.commit()
     db.refresh(preference)
@@ -264,10 +265,10 @@ def get_preferences(pref_id: int, db: Session = Depends(get_session)) -> Dict[st
         plan_status = "pending"
     elif plan_payload:
         plan_status = "success"
-    elif plan_error:
-        plan_status = "error"
     else:
-        plan_status = "pending"
+        plan_status = "error"
+        if not plan_error:
+            plan_error = "Plan generation completed without a usable plan."
 
     return {
         "id": entry.id,
