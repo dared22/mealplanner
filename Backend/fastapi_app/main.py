@@ -198,8 +198,8 @@ def on_startup() -> None:
 
 @app.post("/preferences")
 def save_preferences(
-    payload: Dict[str, Any] = Body(...),
     background_tasks: BackgroundTasks,
+    payload: Dict[str, Any] = Body(...),
     db: Session = Depends(get_session),
     current_user: Optional[User] = Depends(optional_current_user),
 ) -> Dict[str, Any]:
