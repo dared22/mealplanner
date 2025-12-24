@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_PLAN_MODEL = os.getenv("OPENAI_PLAN_MODEL", "gpt-4o-mini")
 OPENAI_REQUEST_TIMEOUT = float(os.getenv("OPENAI_REQUEST_TIMEOUT", "90"))
-OPENAI_PLAN_MAX_TOKENS = int(os.getenv("OPENAI_PLAN_MAX_TOKENS", "2000"))
+OPENAI_PLAN_MAX_TOKENS = int(os.getenv("OPENAI_PLAN_MAX_TOKENS", "3000"))
 
 if not OPENAI_API_KEY:
     logger.warning("OPENAI_API_KEY is not configured; AI meal plan generation will be disabled.")
@@ -107,6 +107,8 @@ Guidelines:
         response = client.responses.create(
             model=OPENAI_PLAN_MODEL,
             max_output_tokens=OPENAI_PLAN_MAX_TOKENS,
+            response_format={"type": "json_object"},
+            temperature=0.2,
             input=[
                 {"role": "system", "content": [{"type": "input_text", "text": SYSTEM_PROMPT}]},
                 {"role": "user", "content": [{"type": "input_text", "text": plan_prompt}]},
