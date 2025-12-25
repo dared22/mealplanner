@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_PLAN_MODEL = os.getenv("OPENAI_PLAN_MODEL", "gpt-4o-mini")
-OPENAI_REQUEST_TIMEOUT = float(os.getenv("OPENAI_REQUEST_TIMEOUT", "90"))
+OPENAI_REQUEST_TIMEOUT = float(os.getenv("OPENAI_REQUEST_TIMEOUT", "120"))
 OPENAI_PLAN_MAX_TOKENS = int(os.getenv("OPENAI_PLAN_MAX_TOKENS", "4500"))
 PLAN_DAYS = int(os.getenv("PLAN_DAYS", "7"))
 
