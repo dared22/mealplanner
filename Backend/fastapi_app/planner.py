@@ -181,7 +181,7 @@ Create a personalized meal plan for this profile:
 - Preferred cuisines: {', '.join(pref.preferred_cuisines) if pref.preferred_cuisines else 'no specific preference'}
 
 Guidelines:
-1. Produce exactly 5 days named Monday through Friday.
+1. Produce exactly 7 days named Monday through Sunday.
 2. Provide {pref.meals_per_day} meals per day, covering Breakfast, Lunch, Dinner, and Snacks where applicable.
 3. Each meal needs calories plus protein/carbs/fat estimates, cook time, up to 3 short tags, and concise ingredients/instructions (10-25 words). Keep ingredient lists brief.
 4. Daily calories must align with the user's goal and activity level, staying within ±7%.
