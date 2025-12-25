@@ -17,7 +17,8 @@ logger = logging.getLogger(__name__)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_PLAN_MODEL = os.getenv("OPENAI_PLAN_MODEL", "gpt-4o-mini")
 OPENAI_REQUEST_TIMEOUT = float(os.getenv("OPENAI_REQUEST_TIMEOUT", "90"))
-OPENAI_PLAN_MAX_TOKENS = int(os.getenv("OPENAI_PLAN_MAX_TOKENS", "3000"))
+OPENAI_PLAN_MAX_TOKENS = int(os.getenv("OPENAI_PLAN_MAX_TOKENS", "4500"))
+PLAN_DAYS = int(os.getenv("PLAN_DAYS", "7"))
 
 if not OPENAI_API_KEY:
     logger.warning("OPENAI_API_KEY is not configured; AI meal plan generation will be disabled.")
@@ -87,6 +88,9 @@ def _request_with_chat(messages: list[dict[str, str]], temperature: float = 0.2)
         request_kwargs.pop("response_format", None)
         response = client.chat.completions.create(**request_kwargs)
 
+    finish_reason = response.choices[0].finish_reason if response.choices else None
+    if finish_reason == "length":
+        logger.warning("OpenAI response truncated; increase OPENAI_PLAN_MAX_TOKENS.")
     content = response.choices[0].message.content if response.choices else ""
     return content.strip() if content else ""
 
@@ -181,12 +185,12 @@ Create a personalized meal plan for this profile:
 - Preferred cuisines: {', '.join(pref.preferred_cuisines) if pref.preferred_cuisines else 'no specific preference'}
 
 Guidelines:
-1. Produce exactly 7 days named Monday through Sunday.
+1. Produce exactly {PLAN_DAYS} days named Monday through Sunday.
 2. Provide {pref.meals_per_day} meals per day, covering Breakfast, Lunch, Dinner, and Snacks where applicable.
-3. Each meal needs calories plus protein/carbs/fat estimates, cook time, up to 3 short tags, and concise ingredients/instructions (10-25 words). Keep ingredient lists brief.
+3. Each meal needs calories plus protein/carbs/fat estimates, cook time, up to 2 short tags, and concise ingredients/instructions (8-15 words). Keep ingredient lists under 6 items.
 4. Daily calories must align with the user's goal and activity level, staying within ±7%.
 5. Keep ingredients accessible in Norway and respect dietary restrictions/cuisines.
-6. Return ONLY JSON matching the schema from the system prompt—no markdown or commentary.
+6. Return ONLY compact JSON matching the schema from the system prompt—no markdown or commentary.
 """
     start_time = time.perf_counter()
     try:
