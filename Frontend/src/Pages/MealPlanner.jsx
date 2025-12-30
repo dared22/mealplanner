@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion as Motion } from 'framer-motion'
 import { ArrowLeft, ArrowRight, Moon, Sun } from 'lucide-react'
 import { UserPreferences } from '@/Entities/UserPreferences'
@@ -14,17 +14,65 @@ import CuisineStep from '@/components/questionnaire/CuisineStep'
 import PreferencesStep from '@/components/questionnaire/PreferencesStep'
 import ResultsStep from '@/components/questionnaire/ResultsStep'
 
+const STORAGE_VERSION = 1;
+const TOTAL_STEPS = 7;
 
+const clampStep = (value) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 1;
+  return Math.min(Math.max(Math.trunc(numeric), 1), TOTAL_STEPS);
+};
+
+const loadStoredProgress = (storageKey) => {
+  if (!storageKey || typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(storageKey);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+    if (parsed.version !== STORAGE_VERSION) return null;
+    return parsed;
+  } catch (error) {
+    console.warn('Failed to read stored meal planner progress', error);
+    return null;
+  }
+};
+
+const persistProgress = (storageKey, payload) => {
+  if (!storageKey || typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(
+      storageKey,
+      JSON.stringify({ version: STORAGE_VERSION, ...payload })
+    );
+  } catch (error) {
+    console.warn('Failed to store meal planner progress', error);
+  }
+};
 
 
 export default function MealPlanner({ onLogout, user }) {
-  const [currentStep, setCurrentStep] = useState(1);
-  const [formData, setFormData] = useState({});
+  const userId = user?.id ?? user?.user_id ?? user?.userId ?? null;
+  const storageKey = userId ? `mealplanner_progress_${userId}` : null;
+  const initialProgress = useMemo(
+    () => loadStoredProgress(storageKey),
+    [storageKey]
+  );
+
+  const [currentStep, setCurrentStep] = useState(() =>
+    clampStep(initialProgress?.currentStep ?? 1)
+  );
+  const [formData, setFormData] = useState(() =>
+    initialProgress?.formData && typeof initialProgress.formData === 'object'
+      ? initialProgress.formData
+      : {}
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [planPayload, setPlanPayload] = useState(null);
-  const [rawPlanText, setRawPlanText] = useState('');
-  const [planStatus, setPlanStatus] = useState('idle');
-  const [planError, setPlanError] = useState(null);
+  const [planPayload, setPlanPayload] = useState(() => initialProgress?.planPayload ?? null);
+  const [rawPlanText, setRawPlanText] = useState(() => initialProgress?.rawPlanText ?? '');
+  const [planStatus, setPlanStatus] = useState(() => initialProgress?.planStatus ?? 'idle');
+  const [planError, setPlanError] = useState(() => initialProgress?.planError ?? null);
+  const [preferenceId, setPreferenceId] = useState(() => initialProgress?.preferenceId ?? null);
   const [isDarkMode, setIsDarkMode] = useState(() => {
     if (typeof window === 'undefined') return false;
     const stored = window.localStorage.getItem('theme');
@@ -45,7 +93,7 @@ export default function MealPlanner({ onLogout, user }) {
     }
   }, [isDarkMode]);
 
-  const totalSteps = 7;
+  const totalSteps = TOTAL_STEPS;
 
   const updateFormData = (newData) => {
     setFormData(prev => ({ ...prev, ...newData }));
@@ -82,7 +130,7 @@ export default function MealPlanner({ onLogout, user }) {
     }
   };
 
-  const pollForPlan = async (preferenceId) => {
+  const pollForPlan = useCallback(async (preferenceId) => {
     const maxAttempts = 30;
     const delayMs = 2000;
 
@@ -97,6 +145,7 @@ export default function MealPlanner({ onLogout, user }) {
         setPlanPayload(serverPlan);
         setRawPlanText(rawText);
         setPlanStatus('success');
+        setPlanError(null);
         return;
       }
 
@@ -113,10 +162,37 @@ export default function MealPlanner({ onLogout, user }) {
 
     setPlanStatus('error');
     setPlanError('Plan generation is taking longer than expected. Please try again soon.');
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!storageKey) return;
+    persistProgress(storageKey, {
+      currentStep,
+      formData,
+      planPayload,
+      rawPlanText,
+      planStatus,
+      planError,
+      preferenceId,
+    });
+  }, [
+    storageKey,
+    currentStep,
+    formData,
+    planPayload,
+    rawPlanText,
+    planStatus,
+    planError,
+    preferenceId,
+  ]);
+
+  useEffect(() => {
+    if (!preferenceId) return;
+    if (planStatus !== 'loading' && planStatus !== 'pending') return;
+    pollForPlan(preferenceId);
+  }, [planStatus, pollForPlan, preferenceId]);
 
   const handleFinish = async () => {
-    const userId = user?.id ?? user?.user_id ?? user?.userId;
     if (!userId) {
       console.error('Cannot submit preferences without user context.')
       return
@@ -126,14 +202,20 @@ export default function MealPlanner({ onLogout, user }) {
     setPlanPayload(null);
     setRawPlanText('');
     setPlanStatus('loading');
+    setPreferenceId(null);
     setIsSubmitting(true);
-    setCurrentStep(7);
+    setCurrentStep(TOTAL_STEPS);
 
     try {
       const response = await UserPreferences.create({ ...formData, user_id: userId });
       const serverPlan = response?.plan ?? null;
       const rawText = response?.raw_plan ?? '';
       const serverError = response?.error ?? '';
+      const returnedId = response?.id ?? null;
+
+      if (returnedId) {
+        setPreferenceId(returnedId);
+      }
 
       if (serverPlan) {
         setPlanPayload(serverPlan);
@@ -144,8 +226,8 @@ export default function MealPlanner({ onLogout, user }) {
         setPlanError(
           serverError || 'The AI response did not include a plan. Please try again.'
         );
-      } else if (response?.id) {
-        await pollForPlan(response.id);
+      } else if (returnedId) {
+        await pollForPlan(returnedId);
       } else {
         setPlanStatus('error');
         setPlanError('Unable to start plan generation. Please try again.');
