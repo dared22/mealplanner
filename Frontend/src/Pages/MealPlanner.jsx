@@ -263,6 +263,8 @@ export default function MealPlanner({ onLogout, user }) {
             rawPlanText={rawPlanText}
             status={planStatus}
             errorMessage={planError}
+            onRegenerate={handleFinish}
+            regenerateDisabled={isSubmitting}
           />
         );
       default:

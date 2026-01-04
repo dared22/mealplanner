@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion as Motion } from 'framer-motion';
 import { CheckCircle, Sparkles, Calendar, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 const WEEK_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const MEAL_TYPES = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
@@ -503,7 +504,15 @@ function DayCarousel({ days, targetCalories, selectedIndex, onSelect }) {
   );
 }
 
-export default function ResultsStep({ data, plan, rawPlanText, status = 'idle', errorMessage }) {
+export default function ResultsStep({
+  data,
+  plan,
+  rawPlanText,
+  status = 'idle',
+  errorMessage,
+  onRegenerate,
+  regenerateDisabled = false
+}) {
   const activePlan = useMemo(() => normalizeServerPlan(plan), [plan]);
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
   const [planOverrides, setPlanOverrides] = useState({});
@@ -554,6 +563,7 @@ export default function ResultsStep({ data, plan, rawPlanText, status = 'idle', 
   }, [activePlan]);
 
   const isLoadingPlan = status === 'loading';
+  const isRegenerating = isLoadingPlan || regenerateDisabled;
   const isReady = status === 'success' && hasPlan;
   const showError = status === 'error' || (status === 'success' && !hasPlan);
   const preparedErrorMessage =
@@ -680,6 +690,23 @@ export default function ResultsStep({ data, plan, rawPlanText, status = 'idle', 
             <span className="rounded-full bg-white/70 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-[#1B5E20] dark:bg-emerald-500/20 dark:text-emerald-200">
               AI-assisted plan
             </span>
+          </Motion.div>
+        )}
+        {onRegenerate && (
+          <Motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.55 }}
+            className="mt-4 flex justify-center"
+          >
+            <Button
+              variant="outline"
+              onClick={onRegenerate}
+              disabled={isRegenerating}
+              className="rounded-full border-emerald-200 text-[#1B5E20] hover:bg-emerald-50 dark:border-emerald-500/40 dark:text-emerald-200 dark:hover:bg-emerald-500/10"
+            >
+              {isRegenerating ? 'Generating...' : 'Regenerate plan'}
+            </Button>
           </Motion.div>
         )}
       </div>
