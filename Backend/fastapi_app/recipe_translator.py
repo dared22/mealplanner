@@ -1,3 +1,4 @@
+import copy
 import json
 import logging
 import os
@@ -197,7 +198,16 @@ class PlanTranslator:
 
         parsed = self._extract_json(raw)
         if parsed is None:
-            return TranslationResult(plan, "Failed to parse translation JSON.")
+            repaired = self._repair_json(raw)
+            parsed = self._extract_json(repaired) if repaired else None
+
+        if parsed is None:
+            fallback = self._translate_plan_by_meal(plan)
+            return TranslationResult(
+                fallback,
+                "Failed to parse translation JSON; fell back to per-meal translation.",
+            )
+
         return TranslationResult(parsed, None)
 
     def _system_prompt(self) -> str:
@@ -225,6 +235,23 @@ class PlanTranslator:
 
         content = response.choices[0].message.content if response.choices else ""
         return content.strip() if content else ""
+
+    def _repair_json(self, raw_text: str) -> Optional[str]:
+        if not raw_text or self.client is None:
+            return None
+        prompt = (
+            "Fix invalid JSON and return ONLY valid JSON with the exact same structure and keys. "
+            "Do not add commentary."
+        )
+        messages = [
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": raw_text},
+        ]
+        try:
+            return self._request(messages)
+        except Exception:
+            logger.exception("Plan translation JSON repair failed")
+            return None
 
     def _extract_json(self, raw_text: str) -> Optional[Dict[str, Any]]:
         if not raw_text:
@@ -254,3 +281,26 @@ class PlanTranslator:
             if isinstance(payload, dict):
                 return payload
         return None
+
+    def _translate_plan_by_meal(self, plan: Dict[str, Any]) -> Dict[str, Any]:
+        translator = RecipeTranslator(target_language=self.target_language)
+        if translator.client is None:
+            return plan
+
+        translated_plan = copy.deepcopy(plan)
+        days = translated_plan.get("days", [])
+        if not isinstance(days, list):
+            return translated_plan
+
+        for day in days:
+            meals = day.get("meals") if isinstance(day, dict) else None
+            if not isinstance(meals, dict):
+                continue
+            for key, meal in meals.items():
+                if not isinstance(meal, dict):
+                    continue
+                result = translator.translate_recipe(meal)
+                if result.error is None:
+                    meals[key] = result.data
+
+        return translated_plan

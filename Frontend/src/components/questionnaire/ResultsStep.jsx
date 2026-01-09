@@ -255,17 +255,21 @@ function MealCard({
       </div>
 
       {tags.length > 0 && (
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(110px,max-content))] gap-2">
+        <div className="flex flex-wrap gap-2">
           {tags.map(tag => (
             <span
               key={tag}
               className="rounded-2xl bg-[#A5D6A7]/25 px-3 py-1 text-[11px] font-semibold text-[#1B5E20] shadow-sm dark:bg-emerald-500/10 dark:text-emerald-200"
               style={{
-                display: '-webkit-box',
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: 'vertical',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                maxWidth: '200px',
+                whiteSpace: 'normal',
+                wordBreak: 'break-word',
                 overflow: 'hidden',
                 lineHeight: '1.2',
+                maxHeight: '2.4em',
                 textAlign: 'center',
               }}
             >
@@ -424,17 +428,21 @@ function SelectedDayPlan({ day, targetCalories, macroTargets, onSwapMeal, swapAv
         </div>
         {highlightTags.length > 0 && (
           <div className="text-xs text-gray-500 dark:text-gray-400">
-            <div className="grid grid-cols-[repeat(auto-fit,minmax(110px,max-content))] gap-2">
+            <div className="flex flex-wrap gap-2">
               {highlightTags.map(tag => (
                 <span
                   key={tag}
                   className="rounded-2xl bg-[#A5D6A7]/25 px-3 py-1 text-[11px] font-semibold text-[#1B5E20] shadow-sm dark:bg-emerald-500/10 dark:text-emerald-200"
                   style={{
-                    display: '-webkit-box',
-                    WebkitLineClamp: 2,
-                    WebkitBoxOrient: 'vertical',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    maxWidth: '200px',
+                    whiteSpace: 'normal',
+                    wordBreak: 'break-word',
                     overflow: 'hidden',
                     lineHeight: '1.2',
+                    maxHeight: '2.4em',
                     textAlign: 'center',
                   }}
                 >

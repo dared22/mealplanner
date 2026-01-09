@@ -283,7 +283,13 @@ Guidelines:
             if parse_error:
                 logger.warning("%s", parse_error)
 
-    return {"plan": plan_payload, "raw_text": raw_text, "error": parse_error}
+    plan_language = _normalize_language(pref.language) or "en"
+    return {
+        "plan": plan_payload,
+        "raw_text": raw_text,
+        "error": parse_error,
+        "language": plan_language,
+    }
 
 
 def generate_meal_plan_for_preference(db: Session, pref_id: int) -> Dict[str, Any]:

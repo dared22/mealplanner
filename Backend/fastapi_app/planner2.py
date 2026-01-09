@@ -760,10 +760,16 @@ def generate_daily_plan(pref: Any, translate: bool = False) -> Dict[str, Any]:
         days.append(day_plan)
 
     plan_payload = _build_weekly_plan(macro_goal, days)
+    plan_language = "en" if translate and _is_english(dto.language) else "no"
     if translate and _is_english(dto.language):
         translation = translate_plan(plan_payload, dto.language)
-        return {"plan": translation["plan"], "raw_text": None, "error": translation["error"]}
-    return {"plan": plan_payload, "raw_text": None, "error": None}
+        return {
+            "plan": translation["plan"],
+            "raw_text": None,
+            "error": translation["error"],
+            "language": "en",
+        }
+    return {"plan": plan_payload, "raw_text": None, "error": None, "language": plan_language}
 
 
 def generate_daily_plan_for_preference(db: Session, pref_id: int) -> Dict[str, Any]:

@@ -175,6 +175,8 @@ export const translations = {
       'Vi kunne ikke ferdigstille planen din. Pr\u00f8v igjen.',
     'We were unable to generate your plan. Please try again.':
       'Vi klarte ikke \u00e5 generere planen din. Pr\u00f8v igjen.',
+    'The plan could not be translated. Please try again.':
+      'Planen kunne ikke oversettes. Pr\u00f8v igjen.',
     'This usually takes under a minute. We\'ll surface your plan the moment it\'s ready.':
       'Dette tar vanligvis under ett minutt. Vi viser planen s\u00e5 snart den er klar.',
     'Please adjust your answers or try generating your plan again.':

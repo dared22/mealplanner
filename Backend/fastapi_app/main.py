@@ -12,7 +12,7 @@ from itsdangerous import BadSignature, BadTimeSignature, URLSafeTimedSerializer
 
 from database import Base, SessionLocal, engine, get_session
 from models import Preference, User
-from planner import generate_meal_plan_for_preference
+from planner2 import generate_daily_plan_for_preference
 from recipe_translator import PlanTranslator
 
 ENSURE_SCHEMA_ON_STARTUP = os.getenv("ENSURE_SCHEMA_ON_STARTUP", "").lower() in {"1", "true", "yes"}
@@ -383,10 +383,15 @@ def get_preferences(
     translation_error = None
     normalized_lang = _normalize_language(lang)
     if plan_payload and normalized_lang:
-        pref_lang = _normalize_language(
+        generated_plan_language = None
+        if isinstance(generated_plan, dict):
+            generated_plan_language = _normalize_language(generated_plan.get("language"))
+        base_lang = generated_plan_language or _normalize_language(
             raw_data.get("language") or raw_data.get("lang")
         )
-        if pref_lang and pref_lang == normalized_lang:
+        if base_lang and base_lang == normalized_lang:
+            translation_status = "success"
+        elif base_lang is None and normalized_lang == "no":
             translation_status = "success"
         else:
             translations = raw_data.get("generated_plan_translations")

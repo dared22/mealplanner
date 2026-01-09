@@ -220,6 +220,21 @@ export default function MealPlanner({ onLogout, user }) {
       try {
         const response = await UserPreferences.fetch(preferenceId, lang);
         if (!isActive) return;
+        const translationStatus = response?.translation_status;
+        const translationError = response?.translation_error;
+        if (translationStatus === 'pending') {
+          setPlanStatus('loading');
+          setPlanError(null);
+          await pollForPlan(preferenceId, lang);
+          return;
+        }
+        if (translationStatus === 'error') {
+          setPlanStatus('error');
+          setPlanError(
+            translationError || t('The plan could not be translated. Please try again.')
+          );
+          return;
+        }
         setPlanPayload(response?.plan ?? null);
         setRawPlanText(response?.raw_plan ?? '');
       } catch (error) {
@@ -230,7 +245,7 @@ export default function MealPlanner({ onLogout, user }) {
     return () => {
       isActive = false;
     };
-  }, [lang, preferenceId, planStatus]);
+  }, [lang, preferenceId, planStatus, pollForPlan, t]);
 
   const handleFinish = async () => {
     if (!userId) {
