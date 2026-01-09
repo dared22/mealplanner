@@ -67,7 +67,35 @@ class PreferenceDTO:
     meals_per_day: int
     budget_range: str
     cooking_time_preference: str
-    dietary_restrictions: list[str]; preferred_cuisines: list[str]
+    dietary_restrictions: list[str]
+    preferred_cuisines: list[str]
+    language: Optional[str]
+
+
+LANGUAGE_LABELS = {
+    "en": "English",
+    "no": "Norwegian",
+    "nb": "Norwegian",
+    "nn": "Norwegian",
+}
+
+
+def _normalize_language(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    normalized = str(value).strip().lower()
+    if normalized.startswith("en"):
+        return "en"
+    if normalized.startswith(("no", "nb", "nn")):
+        return "no"
+    return normalized
+
+
+def _language_label(value: Optional[str]) -> str:
+    normalized = _normalize_language(value)
+    if not normalized:
+        return "English"
+    return LANGUAGE_LABELS.get(normalized, normalized)
 
 
 def _request_with_chat(messages: list[dict[str, str]], temperature: float = 0.2) -> str:
@@ -183,14 +211,16 @@ Create a personalized meal plan for this profile:
 - Cooking time preference: {pref.cooking_time_preference.replace('_', ' ')}
 - Dietary restrictions: {', '.join(pref.dietary_restrictions) if pref.dietary_restrictions else 'none'}
 - Preferred cuisines: {', '.join(pref.preferred_cuisines) if pref.preferred_cuisines else 'no specific preference'}
+- Language: {_language_label(pref.language)}
 
 Guidelines:
 1. Produce exactly {PLAN_DAYS} days named Monday through Sunday.
 2. Provide {pref.meals_per_day} meals per day, covering Breakfast, Lunch, Dinner, and Snacks where applicable.
 3. Each meal needs calories plus protein/carbs/fat estimates, cook time, up to 2 short tags, and concise ingredients/instructions (8-15 words). Keep ingredient lists under 6 items.
-4. Daily calories must align with the user's goal and activity level, staying within ±7%.
-5. Keep ingredients accessible in Norway and respect dietary restrictions/cuisines.
-6. Return ONLY compact JSON matching the schema from the system prompt—no markdown or commentary.
+4. Use the requested language for meal names, tags, ingredients, and instructions.
+5. Daily calories must align with the user's goal and activity level, staying within ±7%.
+6. Keep ingredients accessible in Norway and respect dietary restrictions/cuisines.
+7. Return ONLY compact JSON matching the schema from the system prompt—no markdown or commentary.
 """
     start_time = time.perf_counter()
     try:
@@ -261,6 +291,8 @@ def generate_meal_plan_for_preference(db: Session, pref_id: int) -> Dict[str, An
     if pref is None:
         raise ValueError(f"Preference {pref_id} not found")
 
+    raw_data = pref.raw_data if isinstance(pref.raw_data, dict) else {}
+    language = raw_data.get("language") or raw_data.get("lang")
     dto = PreferenceDTO(
         age=pref.age,
         gender=pref.gender,
@@ -273,5 +305,6 @@ def generate_meal_plan_for_preference(db: Session, pref_id: int) -> Dict[str, An
         cooking_time_preference=pref.cooking_time_preference,
         dietary_restrictions=pref.dietary_restrictions or [],
         preferred_cuisines=pref.preferred_cuisines or [],
+        language=language,
     )
     return generate_meal_plan(dto)

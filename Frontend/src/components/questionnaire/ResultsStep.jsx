@@ -246,7 +246,15 @@ function MealCard({
           {tags.map(tag => (
             <span
               key={tag}
-              className="rounded-full bg-[#A5D6A7]/25 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-[#1B5E20] dark:bg-emerald-500/10 dark:text-emerald-200"
+              className="rounded-2xl bg-[#A5D6A7]/25 px-3 py-1 text-[11px] font-semibold text-[#1B5E20] shadow-sm dark:bg-emerald-500/10 dark:text-emerald-200"
+              style={{
+                display: '-webkit-box',
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical',
+                overflow: 'hidden',
+                lineHeight: '1.2',
+                textAlign: 'center',
+              }}
             >
               {formatTagLabel(tag)}
             </span>
@@ -339,8 +347,8 @@ function DayCard({ day, targetCalories, isActive, onSelect, className = '' }) {
         </span>
       </div>
       <div className="mt-auto flex items-center justify-between rounded-2xl bg-[#F1F6F2] px-4 py-3 text-[11px] font-medium text-[#2E3A59] transition group-hover:bg-[#E5F1E6] dark:bg-slate-800/80 dark:text-emerald-100">
-        <span>{isActive ? 'Viewing full plan' : 'Preview this day'}</span>
-        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[#1B5E20] dark:text-emerald-300">
+        <span className="text-[11px]">{isActive ? 'Viewing full plan' : 'Preview this day'}</span>
+        <span className="text-[10px] font-semibold text-[#1B5E20] dark:text-emerald-300">
           {isActive ? 'Active' : 'Preview'}
         </span>
       </div>
@@ -393,7 +401,15 @@ function SelectedDayPlan({ day, targetCalories, macroTargets, onSwapMeal, swapAv
               {highlightTags.map(tag => (
                 <span
                   key={tag}
-                  className="rounded-full bg-[#A5D6A7]/25 px-3 py-1 font-semibold text-[#1B5E20] dark:bg-emerald-500/10 dark:text-emerald-200"
+                  className="rounded-2xl bg-[#A5D6A7]/25 px-3 py-1 text-[11px] font-semibold text-[#1B5E20] shadow-sm dark:bg-emerald-500/10 dark:text-emerald-200"
+                  style={{
+                    display: '-webkit-box',
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical',
+                    overflow: 'hidden',
+                    lineHeight: '1.2',
+                    textAlign: 'center',
+                  }}
                 >
                   {formatTagLabel(tag)}
                 </span>

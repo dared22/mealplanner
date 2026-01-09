@@ -82,16 +82,35 @@ export default function MealPlanner({ onLogout, user }) {
     }
   };
 
-  const pollForPlan = async (preferenceId) => {
-    const maxAttempts = 30;
+  const pollForPlan = async (preferenceId, language) => {
+    const maxAttempts = 60;
     const delayMs = 2000;
 
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-      const response = await UserPreferences.fetch(preferenceId);
+      const response = await UserPreferences.fetch(preferenceId, language);
       const status = response?.plan_status;
       const serverPlan = response?.plan ?? null;
       const rawText = response?.raw_plan ?? '';
       const serverError = response?.error ?? '';
+      const translationStatus = response?.translation_status;
+      const translationError = response?.translation_error;
+
+      if (translationStatus === 'pending') {
+        setPlanPayload(null);
+        setRawPlanText('');
+        setPlanStatus('loading');
+        setPlanError(null);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+        continue;
+      }
+
+      if (translationStatus === 'error') {
+        setPlanStatus('error');
+        setPlanError(
+          translationError || 'The plan could not be translated. Please try again.'
+        );
+        return;
+      }
 
       if (status === 'success' || serverPlan) {
         setPlanPayload(serverPlan);
@@ -121,6 +140,7 @@ export default function MealPlanner({ onLogout, user }) {
       console.error('Cannot submit preferences without user context.')
       return
     }
+    const language = formData.language || formData.lang;
 
     setPlanError(null);
     setPlanPayload(null);
@@ -145,7 +165,7 @@ export default function MealPlanner({ onLogout, user }) {
           serverError || 'The AI response did not include a plan. Please try again.'
         );
       } else if (response?.id) {
-        await pollForPlan(response.id);
+        await pollForPlan(response.id, language);
       } else {
         setPlanStatus('error');
         setPlanError('Unable to start plan generation. Please try again.');
