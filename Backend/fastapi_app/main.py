@@ -167,6 +167,7 @@ def _persist_plan_result(db: Session, preference: Preference, plan_result: Dict[
     existing_raw = preference.raw_data if isinstance(preference.raw_data, dict) else {}
     updated_raw = dict(existing_raw)
     updated_raw["generated_plan"] = _json_safe(plan_result)
+    updated_raw["generated_plan"] = _json_safe(plan_result)
     preference.raw_data = updated_raw
     db.add(preference)
     db.commit()
@@ -231,7 +232,7 @@ def _generate_plan_in_background(pref_id: int) -> None:
     db = SessionLocal()
     try:
         try:
-            plan_result = generate_meal_plan_for_preference(db, pref_id)
+            plan_result = generate_daily_plan_for_preference(db, pref_id)
         except ValueError:
             logger.exception("Preference %s disappeared before plan generation", pref_id)
             return
@@ -364,6 +365,8 @@ def get_preferences(
     if entry is None:
         raise HTTPException(status_code=404, detail="Preferences not found")
 
+    raw_data = entry.raw_data if isinstance(entry.raw_data, dict) else {}
+    generated_plan = raw_data.get("generated_plan") if isinstance(raw_data, dict) else None
     raw_data = entry.raw_data if isinstance(entry.raw_data, dict) else {}
     generated_plan = raw_data.get("generated_plan") if isinstance(raw_data, dict) else None
     plan_payload = generated_plan.get("plan") if isinstance(generated_plan, dict) else None

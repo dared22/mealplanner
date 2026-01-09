@@ -1,17 +1,19 @@
 import React from 'react';
 import { motion as Motion } from 'framer-motion';
 import { Leaf } from 'lucide-react';
+import { useLanguage } from '@/i18n/LanguageContext';
 
 export default function DietaryStep({ data, onChange }) {
+  const { t } = useLanguage();
   const dietaryOptions = [
-    { value: 'none', title: 'No specific needs', badge: 'None' },
-    { value: 'vegetarian', title: 'Vegetarian', badge: 'Veg' },
-    { value: 'vegan', title: 'Vegan', badge: 'VGN' },
-    { value: 'gluten_free', title: 'Gluten-free', badge: 'GF' },
-    { value: 'dairy_free', title: 'Dairy-free', badge: 'DF' },
-    { value: 'nut_free', title: 'Nut-free', badge: 'NF' },
-    { value: 'keto', title: 'Keto', badge: 'Keto' },
-    { value: 'paleo', title: 'Paleo', badge: 'Paleo' }
+    { value: 'none', title: t('No specific needs'), badge: t('None') },
+    { value: 'vegetarian', title: t('Vegetarian'), badge: 'Veg' },
+    { value: 'vegan', title: t('Vegan'), badge: 'VGN' },
+    { value: 'gluten_free', title: t('Gluten-free'), badge: 'GF' },
+    { value: 'dairy_free', title: t('Dairy-free'), badge: 'DF' },
+    { value: 'nut_free', title: t('Nut-free'), badge: 'NF' },
+    { value: 'keto', title: t('Keto'), badge: 'Keto' },
+    { value: 'paleo', title: t('Paleo'), badge: 'Paleo' }
   ];
 
   const currentRestrictions = data.dietary_restrictions || [];
@@ -53,10 +55,10 @@ export default function DietaryStep({ data, onChange }) {
           <Leaf className="w-8 h-8" />
         </Motion.div>
         <h2 className="text-2xl font-semibold mb-2 text-slate-900 dark:text-slate-100">
-          Any dietary needs?
+          {t('Any dietary needs?')}
         </h2>
         <p className="text-gray-600 dark:text-gray-300">
-          Select all that apply.
+          {t('Select all that apply.')}
         </p>
       </div>
 

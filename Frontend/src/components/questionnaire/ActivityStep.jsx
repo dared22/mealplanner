@@ -1,37 +1,39 @@
 import React from 'react';
 import { motion as Motion } from 'framer-motion';
 import { Activity } from 'lucide-react';
+import { useLanguage } from '@/i18n/LanguageContext';
 
 export default function ActivityStep({ data, onChange }) {
+  const { t } = useLanguage();
   const activityLevels = [
     {
       value: 'sedentary',
-      title: 'Sedentary',
-      description: 'Minimal movement, desk-based work',
+      title: t('Sedentary'),
+      description: t('Minimal movement, desk-based work'),
       icon: 'S'
     },
     {
       value: 'lightly_active',
-      title: 'Lightly Active',
-      description: 'Light exercise 1–3 days per week',
+      title: t('Lightly Active'),
+      description: t('Light exercise 1–3 days per week'),
       icon: 'L'
     },
     {
       value: 'moderately_active',
-      title: 'Moderately Active',
-      description: 'Moderate exercise 3–5 days per week',
+      title: t('Moderately Active'),
+      description: t('Moderate exercise 3–5 days per week'),
       icon: 'M'
     },
     {
       value: 'very_active',
-      title: 'Very Active',
-      description: 'Intense exercise 6–7 days per week',
+      title: t('Very Active'),
+      description: t('Intense exercise 6–7 days per week'),
       icon: 'V'
     },
     {
       value: 'extremely_active',
-      title: 'Extremely Active',
-      description: 'Heavy training or physically demanding work',
+      title: t('Extremely Active'),
+      description: t('Heavy training or physically demanding work'),
       icon: 'E'
     }
   ];
@@ -54,10 +56,10 @@ export default function ActivityStep({ data, onChange }) {
           <Activity className="w-8 h-8" />
         </Motion.div>
         <h2 className="text-2xl font-semibold mb-2 text-slate-900 dark:text-slate-100">
-          What's your activity level?
+          {t("What's your activity level?")}
         </h2>
         <p className="text-gray-600 dark:text-gray-300">
-          Helps us set your daily energy needs.
+          {t('Helps us set your daily energy needs.')}
         </p>
       </div>
 

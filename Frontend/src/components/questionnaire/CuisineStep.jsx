@@ -1,19 +1,21 @@
 import React from 'react';
 import { motion as Motion } from 'framer-motion';
 import { Globe } from 'lucide-react';
+import { useLanguage } from '@/i18n/LanguageContext';
 
 export default function CuisineStep({ data, onChange }) {
+  const { t } = useLanguage();
   const cuisines = [
-    { value: 'mediterranean', title: 'Mediterranean', badge: 'MED' },
-    { value: 'asian', title: 'Asian', badge: 'ASIA' },
-    { value: 'mexican', title: 'Mexican', badge: 'MEX' },
-    { value: 'italian', title: 'Italian', badge: 'ITA' },
-    { value: 'indian', title: 'Indian', badge: 'IND' },
-    { value: 'american', title: 'American', badge: 'USA' },
-    { value: 'french', title: 'French', badge: 'FRA' },
-    { value: 'thai', title: 'Thai', badge: 'THA' },
-    { value: 'japanese', title: 'Japanese', badge: 'JPN' },
-    { value: 'middle_eastern', title: 'Middle Eastern', badge: 'ME' }
+    { value: 'mediterranean', title: t('Mediterranean'), badge: 'MED' },
+    { value: 'asian', title: t('Asian'), badge: 'ASIA' },
+    { value: 'mexican', title: t('Mexican'), badge: 'MEX' },
+    { value: 'italian', title: t('Italian'), badge: 'ITA' },
+    { value: 'indian', title: t('Indian'), badge: 'IND' },
+    { value: 'american', title: t('American'), badge: 'USA' },
+    { value: 'french', title: t('French'), badge: 'FRA' },
+    { value: 'thai', title: t('Thai'), badge: 'THA' },
+    { value: 'japanese', title: t('Japanese'), badge: 'JPN' },
+    { value: 'middle_eastern', title: t('Middle Eastern'), badge: 'ME' }
   ];
 
   const currentCuisines = data.preferred_cuisines || [];
@@ -43,10 +45,10 @@ export default function CuisineStep({ data, onChange }) {
           <Globe className="w-8 h-8" />
         </Motion.div>
         <h2 className="text-2xl font-semibold mb-2 text-slate-900 dark:text-slate-100">
-          Which cuisines do you prefer?
+          {t('Which cuisines do you prefer?')}
         </h2>
         <p className="text-gray-600 dark:text-gray-300">
-          Choose your go-to flavors. Select multiple.
+          {t('Choose your go-to flavors. Select multiple.')}
         </p>
       </div>
 
