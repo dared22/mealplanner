@@ -365,9 +365,11 @@ function DayCard({ day, targetCalories, isActive, onSelect, className = '', t })
         </span>
       </div>
       <div className="mt-auto flex items-center justify-between rounded-2xl bg-[#F1F6F2] px-4 py-3 text-[11px] font-medium text-[#2E3A59] transition group-hover:bg-[#E5F1E6] dark:bg-slate-800/80 dark:text-emerald-100">
-        <span className="text-[11px]">{isActive ? 'Viewing full plan' : 'Preview this day'}</span>
+        <span className="text-[11px]">
+          {isActive ? translate('Viewing full plan') : translate('Preview this day')}
+        </span>
         <span className="text-[10px] font-semibold text-[#1B5E20] dark:text-emerald-300">
-          {isActive ? 'Active' : 'Preview'}
+          {isActive ? translate('Active') : translate('Preview')}
         </span>
       </div>
     </Motion.button>

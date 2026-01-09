@@ -207,10 +207,10 @@ export const translations = {
     'Add to list': 'Legg til liste',
     'Day {number}': 'Dag {number}',
     '{calories} / {target} kcal planned': '{calories} / {target} kcal planlagt',
-    'Viewing full plan': 'Viser full plan',
-    'Preview this day': 'Forh\u00e5ndsvis denne dagen',
+    'Viewing full plan': 'Viser hele planen',
+    'Preview this day': 'Sniktitt i dag',
     Active: 'Aktiv',
-    Preview: 'Forh\u00e5ndsvisning',
+    Preview: 'Sniktitt',
     'Daily summary': 'Daglig oppsummering',
     '{calories} of {target} kcal planned • P {protein}g • C {carbs}g • F {fat}g':
       '{calories} av {target} kcal planlagt \u2022 P {protein}g \u2022 C {carbs}g \u2022 F {fat}g',

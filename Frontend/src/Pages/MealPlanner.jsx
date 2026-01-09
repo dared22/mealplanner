@@ -132,12 +132,11 @@ export default function MealPlanner({ onLogout, user }) {
     }
   };
 
-  const pollForPlan = async (preferenceId, language) => {
+  const pollForPlan = useCallback(async (preferenceId, language) => {
     const maxAttempts = 60;
     const delayMs = 2000;
 
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-      const response = await UserPreferences.fetch(preferenceId, language);
       const response = await UserPreferences.fetch(preferenceId, language);
       const status = response?.plan_status;
       const serverPlan = response?.plan ?? null;
@@ -179,7 +178,7 @@ export default function MealPlanner({ onLogout, user }) {
         return;
       }
 
-        await new Promise(resolve => setTimeout(resolve, delayMs));
+      await new Promise(resolve => setTimeout(resolve, delayMs));
     }
 
     setPlanStatus('error');
@@ -238,7 +237,7 @@ export default function MealPlanner({ onLogout, user }) {
       console.error(t('Cannot submit preferences without user context.'))
       return
     }
-    const language = formData.language || formData.lang;
+    const language = lang;
 
     setPlanError(null);
     setPlanPayload(null);

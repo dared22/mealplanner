@@ -367,8 +367,6 @@ def get_preferences(
 
     raw_data = entry.raw_data if isinstance(entry.raw_data, dict) else {}
     generated_plan = raw_data.get("generated_plan") if isinstance(raw_data, dict) else None
-    raw_data = entry.raw_data if isinstance(entry.raw_data, dict) else {}
-    generated_plan = raw_data.get("generated_plan") if isinstance(raw_data, dict) else None
     plan_payload = generated_plan.get("plan") if isinstance(generated_plan, dict) else None
     raw_plan_text = generated_plan.get("raw_text") if isinstance(generated_plan, dict) else None
     plan_error = generated_plan.get("error") if isinstance(generated_plan, dict) else None
@@ -385,40 +383,46 @@ def get_preferences(
     translation_error = None
     normalized_lang = _normalize_language(lang)
     if plan_payload and normalized_lang:
-        translations = raw_data.get("generated_plan_translations")
-        if not isinstance(translations, dict):
-            translations = {}
-        status_map = raw_data.get("generated_plan_translations_status")
-        if not isinstance(status_map, dict):
-            status_map = {}
-        error_map = raw_data.get("generated_plan_translations_error")
-        if not isinstance(error_map, dict):
-            error_map = {}
-
-        if normalized_lang in translations:
-            plan_payload = translations.get(normalized_lang)
+        pref_lang = _normalize_language(
+            raw_data.get("language") or raw_data.get("lang")
+        )
+        if pref_lang and pref_lang == normalized_lang:
             translation_status = "success"
         else:
-            existing_status = status_map.get(normalized_lang)
-            if existing_status == "error":
-                translation_status = "error"
-                translation_error = error_map.get(normalized_lang)
+            translations = raw_data.get("generated_plan_translations")
+            if not isinstance(translations, dict):
+                translations = {}
+            status_map = raw_data.get("generated_plan_translations_status")
+            if not isinstance(status_map, dict):
+                status_map = {}
+            error_map = raw_data.get("generated_plan_translations_error")
+            if not isinstance(error_map, dict):
+                error_map = {}
+
+            if normalized_lang in translations:
+                plan_payload = translations.get(normalized_lang)
+                translation_status = "success"
             else:
-                translation_status = "pending"
-                if existing_status != "pending":
-                    status_map[normalized_lang] = "pending"
-                    updated_raw = dict(raw_data)
-                    updated_raw["generated_plan_translations_status"] = _json_safe(status_map)
-                    entry.raw_data = updated_raw
-                    db.add(entry)
-                    db.commit()
-                    db.refresh(entry)
-                    if background_tasks is not None:
-                        background_tasks.add_task(
-                            _translate_plan_in_background,
-                            entry.id,
-                            normalized_lang,
-                        )
+                existing_status = status_map.get(normalized_lang)
+                if existing_status == "error":
+                    translation_status = "error"
+                    translation_error = error_map.get(normalized_lang)
+                else:
+                    translation_status = "pending"
+                    if existing_status != "pending":
+                        status_map[normalized_lang] = "pending"
+                        updated_raw = dict(raw_data)
+                        updated_raw["generated_plan_translations_status"] = _json_safe(status_map)
+                        entry.raw_data = updated_raw
+                        db.add(entry)
+                        db.commit()
+                        db.refresh(entry)
+                        if background_tasks is not None:
+                            background_tasks.add_task(
+                                _translate_plan_in_background,
+                                entry.id,
+                                normalized_lang,
+                            )
 
     return {
         "id": entry.id,
