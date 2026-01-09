@@ -1,7 +1,9 @@
 import ast
+import copy
 import json
 import logging
 import os
+import re
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -12,6 +14,7 @@ from openai import OpenAI, OpenAIError
 from sqlalchemy.orm import Session
 
 from models import Preference
+from recipe_translator import RecipeTranslator
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +68,7 @@ class PreferenceDTO:
     cooking_time_preference: Optional[str]
     dietary_restrictions: List[str]
     preferred_cuisines: List[str]
+    language: Optional[str]
 
 
 def _to_int(value: Any) -> Optional[int]:
@@ -78,7 +82,14 @@ def _to_int(value: Any) -> Optional[int]:
 def _get_pref_value(pref: Any, key: str) -> Any:
     if isinstance(pref, dict):
         return pref.get(key)
-    return getattr(pref, key, None)
+    value = getattr(pref, key, None)
+    if value is not None:
+        return value
+    raw_data = getattr(pref, "raw_data", None)
+    if isinstance(raw_data, dict):
+        if key in raw_data:
+            return raw_data.get(key)
+    return None
 
 
 def _normalize_preference(pref: Any) -> PreferenceDTO:
@@ -94,6 +105,7 @@ def _normalize_preference(pref: Any) -> PreferenceDTO:
         cooking_time_preference=_get_pref_value(pref, "cooking_time_preference"),
         dietary_restrictions=_get_pref_value(pref, "dietary_restrictions") or [],
         preferred_cuisines=_get_pref_value(pref, "preferred_cuisines") or [],
+        language=_get_pref_value(pref, "language") or _get_pref_value(pref, "lang"),
     )
 
 
@@ -116,6 +128,15 @@ def _request_with_chat(messages: list[dict[str, str]], temperature: float = 0.2)
         response = client.chat.completions.create(**request_kwargs)
     content = response.choices[0].message.content if response.choices else ""
     return content.strip() if content else ""
+
+
+def _is_english(value: Optional[str]) -> bool:
+    if not value:
+        return False
+    normalized = str(value).strip().lower()
+    if normalized in {"en", "eng", "english"}:
+        return True
+    return normalized.startswith("en-") or normalized.startswith("en_")
 
 
 def _extract_json(raw_text: str) -> Optional[Dict[str, Any]]:
@@ -269,7 +290,10 @@ def _prepare_recipes(df):
     name_col = _find_column(df.columns, ["name", "title", "recipe", "recipe_name"])
     tags_col = _find_column(df.columns, ["tags", "categories", "labels"])
     instructions_col = _find_column(df.columns, ["instructions", "instruction", "steps", "directions"])
+    ingredients_col = _find_column(df.columns, ["ingredients", "ingredient_list"])
     meal_col = _find_column(df.columns, ["meal_type", "meal", "course", "category", "dish_type"])
+    breakfast_col = _find_column(df.columns, ["is_breakfast", "breakfast"])
+    lunch_col = _find_column(df.columns, ["is_lunch", "lunch"])
     cost_col = _find_column(df.columns, ["price", "cost", "amount", "price_value"])
     tier_col = _find_column(df.columns, ["price_tier", "budget_range", "price_level", "cost_level", "price_category"])
     id_col = _find_column(df.columns, ["id", "recipe_id", "slug"])
@@ -319,13 +343,24 @@ def _prepare_recipes(df):
     df["_tags"] = df[tags_col] if tags_col else None
     df["_meal_type"] = df[meal_col] if meal_col else None
     df["_instructions"] = df[instructions_col] if instructions_col else None
+    df["_ingredients"] = df[ingredients_col] if ingredients_col else None
+    df["_is_breakfast"] = df[breakfast_col] if breakfast_col else None
+    df["_is_lunch"] = df[lunch_col] if lunch_col else None
     df["_id"] = df[id_col] if id_col else df.index
     df["_url"] = df[url_col] if url_col else None
 
     for key in ["_calories", "_protein", "_carbs", "_fat"]:
         df[key] = df[key].fillna(0)
 
-    return df, {"meal": meal_col, "tags": tags_col, "cost": cost_col, "tier": tier_col}
+    return df, {
+        "meal": meal_col,
+        "tags": tags_col,
+        "cost": cost_col,
+        "tier": tier_col,
+        "breakfast": breakfast_col,
+        "lunch": lunch_col,
+        "ingredients": ingredients_col,
+    }
 
 
 def _build_meal_slots(meals_per_day: int) -> List[str]:
@@ -364,6 +399,22 @@ def _jsonify_value(value: Any) -> Any:
 def _format_instructions(value: Any) -> str:
     if value is None:
         return ""
+
+    list_value: Optional[List[Any]] = None
+
+    if isinstance(value, (list, tuple)):
+        list_value = list(value)
+    else:
+        tolist_fn = getattr(value, "tolist", None)
+        if callable(tolist_fn):
+            try:
+                list_value = list(tolist_fn())
+            except Exception:
+                list_value = None
+
+    if list_value is not None:
+        return " ".join(str(item).strip() for item in list_value if str(item).strip())
+
     if isinstance(value, str):
         text = value.strip()
         if text.startswith("[") and text.endswith("]"):
@@ -377,10 +428,56 @@ def _format_instructions(value: Any) -> str:
                     parsed = None
             if isinstance(parsed, (list, tuple)):
                 return " ".join(str(item).strip() for item in parsed if str(item).strip())
+
+            quoted = re.findall(r"'([^']+)'|\"([^\"]+)\"", text)
+            if quoted:
+                segments = [a or b for a, b in quoted if (a or b)]
+                return " ".join(segment.strip() for segment in segments if segment.strip())
+
         return text
-    if isinstance(value, (list, tuple)):
-        return " ".join(str(item).strip() for item in value if str(item).strip())
+
     return str(value)
+
+
+def _format_list_values(value: Any) -> List[str]:
+    if value is None:
+        return []
+
+    list_value: Optional[List[Any]] = None
+    if isinstance(value, (list, tuple)):
+        list_value = list(value)
+    else:
+        tolist_fn = getattr(value, "tolist", None)
+        if callable(tolist_fn):
+            try:
+                list_value = list(tolist_fn())
+            except Exception:
+                list_value = None
+
+    if list_value is not None:
+        return [str(item).strip() for item in list_value if str(item).strip()]
+
+    if isinstance(value, str):
+        text = value.strip()
+        if text.startswith("[") and text.endswith("]"):
+            parsed = None
+            try:
+                parsed = json.loads(text)
+            except json.JSONDecodeError:
+                try:
+                    parsed = ast.literal_eval(text)
+                except (ValueError, SyntaxError):
+                    parsed = None
+            if isinstance(parsed, (list, tuple)):
+                return [str(item).strip() for item in parsed if str(item).strip()]
+
+            quoted = re.findall(r"'([^']+)'|\"([^\"]+)\"", text)
+            if quoted:
+                return [seg.strip() for seg in (a or b for a, b in quoted) if seg.strip()]
+        if text:
+            return [text]
+
+    return [str(value).strip()] if str(value).strip() else []
 
 
 def _tag_matches(meal_type: str, value: Any) -> bool:
@@ -407,6 +504,18 @@ def _pick_recipe(df, meal_type: str, targets: Dict[str, float], used_ids: set) -
     if "_id" in df.columns and used_ids:
         candidates = candidates[~candidates["_id"].isin(used_ids)]
     base_candidates = candidates
+
+    if meal_type == "breakfast" and "_is_breakfast" in candidates.columns:
+        breakfast_mask = candidates["_is_breakfast"].fillna(False).astype(bool)
+        breakfast_filtered = candidates[breakfast_mask]
+        if not breakfast_filtered.empty:
+            candidates = breakfast_filtered
+
+    if meal_type in {"lunch", "snack"} and "_is_lunch" in candidates.columns:
+        lunch_mask = candidates["_is_lunch"].fillna(False).astype(bool)
+        lunch_filtered = candidates[lunch_mask]
+        if not lunch_filtered.empty:
+            candidates = lunch_filtered
 
     if "_tags" in candidates.columns and candidates["_tags"].notna().any():
         tag_filtered = candidates[candidates["_tags"].apply(lambda value: _tag_matches(meal_type, value))]
@@ -439,6 +548,8 @@ def _pick_recipe(df, meal_type: str, targets: Dict[str, float], used_ids: set) -
         "fat": float(best.get("_fat", 0)),
         "url": _jsonify_value(best.get("_url")),
         "instructions": _format_instructions(best.get("_instructions")),
+        "ingredients": _format_list_values(best.get("_ingredients")),
+        "tags": _format_list_values(best.get("_tags")),
     }
 
 
@@ -517,8 +628,8 @@ def _format_meal(recipe: Dict[str, Any], fallback_name: str) -> Dict[str, Any]:
         "carbs": float(recipe.get("carbs", 0)),
         "fat": float(recipe.get("fat", 0)),
         "cookTime": "",
-        "tags": [],
-        "ingredients": [],
+        "tags": recipe.get("tags") or [],
+        "ingredients": recipe.get("ingredients") or [],
         "instructions": instructions,
     }
 
@@ -588,7 +699,38 @@ def _build_weekly_plan(macro_goal: Dict[str, Any], days: List[Dict[str, Any]]) -
     }
 
 
-def generate_daily_plan(pref: Any) -> Dict[str, Any]:
+def translate_plan(plan: Dict[str, Any], language: Optional[str]) -> Dict[str, Any]:
+    if not plan or not _is_english(language):
+        return {"plan": plan, "error": None}
+
+    translator = RecipeTranslator(target_language="English")
+    if translator.client is None:
+        return {"plan": plan, "error": "Translation disabled: OPENAI_API_KEY not configured."}
+
+    translated_plan = copy.deepcopy(plan)
+    failures = 0
+    days = translated_plan.get("days", [])
+    if isinstance(days, list):
+        for day in days:
+            meals = day.get("meals") if isinstance(day, dict) else None
+            if not isinstance(meals, dict):
+                continue
+            for meal_key, meal in meals.items():
+                if not isinstance(meal, dict):
+                    continue
+                result = translator.translate_recipe(meal)
+                if result.error is None:
+                    meals[meal_key] = result.data
+                else:
+                    failures += 1
+
+    error = None
+    if failures:
+        error = f"Failed to translate {failures} meal(s)."
+    return {"plan": translated_plan, "error": error}
+
+
+def generate_daily_plan(pref: Any, translate: bool = False) -> Dict[str, Any]:
     macro_response = generate_daily_macro_goal(pref)
     if macro_response.get("error"):
         return {"plan": None, "raw_text": None, "error": macro_response["error"]}
@@ -612,14 +754,15 @@ def generate_daily_plan(pref: Any) -> Dict[str, Any]:
         )
         if recipe_match.get("error"):
             return {"plan": None, "raw_text": None, "error": recipe_match["error"]}
-        day_plan = _build_day_plan(
-            day,
-            recipe_match.get("meals") or [],
-            recipe_match.get("totals") or {},
-        )
+        meals_for_day = recipe_match.get("meals") or []
+
+        day_plan = _build_day_plan(day, meals_for_day, recipe_match.get("totals") or {})
         days.append(day_plan)
 
     plan_payload = _build_weekly_plan(macro_goal, days)
+    if translate and _is_english(dto.language):
+        translation = translate_plan(plan_payload, dto.language)
+        return {"plan": translation["plan"], "raw_text": None, "error": translation["error"]}
     return {"plan": plan_payload, "raw_text": None, "error": None}
 
 
@@ -627,4 +770,4 @@ def generate_daily_plan_for_preference(db: Session, pref_id: int) -> Dict[str, A
     pref = db.get(Preference, pref_id)
     if pref is None:
         raise ValueError(f"Preference {pref_id} not found")
-    return generate_daily_plan(pref)
+    return generate_daily_plan(pref, translate=False)

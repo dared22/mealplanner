@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight, Moon, Sun } from 'lucide-react'
 import { UserPreferences } from '@/Entities/UserPreferences'
 
 import { Button } from '@/components/ui/button'
+import { useLanguage } from '@/i18n/LanguageContext'
 
 import ProgressBar from '@/components/questionnaire/ProgressBar'
 import PersonalInfoStep, { validatePersonalInfo } from '@/components/questionnaire/PersonalInfoStep'
@@ -52,6 +53,7 @@ const persistProgress = (storageKey, payload) => {
 
 
 export default function MealPlanner({ onLogout, user }) {
+  const { lang, setLang, t } = useLanguage();
   const userId = user?.id ?? user?.user_id ?? user?.userId ?? null;
   const storageKey = userId ? `mealplanner_progress_${userId}` : null;
   const initialProgress = useMemo(
@@ -130,12 +132,12 @@ export default function MealPlanner({ onLogout, user }) {
     }
   };
 
-  const pollForPlan = useCallback(async (preferenceId) => {
-    const maxAttempts = 30;
+  const pollForPlan = useCallback(async (preferenceId, language) => {
+    const maxAttempts = 60;
     const delayMs = 2000;
 
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-      const response = await UserPreferences.fetch(preferenceId);
+      const response = await UserPreferences.fetch(preferenceId, language);
       const status = response?.plan_status;
       const serverPlan = response?.plan ?? null;
       const rawText = response?.raw_plan ?? '';
@@ -152,17 +154,17 @@ export default function MealPlanner({ onLogout, user }) {
       if (status === 'error') {
         setPlanStatus('error');
         setPlanError(
-          serverError || 'The AI response did not include a plan. Please try again.'
+          serverError || t('The AI response did not include a plan. Please try again.')
         );
         return;
       }
 
-      await new Promise(resolve => setTimeout(resolve, delayMs));
+        await new Promise(resolve => setTimeout(resolve, delayMs));
     }
 
     setPlanStatus('error');
-    setPlanError('Plan generation is taking longer than expected. Please try again soon.');
-  }, []);
+    setPlanError(t('Plan generation is taking longer than expected. Please try again soon.'));
+  }, [t]);
 
   useEffect(() => {
     if (!storageKey) return;
@@ -189,12 +191,31 @@ export default function MealPlanner({ onLogout, user }) {
   useEffect(() => {
     if (!preferenceId) return;
     if (planStatus !== 'loading' && planStatus !== 'pending') return;
-    pollForPlan(preferenceId);
-  }, [planStatus, pollForPlan, preferenceId]);
+    pollForPlan(preferenceId, lang);
+  }, [planStatus, pollForPlan, preferenceId, lang]);
+
+  useEffect(() => {
+    if (!preferenceId || planStatus !== 'success') return;
+    let isActive = true;
+    const refreshPlan = async () => {
+      try {
+        const response = await UserPreferences.fetch(preferenceId, lang);
+        if (!isActive) return;
+        setPlanPayload(response?.plan ?? null);
+        setRawPlanText(response?.raw_plan ?? '');
+      } catch (error) {
+        console.warn('Failed to refresh plan for language switch', error);
+      }
+    };
+    refreshPlan();
+    return () => {
+      isActive = false;
+    };
+  }, [lang, preferenceId, planStatus]);
 
   const handleFinish = async () => {
     if (!userId) {
-      console.error('Cannot submit preferences without user context.')
+      console.error(t('Cannot submit preferences without user context.'))
       return
     }
 
@@ -207,7 +228,11 @@ export default function MealPlanner({ onLogout, user }) {
     setCurrentStep(TOTAL_STEPS);
 
     try {
-      const response = await UserPreferences.create({ ...formData, user_id: userId });
+      const response = await UserPreferences.create({
+        ...formData,
+        user_id: userId,
+        language: lang,
+      });
       const serverPlan = response?.plan ?? null;
       const rawText = response?.raw_plan ?? '';
       const serverError = response?.error ?? '';
@@ -224,18 +249,18 @@ export default function MealPlanner({ onLogout, user }) {
       } else if (response?.plan_status === 'error') {
         setPlanStatus('error');
         setPlanError(
-          serverError || 'The AI response did not include a plan. Please try again.'
+          serverError || t('The AI response did not include a plan. Please try again.')
         );
       } else if (returnedId) {
-        await pollForPlan(returnedId);
+        await pollForPlan(returnedId, lang);
       } else {
         setPlanStatus('error');
-        setPlanError('Unable to start plan generation. Please try again.');
+        setPlanError(t('Unable to start plan generation. Please try again.'));
       }
     } catch (error) {
       console.error('Error saving preferences:', error);
       setPlanStatus('error');
-      setPlanError(error.message || 'Something went wrong while creating your plan.');
+      setPlanError(error.message || t('Something went wrong while creating your plan.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -286,9 +311,17 @@ export default function MealPlanner({ onLogout, user }) {
               onClick={handleLogoutClick}
               className="rounded-full bg-white/70 text-gray-600 shadow-sm hover:bg-white dark:bg-slate-800/70 dark:text-gray-200 dark:hover:bg-slate-700"
             >
-              Log out
+              {t('Log out')}
             </Button>
           )}
+          <Button
+            variant="outline"
+            onClick={() => setLang(lang === 'en' ? 'no' : 'en')}
+            className="rounded-full bg-white/70 text-gray-600 shadow-sm hover:bg-white dark:bg-slate-800/70 dark:text-gray-200 dark:hover:bg-slate-700"
+          >
+            {lang === 'en' ? 'NO' : 'EN'}
+            <span className="sr-only">{t('Language')}</span>
+          </Button>
           <Button
             variant="ghost"
             size="icon"
@@ -296,7 +329,7 @@ export default function MealPlanner({ onLogout, user }) {
             className="rounded-full bg-white/70 text-gray-600 shadow-sm hover:bg-white dark:bg-slate-800/70 dark:text-gray-200 dark:hover:bg-slate-700"
           >
             {isDarkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-            <span className="sr-only">Toggle dark mode</span>
+            <span className="sr-only">{t('Toggle dark mode')}</span>
           </Button>
         </div>
         <Motion.div
@@ -305,10 +338,12 @@ export default function MealPlanner({ onLogout, user }) {
           className="text-center mb-8"
         >
           <h1 className="text-3xl md:text-4xl font-semibold mb-3 text-[#0f172a] dark:text-gray-100">
-            Meal Intelligence
+            {t('Meal Intelligence')}
           </h1>
           <p className="text-gray-600 dark:text-gray-300">
-            Answer a few focused questions to tailor your weekly plan. Clear, structured, and ready to use.
+            {t(
+              'Answer a few focused questions to tailor your weekly plan. Clear, structured, and ready to use.'
+            )}
           </p>
         </Motion.div>
 
@@ -340,7 +375,7 @@ export default function MealPlanner({ onLogout, user }) {
                 className="flex items-center gap-2 dark:border-slate-700 dark:text-gray-200"
               >
                 <ArrowLeft className="w-4 h-4" />
-                Back
+                {t('Back')}
               </Button>
 
               {currentStep === 6 ? (
@@ -349,7 +384,7 @@ export default function MealPlanner({ onLogout, user }) {
                   disabled={!isStepValid() || isSubmitting}
                   className="flex items-center gap-2 px-8"
                 >
-                  {isSubmitting ? 'Preparing your plan...' : 'Generate my plan'}
+                  {isSubmitting ? t('Preparing your plan...') : t('Generate my plan')}
                   <ArrowRight className="w-4 h-4" />
                 </Button>
               ) : (
@@ -358,7 +393,7 @@ export default function MealPlanner({ onLogout, user }) {
                   disabled={!isStepValid()}
                   className="flex items-center gap-2"
                 >
-                  Continue
+                  {t('Continue')}
                   <ArrowRight className="w-4 h-4" />
                 </Button>
               )}

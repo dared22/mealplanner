@@ -1,13 +1,10 @@
 import React, { useState } from 'react'
 import { Auth } from '@/Entities/Auth'
 import { Button } from '@/components/ui/button'
-
-const modes = {
-  login: 'Sign in',
-  register: 'Create account',
-}
+import { useLanguage } from '@/i18n/LanguageContext'
 
 export default function Login({ onAuthSuccess }) {
+  const { lang, setLang, t } = useLanguage()
   const [mode, setMode] = useState('login')
   const [formData, setFormData] = useState({ email: '', password: '' })
   const [error, setError] = useState('')
@@ -27,12 +24,12 @@ export default function Login({ onAuthSuccess }) {
 
   const validate = () => {
     if (!formData.email.trim() || !formData.password.trim()) {
-      setError('Email and password are required.')
+      setError(t('Email and password are required.'))
       return false
     }
 
     if (formData.password.trim().length < 8) {
-      setError('Password must be at least 8 characters long.')
+      setError(t('Password must be at least 8 characters long.'))
       return false
     }
 
@@ -75,7 +72,9 @@ export default function Login({ onAuthSuccess }) {
         }
 
         if (!normalizedUser.id || !normalizedUser.email) {
-          throw new Error('Login succeeded but no user profile was returned. Please try again.')
+          throw new Error(
+            t('Login succeeded but no user profile was returned. Please try again.')
+          )
         }
 
         if (typeof window !== 'undefined') {
@@ -85,7 +84,7 @@ export default function Login({ onAuthSuccess }) {
         onAuthSuccess?.(normalizedUser)
       } else {
         const data = await Auth.register(formData)
-        setInfo('Account created successfully. You can log in now.')
+        setInfo(t('Account created successfully. You can log in now.'))
         if (data?.user_id && data?.email && typeof window !== 'undefined') {
           window.localStorage.setItem(
             'auth_user',
@@ -96,21 +95,31 @@ export default function Login({ onAuthSuccess }) {
         setMode('login')
       }
     } catch (err) {
-      setError(err.message || 'Something went wrong. Please try again.')
+      setError(err.message || t('Something went wrong. Please try again.'))
     } finally {
       setIsSubmitting(false)
     }
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#F5F5F5] via-white to-[#F5F5F5] flex items-center justify-center p-4 dark:from-[#0F172A] dark:via-[#111827] dark:to-[#0F172A]">
+    <div className="min-h-screen bg-gradient-to-br from-[#F5F5F5] via-white to-[#F5F5F5] flex items-center justify-center p-4 dark:from-[#0F172A] dark:via-[#111827] dark:to-[#0F172A] relative">
+      <div className="absolute right-4 top-4">
+        <Button
+          variant="outline"
+          onClick={() => setLang(lang === 'en' ? 'no' : 'en')}
+          className="rounded-full bg-white/70 text-gray-600 shadow-sm hover:bg-white dark:bg-slate-800/70 dark:text-gray-200 dark:hover:bg-slate-700"
+        >
+          {lang === 'en' ? 'NO' : 'EN'}
+          <span className="sr-only">{t('Language')}</span>
+        </Button>
+      </div>
       <div className="w-full max-w-md">
         <div className="bg-white rounded-2xl shadow-xl p-8 dark:bg-slate-900 dark:shadow-[0_24px_60px_rgba(7,11,23,0.45)]">
           <h1 className="text-3xl font-semibold text-[#0f172a] mb-2 text-center dark:text-gray-100">
-            {mode === 'login' ? 'Access your planner' : 'Create your account'}
+            {mode === 'login' ? t('Access your planner') : t('Create your account')}
           </h1>
           <p className="text-center text-gray-600 dark:text-gray-300 mb-6">
-            Secure access to your personalized weekly meal planning experience.
+            {t('Secure access to your personalized weekly meal planning experience.')}
           </p>
           <div className="flex gap-2 mb-6">
             <Button
@@ -118,14 +127,14 @@ export default function Login({ onAuthSuccess }) {
               className="flex-1"
               onClick={() => handleChangeMode('login')}
             >
-              Sign in
+              {t('Sign in')}
             </Button>
             <Button
               variant={mode === 'register' ? 'default' : 'outline'}
               className="flex-1"
               onClick={() => handleChangeMode('register')}
             >
-              Create account
+              {t('Create account')}
             </Button>
           </div>
 
@@ -135,7 +144,7 @@ export default function Login({ onAuthSuccess }) {
                 htmlFor="email"
                 className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300"
               >
-                Email
+                {t('Email')}
               </label>
               <input
                 id="email"
@@ -145,7 +154,7 @@ export default function Login({ onAuthSuccess }) {
                 value={formData.email}
                 onChange={handleChange}
                 className="w-full rounded-xl border border-gray-200 px-4 py-3 text-gray-800 shadow-sm focus:border-[#A5D6A7] focus:outline-none focus:ring-2 focus:ring-[#A5D6A7]/50 dark:bg-slate-800 dark:border-slate-700 dark:text-gray-100"
-                placeholder="you@example.com"
+                placeholder={t('you@example.com')}
                 required
               />
             </div>
@@ -155,7 +164,7 @@ export default function Login({ onAuthSuccess }) {
                 htmlFor="password"
                 className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300"
               >
-                Password
+                {t('Password')}
               </label>
               <input
                 id="password"
@@ -183,7 +192,11 @@ export default function Login({ onAuthSuccess }) {
             )}
 
             <Button type="submit" className="w-full py-3" disabled={isSubmitting}>
-              {isSubmitting ? 'Please wait...' : modes[mode]}
+              {isSubmitting
+                ? t('Please wait...')
+                : mode === 'login'
+                  ? t('Sign in')
+                  : t('Create account')}
             </Button>
           </form>
         </div>

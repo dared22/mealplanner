@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { User, Ruler, Weight, Calendar } from 'lucide-react';
+import { useLanguage } from '@/i18n/LanguageContext';
 
 export const validatePersonalInfo = (info = {}) => {
   const errors = {};
@@ -50,6 +51,7 @@ export const validatePersonalInfo = (info = {}) => {
 };
 
 export default function PersonalInfoStep({ data, onChange }) {
+  const { t } = useLanguage();
   const { errors } = validatePersonalInfo(data);
 
   const handleNumberChange = (field, value) => {
@@ -83,10 +85,10 @@ export default function PersonalInfoStep({ data, onChange }) {
           <User className="w-8 h-8" />
         </Motion.div>
         <h2 className="text-2xl font-semibold mb-2 text-slate-900 dark:text-slate-100">
-          Tell us about you
+          {t('Tell us about you')}
         </h2>
         <p className="text-gray-600 dark:text-gray-300">
-          We use this to set precise calorie and macro targets.
+          {t('We use this to set precise calorie and macro targets.')}
         </p>
       </div>
 
@@ -99,11 +101,11 @@ export default function PersonalInfoStep({ data, onChange }) {
         >
           <Label className="flex items-center gap-2 text-sm font-medium text-slate-800 dark:text-slate-100">
             <Calendar className="w-4 h-4" />
-            Age
+            {t('Age')}
           </Label>
           <Input
             type="number"
-            placeholder="Enter your age"
+            placeholder={t('Enter your age')}
             value={data.age || ''}
             min={10}
             max={100}
@@ -113,7 +115,7 @@ export default function PersonalInfoStep({ data, onChange }) {
             }`}
           />
           {showAgeError && (
-            <p className="text-sm text-red-600 dark:text-red-400">{errors.age}</p>
+            <p className="text-sm text-red-600 dark:text-red-400">{t(errors.age)}</p>
           )}
         </Motion.div>
 
@@ -125,7 +127,7 @@ export default function PersonalInfoStep({ data, onChange }) {
         >
           <Label className="flex items-center gap-2 text-sm font-medium text-slate-800 dark:text-slate-100">
             <User className="w-4 h-4" />
-            Sex
+            {t('Sex')}
           </Label>
           <Select value={data.gender || ''} onValueChange={(value) => onChange({ gender: value })}>
             <SelectTrigger
@@ -133,16 +135,16 @@ export default function PersonalInfoStep({ data, onChange }) {
                 showGenderError ? 'border-red-500 focus:border-red-500 focus:ring-red-500/40' : ''
               }`}
             >
-              <SelectValue placeholder="Select an option" />
+              <SelectValue placeholder={t('Select an option')} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="male">Male</SelectItem>
-              <SelectItem value="female">Female</SelectItem>
-              <SelectItem value="other">Prefer to self-describe</SelectItem>
+              <SelectItem value="male">{t('Male')}</SelectItem>
+              <SelectItem value="female">{t('Female')}</SelectItem>
+              <SelectItem value="other">{t('Prefer to self-describe')}</SelectItem>
             </SelectContent>
           </Select>
           {showGenderError && (
-            <p className="text-sm text-red-600 dark:text-red-400">{errors.gender}</p>
+            <p className="text-sm text-red-600 dark:text-red-400">{t(errors.gender)}</p>
           )}
         </Motion.div>
 
@@ -154,11 +156,11 @@ export default function PersonalInfoStep({ data, onChange }) {
         >
           <Label className="flex items-center gap-2 text-sm font-medium text-slate-800 dark:text-slate-100">
             <Ruler className="w-4 h-4" />
-            Height (cm)
+            {t('Height (cm)')}
           </Label>
           <Input
             type="number"
-            placeholder="e.g., 175"
+            placeholder={t('e.g., 175')}
             value={data.height || ''}
             min={140}
             max={210}
@@ -168,7 +170,7 @@ export default function PersonalInfoStep({ data, onChange }) {
             }`}
           />
           {showHeightError && (
-            <p className="text-sm text-red-600 dark:text-red-400">{errors.height}</p>
+            <p className="text-sm text-red-600 dark:text-red-400">{t(errors.height)}</p>
           )}
         </Motion.div>
 
@@ -180,11 +182,11 @@ export default function PersonalInfoStep({ data, onChange }) {
         >
           <Label className="flex items-center gap-2 text-sm font-medium text-slate-800 dark:text-slate-100">
             <Weight className="w-4 h-4" />
-            Weight (kg)
+            {t('Weight (kg)')}
           </Label>
           <Input
             type="number"
-            placeholder="e.g., 70"
+            placeholder={t('e.g., 70')}
             value={data.weight || ''}
             min={30}
             max={400}
@@ -194,10 +196,10 @@ export default function PersonalInfoStep({ data, onChange }) {
             }`}
           />
           {showWeightError && (
-            <p className="text-sm text-red-600 dark:text-red-400">{errors.weight}</p>
+            <p className="text-sm text-red-600 dark:text-red-400">{t(errors.weight)}</p>
           )}
           {showLogicError && (
-            <p className="text-sm text-red-600 dark:text-red-400">{errors.logic}</p>
+            <p className="text-sm text-red-600 dark:text-red-400">{t(errors.logic)}</p>
           )}
         </Motion.div>
       </div>
