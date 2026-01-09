@@ -18,8 +18,9 @@ export const UserPreferences = {
 
     return response.json();
   },
-  fetch: async (preferenceId) => {
-    const response = await fetch(`${API_URL}/preferences/${preferenceId}`, {
+  fetch: async (preferenceId, language) => {
+    const query = language ? `?lang=${encodeURIComponent(language)}` : '';
+    const response = await fetch(`${API_URL}/preferences/${preferenceId}${query}`, {
       method: 'GET',
       credentials: 'include',
       cache: 'no-store',

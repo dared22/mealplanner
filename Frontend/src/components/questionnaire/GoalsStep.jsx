@@ -1,37 +1,39 @@
 import React from 'react';
 import { motion as Motion } from 'framer-motion';
 import { Target } from 'lucide-react';
+import { useLanguage } from '@/i18n/LanguageContext';
 
 export default function GoalsStep({ data, onChange }) {
+  const { t } = useLanguage();
   const goals = [
     {
       value: 'lose_weight',
-      title: 'Lose weight',
-      description: 'Gradual, sustainable weight reduction',
+      title: t('Lose weight'),
+      description: t('Gradual, sustainable weight reduction'),
       icon: 'LW'
     },
     {
       value: 'maintain_weight',
-      title: 'Maintain weight',
-      description: 'Keep your current weight stable',
+      title: t('Maintain weight'),
+      description: t('Keep your current weight stable'),
       icon: 'MW'
     },
     {
       value: 'gain_weight',
-      title: 'Gain weight',
-      description: 'Increase weight in a healthy way',
+      title: t('Gain weight'),
+      description: t('Increase weight in a healthy way'),
       icon: 'GW'
     },
     {
       value: 'build_muscle',
-      title: 'Build muscle',
-      description: 'Increase muscle mass and strength',
+      title: t('Build muscle'),
+      description: t('Increase muscle mass and strength'),
       icon: 'BM'
     },
     {
       value: 'improve_health',
-      title: 'Improve health',
-      description: 'Support overall metabolic health',
+      title: t('Improve health'),
+      description: t('Support overall metabolic health'),
       icon: 'IH'
     }
   ];
@@ -54,10 +56,10 @@ export default function GoalsStep({ data, onChange }) {
           <Target className="w-8 h-8" />
         </Motion.div>
         <h2 className="text-2xl font-semibold mb-2 text-slate-900 dark:text-slate-100">
-          What's your primary goal?
+          {t("What's your primary goal?")}
         </h2>
         <p className="text-gray-600 dark:text-gray-300">
-          We'll tune calories and macros to match.
+          {t("We'll tune calories and macros to match.")}
         </p>
       </div>
 

@@ -13,6 +13,7 @@ from itsdangerous import BadSignature, BadTimeSignature, URLSafeTimedSerializer
 from database import Base, SessionLocal, engine, get_session
 from models import Preference, User
 from planner import generate_meal_plan_for_preference
+from planner2 import generate_daily_plan_for_preference, translate_plan
 
 ENSURE_SCHEMA_ON_STARTUP = os.getenv("ENSURE_SCHEMA_ON_STARTUP", "").lower() in {"1", "true", "yes"}
 
@@ -115,10 +116,35 @@ def current_user_dependency(
 app = FastAPI(title="Meal Planner API")
 
 
+def _json_safe(value: Any) -> Any:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, dict):
+        return {str(key): _json_safe(val) for key, val in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_json_safe(item) for item in value]
+
+    item_fn = getattr(value, "item", None)
+    if callable(item_fn):
+        try:
+            return _json_safe(item_fn())
+        except Exception:
+            pass
+
+    tolist_fn = getattr(value, "tolist", None)
+    if callable(tolist_fn):
+        try:
+            return _json_safe(tolist_fn())
+        except Exception:
+            pass
+
+    return str(value)
+
+
 def _persist_plan_result(db: Session, preference: Preference, plan_result: Dict[str, Any]) -> None:
     existing_raw = preference.raw_data if isinstance(preference.raw_data, dict) else {}
     updated_raw = dict(existing_raw)
-    updated_raw["generated_plan"] = plan_result
+    updated_raw["generated_plan"] = _json_safe(plan_result)
     preference.raw_data = updated_raw
     db.add(preference)
     db.commit()
@@ -129,7 +155,7 @@ def _generate_plan_in_background(pref_id: int) -> None:
     db = SessionLocal()
     try:
         try:
-            plan_result = generate_meal_plan_for_preference(db, pref_id)
+            plan_result = generate_daily_plan_for_preference(db, pref_id)
         except ValueError:
             logger.exception("Preference %s disappeared before plan generation", pref_id)
             return
@@ -252,12 +278,17 @@ def save_preferences(
 
 
 @app.get("/preferences/{pref_id}")
-def get_preferences(pref_id: int, db: Session = Depends(get_session)) -> Dict[str, Any]:
+def get_preferences(
+    pref_id: int,
+    lang: Optional[str] = None,
+    db: Session = Depends(get_session),
+) -> Dict[str, Any]:
     entry = db.get(Preference, pref_id)
     if entry is None:
         raise HTTPException(status_code=404, detail="Preferences not found")
 
-    generated_plan = entry.raw_data.get("generated_plan") if isinstance(entry.raw_data, dict) else None
+    raw_data = entry.raw_data if isinstance(entry.raw_data, dict) else {}
+    generated_plan = raw_data.get("generated_plan") if isinstance(raw_data, dict) else None
     plan_payload = generated_plan.get("plan") if isinstance(generated_plan, dict) else None
     raw_plan_text = generated_plan.get("raw_text") if isinstance(generated_plan, dict) else None
     plan_error = generated_plan.get("error") if isinstance(generated_plan, dict) else None
@@ -269,6 +300,32 @@ def get_preferences(pref_id: int, db: Session = Depends(get_session)) -> Dict[st
         plan_status = "error"
         if not plan_error:
             plan_error = "Plan generation completed without a usable plan."
+
+    if plan_payload and lang:
+        lang_key = "en" if isinstance(lang, str) and lang.startswith("en") else lang
+        translated_plan = None
+        translations = raw_data.get("generated_plan_translations") if isinstance(raw_data, dict) else None
+        if isinstance(translations, dict):
+            translated_plan = translations.get(lang_key)
+
+        if translated_plan is None:
+            translation_result = translate_plan(plan_payload, lang)
+            translated_plan = translation_result.get("plan")
+            translation_error = translation_result.get("error")
+            if translation_error and not plan_error:
+                plan_error = translation_error
+            if translated_plan and translated_plan is not plan_payload:
+                updated_translations = dict(translations or {})
+                updated_translations[lang_key] = translated_plan
+                updated_raw = dict(raw_data)
+                updated_raw["generated_plan_translations"] = _json_safe(updated_translations)
+                entry.raw_data = updated_raw
+                db.add(entry)
+                db.commit()
+                db.refresh(entry)
+
+        if translated_plan:
+            plan_payload = translated_plan
 
     return {
         "id": entry.id,

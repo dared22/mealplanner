@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react'
 import MealPlanner from '@/Pages/MealPlanner.jsx'
 import Login from '@/Pages/Login.jsx'
+import { LanguageProvider } from '@/i18n/LanguageContext'
 
 export default function App() {
   const [authUser, setAuthUser] = useState(() => {
@@ -50,9 +51,13 @@ export default function App() {
     setAuthUser(null)
   }
 
-  if (!isAuthenticated) {
-    return <Login onAuthSuccess={handleAuthSuccess} />
-  }
-
-  return <MealPlanner onLogout={handleLogout} user={authUser} />
+  return (
+    <LanguageProvider>
+      {isAuthenticated ? (
+        <MealPlanner onLogout={handleLogout} user={authUser} />
+      ) : (
+        <Login onAuthSuccess={handleAuthSuccess} />
+      )}
+    </LanguageProvider>
+  )
 }
