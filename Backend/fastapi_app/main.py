@@ -2,14 +2,13 @@ import logging
 import os
 from typing import Any, Dict, Optional
 
-from fastapi import BackgroundTasks, Body, Depends, FastAPI, HTTPException, Request, Response, status
+from fastapi import BackgroundTasks, Body, Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from passlib.context import CryptContext
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
-from itsdangerous import BadSignature, BadTimeSignature, URLSafeTimedSerializer
 
+from clerk_auth import extract_primary_email, get_session_token, verify_session_token
 from database import Base, SessionLocal, engine, get_session
 from models import Preference, User
 from planner import generate_daily_plan_for_preference
@@ -17,92 +16,47 @@ from recipe_translator import PlanTranslator
 
 ENSURE_SCHEMA_ON_STARTUP = os.getenv("ENSURE_SCHEMA_ON_STARTUP", "").lower() in {"1", "true", "yes"}
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 logger = logging.getLogger(__name__)
-
-
-class AuthRequest(BaseModel):
-    email: EmailStr
-    password: str = Field(min_length=8, max_length=128)
-
-
-class AuthResponse(BaseModel):
-    message: str
-    user_id: int
-    email: EmailStr
 
 
 class SessionResponse(BaseModel):
     user_id: int
-    email: EmailStr
-
-
-def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
-
-
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
-
-
-def normalize_email(value: str) -> str:
-    return value.strip().lower()
-
-SESSION_COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "mealplanner_session")
-SESSION_SECRET_KEY = os.getenv("SESSION_SECRET_KEY", "please-change-me")
-SESSION_COOKIE_MAX_AGE = int(os.getenv("SESSION_COOKIE_MAX_AGE", str(60 * 60 * 24 * 7)))  # 7 days default
-SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "0").lower() in {"1", "true", "yes"}
-SESSION_COOKIE_SAMESITE = os.getenv("SESSION_COOKIE_SAMESITE", "lax")
-
-def _get_serializer() -> URLSafeTimedSerializer:
-    return URLSafeTimedSerializer(SESSION_SECRET_KEY, salt="mealplanner-session")
-
-
-def create_session_token(user_id: int) -> str:
-    serializer = _get_serializer()
-    return serializer.dumps({"user_id": user_id})
-
-
-def decode_session_token(token: str) -> Optional[int]:
-    serializer = _get_serializer()
-    try:
-        data = serializer.loads(token, max_age=SESSION_COOKIE_MAX_AGE)
-    except (BadSignature, BadTimeSignature):
-        return None
-    return int(data.get("user_id")) if isinstance(data, dict) and data.get("user_id") is not None else None
-
-
-def set_session_cookie(response: Response, user_id: int) -> None:
-    token = create_session_token(user_id)
-    response.set_cookie(
-        key=SESSION_COOKIE_NAME,
-        value=token,
-        max_age=SESSION_COOKIE_MAX_AGE,
-        expires=SESSION_COOKIE_MAX_AGE,
-        path="/",
-        secure=SESSION_COOKIE_SECURE,
-        httponly=True,
-        samesite=SESSION_COOKIE_SAMESITE,  
-    )
-
-
-def clear_session_cookie(response: Response) -> None:
-    response.delete_cookie(key=SESSION_COOKIE_NAME, path="/")
+    clerk_user_id: str
+    email: Optional[EmailStr] = None
 
 
 def optional_current_user(
     request: Request,
     db: Session = Depends(get_session),
 ) -> Optional[User]:
-    token = request.cookies.get(SESSION_COOKIE_NAME)
+    token = get_session_token(request)
     if not token:
         return None
 
-    user_id = decode_session_token(token)
-    if user_id is None:
-        return None
+    payload = verify_session_token(token)
+    clerk_user_id = payload.get("sub")
+    if not clerk_user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session token")
 
-    return db.get(User, user_id)
+    user = db.scalar(select(User).where(User.clerk_user_id == clerk_user_id))
+    if user is not None:
+        return user
+
+    email = extract_primary_email(payload)
+    if email:
+        existing = db.scalar(select(User).where(func.lower(User.email) == email.lower()))
+        if existing is not None:
+            existing.clerk_user_id = clerk_user_id
+            db.add(existing)
+            db.commit()
+            db.refresh(existing)
+            return existing
+
+    user = User(clerk_user_id=clerk_user_id, email=email)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
 
 
 def current_user_dependency(
@@ -305,23 +259,14 @@ def save_preferences(
     background_tasks: BackgroundTasks,
     payload: Dict[str, Any] = Body(...),
     db: Session = Depends(get_session),
-    current_user: Optional[User] = Depends(optional_current_user),
+    current_user: User = Depends(current_user_dependency),
 ) -> Dict[str, Any]:
     if not payload:
         raise HTTPException(status_code=400, detail="Request body cannot be empty")
 
     user_id = payload.get("user_id")
-    if current_user is not None:
-        if user_id is None:
-            user_id = current_user.id
-            payload["user_id"] = user_id
-        elif user_id != current_user.id:
-            raise HTTPException(status_code=403, detail="Cannot submit preferences for another user")
-
-    user = db.get(User, user_id) if user_id is not None else None
-    if user_id is not None and user is None:
-        raise HTTPException(status_code=404, detail="User not found")
-
+    if user_id is not None and user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Cannot submit preferences for another user")
 
     preference = Preference(
         age=payload.get("age"),
@@ -336,7 +281,7 @@ def save_preferences(
         dietary_restrictions=payload.get("dietary_restrictions") or [],
         preferred_cuisines=payload.get("preferred_cuisines") or [],
         raw_data=payload,
-        user=user,
+        user=current_user,
     )
 
     db.add(preference)
@@ -454,86 +399,23 @@ def get_preferences(
     }
 
 
-@app.post("/auth/register", status_code=status.HTTP_201_CREATED, response_model=AuthResponse)
-def register_user(
-    payload: AuthRequest,
-    response: Response,
-    db: Session = Depends(get_session),
-) -> AuthResponse:
-    normalized_email = normalize_email(payload.email)
-    existing_user = db.scalar(
-        select(User).where(func.lower(User.email) == normalized_email)
-    )
-    if existing_user is not None:
-        raise HTTPException(status_code=409, detail="User already exists")
-
-    user = User(email=normalized_email, password_hash=hash_password(payload.password))
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-
-    set_session_cookie(response, user.id)
-
-    return AuthResponse(message="User registered", user_id=user.id, email=user.email)
-
-
-@app.post("/auth/login", response_model=AuthResponse)
-def login_user(
-    payload: AuthRequest,
-    response: Response,
-    db: Session = Depends(get_session),
-) -> AuthResponse:
-    normalized_email = normalize_email(payload.email)
-    user = db.scalar(
-        select(User).where(func.lower(User.email) == normalized_email)
-    )
-    if user is None or not verify_password(payload.password, user.password_hash):
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-
-    set_session_cookie(response, user.id)
-
-    return AuthResponse(message="Login successful", user_id=user.id, email=user.email)
-
-
-@app.post("/auth/profile-info", response_model=AuthResponse)
-def fetch_profile_info(
-    payload: AuthRequest,
-    db: Session = Depends(get_session),
-) -> AuthResponse:
-    """
-    Secondary lookup endpoint that lets the client confirm the user id/email
-    using the supplied credentials. This is useful when cross-site cookies
-    prevent us from reading the session immediately after login.
-    """
-    normalized_email = normalize_email(payload.email)
-    user = db.scalar(
-        select(User).where(func.lower(User.email) == normalized_email)
-    )
-    if user is None or not verify_password(payload.password, user.password_hash):
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-
-    return AuthResponse(
-        message="Profile lookup successful",
+@app.get("/auth/session", response_model=SessionResponse)
+def get_active_session(user: User = Depends(current_user_dependency)) -> SessionResponse:
+    return SessionResponse(
         user_id=user.id,
+        clerk_user_id=user.clerk_user_id or "",
         email=user.email,
     )
 
 
-@app.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
-def logout_user(response: Response) -> None:
-    clear_session_cookie(response)
-
-
-@app.get("/auth/session", response_model=SessionResponse)
-def get_active_session(user: User = Depends(current_user_dependency)) -> SessionResponse:
-    return SessionResponse(user_id=user.id, email=user.email)
-
-
 @app.get("/users/{user_id}/preferences")
-def list_user_preferences(user_id: int, db: Session = Depends(get_session)) -> Dict[str, Any]:
-    user = db.get(User, user_id)
-    if user is None:
-        raise HTTPException(status_code=404, detail="User not found")
+def list_user_preferences(
+    user_id: int,
+    db: Session = Depends(get_session),
+    current_user: User = Depends(current_user_dependency),
+) -> Dict[str, Any]:
+    if user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Cannot access another user's preferences")
 
     entries = db.scalars(select(Preference).where(Preference.user_id == user_id)).all()
     return {
