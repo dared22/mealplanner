@@ -14,14 +14,13 @@ a clean local/dev/staging/prod configuration.
 ## Assumptions (verify)
 - Backend is FastAPI.
 - Frontend is a separate app (Vite).
-- Current DB is Neon (Postgres) (confirm).
-- Deployment target is Heroku for backend (confirm).
+- Current DB is local Postgres or SQLite.
+- Deployment target is Heroku for backend.
 
 ## Architecture decisions to confirm
 - Clerk auth mode: session cookies vs JWT.
 - API auth strategy: middleware that validates Clerk JWT on each request.
-- DB migration tool: SQLAlchemy `create_all` or raw SQL (no Alembic).
-- Environments: local, staging, prod (do we need staging?).
+- Nothing important to migrate.
 
 ## High-level steps
 1) Inventory current auth and DB usage.
@@ -44,7 +43,7 @@ a clean local/dev/staging/prod configuration.
    - Add `DATABASE_URL` for dev/prod deployments.
 
 3) Schema migration
-   - If using SQLAlchemy: ensure `Base.metadata.create_all` runs for Neon.
+   - If using SQLAlchemy/Alembic: generate migrations and apply to Neon.
    - If using raw SQL: run schema SQL against Neon.
 
 4) Data migration
@@ -98,3 +97,4 @@ a clean local/dev/staging/prod configuration.
 - Confirm current DB engine and migration tooling.
 - Confirm deployment platform(s).
 - Decide on Clerk auth flow (JWT vs cookies).
+
