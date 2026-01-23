@@ -17,7 +17,7 @@ cd Backend/fastapi_app
 python -m venv venv
 source venv/bin/activate  # or venv\Scripts\activate on Windows
 pip install -r requirements.txt
-export export DATABASE_URL=postgresql+psycopg:/postgres:<your_password>@localhost:5432/mealplanner
+export DATABASE_URL="postgresql+psycopg://<user>:<password>@<host>/<db>?sslmode=require"
 uvicorn main:app --reload --port 8000
 ```
 
