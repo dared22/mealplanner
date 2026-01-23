@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -47,3 +47,23 @@ class User(Base):
     preferences: Mapped[list["Preference"]] = relationship(
         "Preference", back_populates="user", cascade="all, delete-orphan"
     )
+
+
+class Recipe(Base):
+    __tablename__ = "recipes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    source: Mapped[str] = mapped_column(Text, nullable=False)
+    url: Mapped[Optional[str]] = mapped_column(Text)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    ingredients: Mapped[Optional[list[str]]] = mapped_column(ARRAY(Text))
+    instructions: Mapped[Optional[list[str]]] = mapped_column(ARRAY(Text))
+    nutrition: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB)
+    images: Mapped[Optional[list[str]]] = mapped_column(ARRAY(Text))
+    tags: Mapped[Optional[list[str]]] = mapped_column(ARRAY(Text))
+    local_images: Mapped[Optional[list[str]]] = mapped_column(ARRAY(Text))
+    type: Mapped[Optional[str]] = mapped_column(Text)
+    price_tier: Mapped[Optional[str]] = mapped_column(Text)
+    url_norm: Mapped[Optional[str]] = mapped_column(Text)
+    is_breakfast: Mapped[Optional[bool]] = mapped_column(Boolean)
+    is_lunch: Mapped[Optional[bool]] = mapped_column(Boolean)

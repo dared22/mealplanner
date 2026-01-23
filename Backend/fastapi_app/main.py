@@ -12,7 +12,7 @@ from itsdangerous import BadSignature, BadTimeSignature, URLSafeTimedSerializer
 
 from database import Base, SessionLocal, engine, get_session
 from models import Preference, User
-from planner2 import generate_daily_plan_for_preference
+from planner import generate_daily_plan_for_preference
 from recipe_translator import PlanTranslator
 
 ENSURE_SCHEMA_ON_STARTUP = os.getenv("ENSURE_SCHEMA_ON_STARTUP", "").lower() in {"1", "true", "yes"}

@@ -1,27 +1,29 @@
+import ast
+import copy
 import json
 import logging
 import os
-import time
+import re
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Iterable, List, Optional
 
 import httpx
-from openai import OpenAI
-from openai import OpenAIError
+from openai import OpenAI, OpenAIError
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from models import Preference
+from models import Preference, Recipe
+from recipe_translator import RecipeTranslator
 
 logger = logging.getLogger(__name__)
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OPENAI_PLAN_MODEL = os.getenv("OPENAI_PLAN_MODEL", "gpt-4o-mini")
+OPENAI_MACRO_MODEL = os.getenv("OPENAI_PLAN_MODEL", "gpt-4o-mini")
 OPENAI_REQUEST_TIMEOUT = float(os.getenv("OPENAI_REQUEST_TIMEOUT", "120"))
-OPENAI_PLAN_MAX_TOKENS = int(os.getenv("OPENAI_PLAN_MAX_TOKENS", "4500"))
-PLAN_DAYS = int(os.getenv("PLAN_DAYS", "7"))
+OPENAI_MACRO_MAX_TOKENS = int(os.getenv("OPENAI_PLAN_MAX_TOKENS", "1000"))
 
 if not OPENAI_API_KEY:
-    logger.warning("OPENAI_API_KEY is not configured; AI meal plan generation will be disabled.")
+    logger.warning("OPENAI_API_KEY is not configured; macro target generation will be disabled.")
     client: Optional[OpenAI] = None
 else:
     timeout = httpx.Timeout(
@@ -34,76 +36,82 @@ else:
     client = OpenAI(api_key=OPENAI_API_KEY, timeout=timeout)
 
 SYSTEM_PROMPT = (
-    "You are a professional nutrition coach. Always respond with valid JSON matching the schema:\n"
+    "You are a professional nutrition coach. Return ONLY valid JSON with this schema:\n"
     "{\n"
     '  "calorieTarget": number,\n'
-    '  "macroTargets": {"protein": number, "carbs": number, "fat": number},\n'
-    '  "days": [\n'
-    '    {\n'
-    '      "name": "Monday",\n'
-    '      "calories": number,\n'
-    '      "macros": {"protein": number, "carbs": number, "fat": number},\n'
-    '      "meals": {\n'
-    '        "Breakfast": {"name": string, "calories": number, "protein": number, "carbs": number, "fat": number, "cookTime": string, "tags": [string], "ingredients": [string], "instructions": string},\n'
-    '        "Lunch": {...},\n'
-    '        "Dinner": {...},\n'
-    '        "Snacks": {...}\n'
-    "      }\n"
-    "    }\n"
-    "  ]\n"
+    '  "macroTargets": {"protein": number, "carbs": number, "fat": number}\n'
     "}\n"
-    "Ensure each day totals roughly the calorie target, respect dietary restrictions and cuisines, "
-    "and keep instructions concise."
+    "Targets are per day. Use grams for macros."
 )
 
-@dataclass(frozen=True)
-class PreferenceDTO:
-    age: int
-    gender: str
-    height_cm: int
-    weight_kg: int
-    activity_level: str
-    nutrition_goal: str
-    meals_per_day: int
-    budget_range: str
-    cooking_time_preference: str
-    dietary_restrictions: list[str]
-    preferred_cuisines: list[str]
-    language: Optional[str]
-
-
-LANGUAGE_LABELS = {
-    "en": "English",
-    "no": "Norwegian",
-    "nb": "Norwegian",
-    "nn": "Norwegian",
+WEEK_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+MEAL_TAG_KEYWORDS = {
+    "breakfast": ["frokost", "breakfast"],
+    "lunch": ["lunsj", "lunch", "smorbrod", "sandwich", "smaretter", "salater", "supper"],
+    "dinner": ["middag", "middagsrett", "dinner", "ovnsretter", "gryter", "panneretter"],
 }
 
 
-def _normalize_language(value: Optional[str]) -> Optional[str]:
-    if not value:
+@dataclass(frozen=True)
+class PreferenceDTO:
+    age: Optional[int]
+    gender: Optional[str]
+    height_cm: Optional[int]
+    weight_kg: Optional[int]
+    activity_level: Optional[str]
+    nutrition_goal: Optional[str]
+    meals_per_day: Optional[int]
+    budget_range: Optional[str]
+    cooking_time_preference: Optional[str]
+    dietary_restrictions: List[str]
+    preferred_cuisines: List[str]
+    language: Optional[str]
+
+
+def _to_int(value: Any) -> Optional[int]:
+    try:
+        numeric = int(value)
+    except (TypeError, ValueError):
         return None
-    normalized = str(value).strip().lower()
-    if normalized.startswith("en"):
-        return "en"
-    if normalized.startswith(("no", "nb", "nn")):
-        return "no"
-    return normalized
+    return numeric
 
 
-def _language_label(value: Optional[str]) -> str:
-    normalized = _normalize_language(value)
-    if not normalized:
-        return "English"
-    return LANGUAGE_LABELS.get(normalized, normalized)
+def _get_pref_value(pref: Any, key: str) -> Any:
+    if isinstance(pref, dict):
+        return pref.get(key)
+    value = getattr(pref, key, None)
+    if value is not None:
+        return value
+    raw_data = getattr(pref, "raw_data", None)
+    if isinstance(raw_data, dict):
+        if key in raw_data:
+            return raw_data.get(key)
+    return None
+
+
+def _normalize_preference(pref: Any) -> PreferenceDTO:
+    return PreferenceDTO(
+        age=_to_int(_get_pref_value(pref, "age")),
+        gender=_get_pref_value(pref, "gender"),
+        height_cm=_to_int(_get_pref_value(pref, "height_cm") or _get_pref_value(pref, "height")),
+        weight_kg=_to_int(_get_pref_value(pref, "weight_kg") or _get_pref_value(pref, "weight")),
+        activity_level=_get_pref_value(pref, "activity_level"),
+        nutrition_goal=_get_pref_value(pref, "nutrition_goal"),
+        meals_per_day=_to_int(_get_pref_value(pref, "meals_per_day")) or 3,
+        budget_range=_get_pref_value(pref, "budget_range"),
+        cooking_time_preference=_get_pref_value(pref, "cooking_time_preference"),
+        dietary_restrictions=_get_pref_value(pref, "dietary_restrictions") or [],
+        preferred_cuisines=_get_pref_value(pref, "preferred_cuisines") or [],
+        language=_get_pref_value(pref, "language") or _get_pref_value(pref, "lang"),
+    )
 
 
 def _request_with_chat(messages: list[dict[str, str]], temperature: float = 0.2) -> str:
     if client is None:
         return ""
     request_kwargs = {
-        "model": OPENAI_PLAN_MODEL,
-        "max_tokens": OPENAI_PLAN_MAX_TOKENS,
+        "model": OPENAI_MACRO_MODEL,
+        "max_tokens": OPENAI_MACRO_MAX_TOKENS,
         "temperature": temperature,
         "messages": messages,
         "response_format": {"type": "json_object"},
@@ -115,202 +123,674 @@ def _request_with_chat(messages: list[dict[str, str]], temperature: float = 0.2)
             raise
         request_kwargs.pop("response_format", None)
         response = client.chat.completions.create(**request_kwargs)
-
-    finish_reason = response.choices[0].finish_reason if response.choices else None
-    if finish_reason == "length":
-        logger.warning("OpenAI response truncated; increase OPENAI_PLAN_MAX_TOKENS.")
     content = response.choices[0].message.content if response.choices else ""
     return content.strip() if content else ""
 
 
-def _request_with_responses(plan_prompt: str) -> str:
-    if client is None:
-        return ""
-    request_kwargs = {
-        "model": OPENAI_PLAN_MODEL,
-        "max_output_tokens": OPENAI_PLAN_MAX_TOKENS,
-        "response_format": {"type": "json_object"},
-        "temperature": 0.2,
-        "input": [
-            {"role": "system", "content": [{"type": "input_text", "text": SYSTEM_PROMPT}]},
-            {"role": "user", "content": [{"type": "input_text", "text": plan_prompt}]},
-        ],
-        "timeout": OPENAI_REQUEST_TIMEOUT,
-    }
-    try:
-        response = client.responses.create(**request_kwargs)
-    except TypeError as exc:
-        if "response_format" not in str(exc):
-            raise
-        request_kwargs.pop("response_format", None)
-        response = client.responses.create(**request_kwargs)
-
-    return response.output_text.strip() if response.output_text else ""
+def _is_english(value: Optional[str]) -> bool:
+    if not value:
+        return False
+    normalized = str(value).strip().lower()
+    if normalized in {"en", "eng", "english"}:
+        return True
+    return normalized.startswith("en-") or normalized.startswith("en_")
 
 
-def _request_plan_text(plan_prompt: str) -> str:
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": plan_prompt},
-    ]
-    last_exc: Optional[Exception] = None
-    try:
-        return _request_with_chat(messages)
-    except Exception as exc:
-        last_exc = exc
-        logger.warning("Chat completion failed; falling back to responses API: %s", exc)
-
-    try:
-        return _request_with_responses(plan_prompt)
-    except Exception as exc:
-        logger.exception("Responses API meal plan request failed")
-        if last_exc:
-            raise last_exc
-        raise exc
-
-
-def _repair_json_payload(raw_text: str) -> Optional[str]:
-    if client is None or not raw_text:
+def _extract_json(raw_text: str) -> Optional[Dict[str, Any]]:
+    if not raw_text:
         return None
-    repair_prompt = (
-        "You fix invalid JSON. Return ONLY valid JSON that matches the required schema. "
-        "Do not add commentary or formatting."
-    )
-    messages = [
-        {"role": "system", "content": repair_prompt},
-        {"role": "user", "content": raw_text},
-    ]
-    try:
-        repaired = _request_with_chat(messages, temperature=0.0)
-        return repaired or None
-    except Exception:
-        logger.exception("AI JSON repair attempt failed")
-        return None
+    candidates: list[str] = []
+    trimmed = raw_text.strip()
+    if trimmed:
+        candidates.append(trimmed)
+        if "```" in trimmed:
+            for segment in trimmed.split("```"):
+                seg = segment.strip()
+                if not seg:
+                    continue
+                if seg.lower().startswith("json"):
+                    seg = seg[4:].strip()
+                candidates.append(seg)
+        first = trimmed.find("{")
+        last = trimmed.rfind("}")
+        if first != -1 and last != -1 and last > first:
+            candidates.append(trimmed[first:last + 1])
+
+    for candidate in candidates:
+        try:
+            payload = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict):
+            return payload
+    return None
 
 
-def generate_meal_plan(pref: PreferenceDTO) -> Union[Dict[str, Any], str]:
+def generate_daily_macro_goal(pref: Any) -> Dict[str, Any]:
     if client is None:
         return {
-            "plan": None,
-            "raw_text": None,
+            "goal": None,
             "error": (
-                "Meal plan generator is disabled because OPENAI_API_KEY is not configured. "
-                "Please set the environment variable to enable AI-generated plans."
+                "Macro target generator is disabled because OPENAI_API_KEY is not configured."
             ),
         }
-    plan_prompt = f"""
-Create a personalized meal plan for this profile:
-- Age: {pref.age}
-- Gender: {pref.gender}
-- Height: {pref.height_cm} cm
-- Weight: {pref.weight_kg} kg
-- Activity level: {pref.activity_level}
-- Nutrition goal: {pref.nutrition_goal}
-- Meals per day: {pref.meals_per_day}
-- Budget range: {pref.budget_range}
-- Cooking time preference: {pref.cooking_time_preference.replace('_', ' ')}
-- Dietary restrictions: {', '.join(pref.dietary_restrictions) if pref.dietary_restrictions else 'none'}
-- Preferred cuisines: {', '.join(pref.preferred_cuisines) if pref.preferred_cuisines else 'no specific preference'}
-- Language: {_language_label(pref.language)}
 
-Guidelines:
-1. Produce exactly {PLAN_DAYS} days named Monday through Sunday.
-2. Provide {pref.meals_per_day} meals per day, covering Breakfast, Lunch, Dinner, and Snacks where applicable.
-3. Each meal needs calories plus protein/carbs/fat estimates, cook time, up to 2 short tags, and concise ingredients/instructions (8-15 words). Keep ingredient lists under 6 items.
-4. Use the requested language for meal names, tags, ingredients, and instructions.
-5. Daily calories must align with the user's goal and activity level, staying within ±7%.
-6. Keep ingredients accessible in Norway and respect dietary restrictions/cuisines.
-7. Return ONLY compact JSON matching the schema from the system prompt—no markdown or commentary.
+    dto = _normalize_preference(pref)
+    prompt = f"""
+Create daily calorie and macro targets for this profile:
+- Age: {dto.age or 'unknown'}
+- Gender: {dto.gender or 'unknown'}
+- Height: {dto.height_cm or 'unknown'} cm
+- Weight: {dto.weight_kg or 'unknown'} kg
+- Activity level: {dto.activity_level or 'unknown'}
+- Nutrition goal: {dto.nutrition_goal or 'unknown'}
+- Meals per day: {dto.meals_per_day}
+- Budget range: {dto.budget_range or 'unknown'}
+- Cooking time preference: {dto.cooking_time_preference or 'unknown'}
+- Dietary restrictions: {', '.join(dto.dietary_restrictions) if dto.dietary_restrictions else 'none'}
+- Preferred cuisines: {', '.join(dto.preferred_cuisines) if dto.preferred_cuisines else 'no preference'}
+
+Return ONLY JSON matching the schema in the system prompt.
 """
-    start_time = time.perf_counter()
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": prompt},
+    ]
     try:
-        raw_text = _request_plan_text(plan_prompt)
+        raw_text = _request_with_chat(messages)
     except OpenAIError as exc:
-        logger.exception("OpenAI meal plan request failed: %s", exc)
-        return {"plan": None, "raw_text": None, "error": str(exc)}
+        logger.exception("OpenAI macro target request failed: %s", exc)
+        return {"goal": None, "error": str(exc)}
     except Exception as exc:  # pragma: no cover
-        logger.exception("Unexpected failure during meal plan generation")
-        return {"plan": None, "raw_text": None, "error": str(exc)}
-    finally:
-        elapsed = time.perf_counter() - start_time
-        logger.info("Meal plan response generation finished in %.2fs", elapsed)
+        logger.exception("Unexpected failure during macro target generation")
+        return {"goal": None, "error": str(exc)}
 
-    raw_text = (raw_text or "").strip()
+    payload = _extract_json(raw_text)
+    if not payload:
+        return {"goal": None, "error": "Failed to parse macro targets from the AI response."}
 
-    def _json_candidates(text: str) -> List[str]:
-        candidates: List[str] = []
-        trimmed = text.strip()
-        if trimmed:
-            candidates.append(trimmed)
-            if "```" in trimmed:
-                for segment in trimmed.split("```"):
-                    seg = segment.strip()
-                    if not seg:
-                        continue
-                    if seg.lower().startswith("json"):
-                        seg = seg[4:].strip()
-                    candidates.append(seg)
-            first = trimmed.find("{")
-            last = trimmed.rfind("}")
-            if first != -1 and last != -1 and last > first:
-                candidates.append(trimmed[first:last + 1])
-        return candidates
+    return {"goal": payload, "error": None}
 
-    plan_payload: Optional[Dict[str, Any]] = None
-    parse_error: Optional[str] = None
-    if raw_text:
-        for candidate in _json_candidates(raw_text):
+
+def _normalize_column_name(value: str) -> str:
+    return "".join(ch for ch in value.lower() if ch.isalnum())
+
+
+def _find_column(columns: Iterable[str], candidates: Iterable[str]) -> Optional[str]:
+    normalized = { _normalize_column_name(col): col for col in columns }
+    for candidate in candidates:
+        needle = _normalize_column_name(candidate)
+        if needle in normalized:
+            return normalized[needle]
+        for key, original in normalized.items():
+            if needle and needle in key:
+                return original
+    return None
+
+
+def _budget_filter(df, budget_range: Optional[str], cost_col: Optional[str], tier_col: Optional[str]):
+    if df.empty or not budget_range or budget_range == "no_limit":
+        return df
+    normalized = str(budget_range).strip().lower()
+
+    if cost_col is not None:
+        import pandas as pd
+        series = df[cost_col]
+        numeric = pd.to_numeric(series, errors="coerce")
+        if numeric.notna().any():
+            lower = numeric.quantile(0.33)
+            upper = numeric.quantile(0.66)
+            if "budget" in normalized or "cheap" in normalized:
+                return df[numeric <= lower]
+            if "moderate" in normalized or "mid" in normalized or "balanced" in normalized:
+                return df[(numeric > lower) & (numeric <= upper)]
+            if "premium" in normalized or "high" in normalized or "expensive" in normalized:
+                return df[numeric > upper]
+
+    if tier_col is not None:
+        tiers = df[tier_col].astype(str).str.lower()
+        if "budget" in normalized or "cheap" in normalized:
+            return df[tiers.str.contains("budget|cheap|low", regex=True, na=False)]
+        if "moderate" in normalized or "mid" in normalized or "balanced" in normalized:
+            return df[tiers.str.contains("moderate|medium|mid|balanced", regex=True, na=False)]
+        if "premium" in normalized or "high" in normalized or "expensive" in normalized:
+            return df[tiers.str.contains("premium|high|expensive|lux", regex=True, na=False)]
+
+    return df
+
+
+def _load_recipes_df(db: Session):
+    try:
+        import pandas as pd
+    except ImportError as exc:
+        raise RuntimeError(
+            "pandas is required to load recipes from the database."
+        ) from exc
+
+    if db is None:
+        raise RuntimeError("Database session is required to load recipes.")
+
+    stmt = select(
+        Recipe.id,
+        Recipe.source,
+        Recipe.url,
+        Recipe.name,
+        Recipe.ingredients,
+        Recipe.instructions,
+        Recipe.nutrition,
+        Recipe.images,
+        Recipe.tags,
+        Recipe.local_images,
+        Recipe.type,
+        Recipe.price_tier,
+        Recipe.url_norm,
+        Recipe.is_breakfast,
+        Recipe.is_lunch,
+    )
+    result = db.execute(stmt)
+    rows = result.mappings().all()
+    return pd.DataFrame(rows)
+
+
+def _prepare_recipes(df):
+    import pandas as pd
+
+    nutrition_col = _find_column(df.columns, ["nutrition", "nutrients", "macros"])
+    calories_col = _find_column(
+        df.columns, ["calories", "kcal", "energykcal", "energy", "calorie"]
+    )
+    protein_col = _find_column(df.columns, ["protein", "proteing", "protein_grams"])
+    carbs_col = _find_column(df.columns, ["carbs", "carbohydrates", "carbsg"])
+    fat_col = _find_column(df.columns, ["fat", "fatg", "totalfat"])
+    name_col = _find_column(df.columns, ["name", "title", "recipe", "recipe_name"])
+    tags_col = _find_column(df.columns, ["tags", "categories", "labels"])
+    instructions_col = _find_column(df.columns, ["instructions", "instruction", "steps", "directions"])
+    ingredients_col = _find_column(df.columns, ["ingredients", "ingredient_list"])
+    meal_col = _find_column(df.columns, ["meal_type", "meal", "course", "category", "dish_type"])
+    breakfast_col = _find_column(df.columns, ["is_breakfast", "breakfast"])
+    lunch_col = _find_column(df.columns, ["is_lunch", "lunch"])
+    cost_col = _find_column(df.columns, ["price", "cost", "amount", "price_value"])
+    tier_col = _find_column(df.columns, ["price_tier", "budget_range", "price_level", "cost_level", "price_category"])
+    id_col = _find_column(df.columns, ["id", "recipe_id", "slug"])
+    url_col = _find_column(df.columns, ["url", "link", "source_url"])
+
+    df = df.copy()
+
+    def _nutrition_value(row, key):
+        if nutrition_col is None:
+            return None
+        payload = row.get(nutrition_col)
+        if isinstance(payload, dict):
+            return payload.get(key)
+        if isinstance(payload, str):
             try:
-                plan_payload = json.loads(candidate)
-                parse_error = None
-                break
-            except json.JSONDecodeError as exc:
-                parse_error = f"Failed to parse AI JSON: {exc}"
-                continue
-        if plan_payload is None and parse_error:
-            logger.warning("%s", parse_error)
-            repaired_text = _repair_json_payload(raw_text)
-            if repaired_text:
-                for candidate in _json_candidates(repaired_text):
-                    try:
-                        plan_payload = json.loads(candidate)
-                        parse_error = None
-                        raw_text = repaired_text
-                        break
-                    except json.JSONDecodeError as exc:
-                        parse_error = f"Failed to parse AI JSON after repair: {exc}"
-                        continue
-            if parse_error:
-                logger.warning("%s", parse_error)
+                parsed = json.loads(payload)
+            except json.JSONDecodeError:
+                return None
+            if isinstance(parsed, dict):
+                return parsed.get(key)
+        return None
 
-    plan_language = _normalize_language(pref.language) or "en"
-    return {
-        "plan": plan_payload,
-        "raw_text": raw_text,
-        "error": parse_error,
-        "language": plan_language,
+    if nutrition_col:
+        df["_calories"] = pd.to_numeric(
+            df.apply(lambda row: _nutrition_value(row, "calories_kcal"), axis=1),
+            errors="coerce",
+        )
+        df["_protein"] = pd.to_numeric(
+            df.apply(lambda row: _nutrition_value(row, "protein_g"), axis=1),
+            errors="coerce",
+        )
+        df["_carbs"] = pd.to_numeric(
+            df.apply(lambda row: _nutrition_value(row, "carbs_g"), axis=1),
+            errors="coerce",
+        )
+        df["_fat"] = pd.to_numeric(
+            df.apply(lambda row: _nutrition_value(row, "fat_g"), axis=1),
+            errors="coerce",
+        )
+    else:
+        df["_calories"] = pd.to_numeric(df[calories_col], errors="coerce") if calories_col else 0
+        df["_protein"] = pd.to_numeric(df[protein_col], errors="coerce") if protein_col else 0
+        df["_carbs"] = pd.to_numeric(df[carbs_col], errors="coerce") if carbs_col else 0
+        df["_fat"] = pd.to_numeric(df[fat_col], errors="coerce") if fat_col else 0
+
+    df["_name"] = df[name_col] if name_col else "Recipe"
+    df["_tags"] = df[tags_col] if tags_col else None
+    df["_meal_type"] = df[meal_col] if meal_col else None
+    df["_instructions"] = df[instructions_col] if instructions_col else None
+    df["_ingredients"] = df[ingredients_col] if ingredients_col else None
+    df["_is_breakfast"] = df[breakfast_col] if breakfast_col else None
+    df["_is_lunch"] = df[lunch_col] if lunch_col else None
+    df["_id"] = df[id_col] if id_col else df.index
+    df["_url"] = df[url_col] if url_col else None
+
+    for key in ["_calories", "_protein", "_carbs", "_fat"]:
+        df[key] = df[key].fillna(0)
+
+    return df, {
+        "meal": meal_col,
+        "tags": tags_col,
+        "cost": cost_col,
+        "tier": tier_col,
+        "breakfast": breakfast_col,
+        "lunch": lunch_col,
+        "ingredients": ingredients_col,
     }
 
 
-def generate_meal_plan_for_preference(db: Session, pref_id: int) -> Dict[str, Any]:
+def _build_meal_slots(meals_per_day: int) -> List[str]:
+    slots = ["breakfast", "lunch", "dinner"]
+    extra = max(meals_per_day - 3, 0)
+    slots.extend(["snack"] * extra)
+    slots = slots[: max(meals_per_day, 1)]
+    if "dinner" not in slots:
+        if slots:
+            slots[-1] = "dinner"
+        else:
+            slots = ["dinner"]
+    return slots
+
+
+def _score_recipe(row, targets: Dict[str, float]) -> float:
+    calorie_score = (row["_calories"] - targets["calories"]) ** 2
+    protein_score = (row["_protein"] - targets["protein"]) ** 2
+    carbs_score = (row["_carbs"] - targets["carbs"]) ** 2
+    fat_score = (row["_fat"] - targets["fat"]) ** 2
+    return calorie_score + protein_score + carbs_score + fat_score
+
+
+def _jsonify_value(value: Any) -> Any:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    item_fn = getattr(value, "item", None)
+    if callable(item_fn):
+        try:
+            return item_fn()
+        except Exception:
+            return str(value)
+    return str(value)
+
+
+def _format_instructions(value: Any) -> str:
+    if value is None:
+        return ""
+
+    list_value: Optional[List[Any]] = None
+
+    if isinstance(value, (list, tuple)):
+        list_value = list(value)
+    else:
+        tolist_fn = getattr(value, "tolist", None)
+        if callable(tolist_fn):
+            try:
+                list_value = list(tolist_fn())
+            except Exception:
+                list_value = None
+
+    if list_value is not None:
+        return " ".join(str(item).strip() for item in list_value if str(item).strip())
+
+    if isinstance(value, str):
+        text = value.strip()
+        if text.startswith("[") and text.endswith("]"):
+            parsed = None
+            try:
+                parsed = json.loads(text)
+            except json.JSONDecodeError:
+                try:
+                    parsed = ast.literal_eval(text)
+                except (ValueError, SyntaxError):
+                    parsed = None
+            if isinstance(parsed, (list, tuple)):
+                return " ".join(str(item).strip() for item in parsed if str(item).strip())
+
+            quoted = re.findall(r"'([^']+)'|\"([^\"]+)\"", text)
+            if quoted:
+                segments = [a or b for a, b in quoted if (a or b)]
+                return " ".join(segment.strip() for segment in segments if segment.strip())
+
+        return text
+
+    return str(value)
+
+
+def _format_list_values(value: Any) -> List[str]:
+    if value is None:
+        return []
+
+    list_value: Optional[List[Any]] = None
+    if isinstance(value, (list, tuple)):
+        list_value = list(value)
+    else:
+        tolist_fn = getattr(value, "tolist", None)
+        if callable(tolist_fn):
+            try:
+                list_value = list(tolist_fn())
+            except Exception:
+                list_value = None
+
+    if list_value is not None:
+        return [str(item).strip() for item in list_value if str(item).strip()]
+
+    if isinstance(value, str):
+        text = value.strip()
+        if text.startswith("[") and text.endswith("]"):
+            parsed = None
+            try:
+                parsed = json.loads(text)
+            except json.JSONDecodeError:
+                try:
+                    parsed = ast.literal_eval(text)
+                except (ValueError, SyntaxError):
+                    parsed = None
+            if isinstance(parsed, (list, tuple)):
+                return [str(item).strip() for item in parsed if str(item).strip()]
+
+            quoted = re.findall(r"'([^']+)'|\"([^\"]+)\"", text)
+            if quoted:
+                return [seg.strip() for seg in (a or b for a, b in quoted) if seg.strip()]
+        if text:
+            return [text]
+
+    return [str(value).strip()] if str(value).strip() else []
+
+
+def _tag_matches(meal_type: str, value: Any) -> bool:
+    keywords = MEAL_TAG_KEYWORDS.get(meal_type, [])
+    if not keywords or value is None:
+        return False
+    if isinstance(value, str):
+        tags = [value]
+    elif isinstance(value, (list, tuple, set)):
+        tags = value
+    else:
+        return False
+
+    for tag in tags:
+        normalized = str(tag).lower()
+        for keyword in keywords:
+            if keyword in normalized:
+                return True
+    return False
+
+
+def _pick_recipe(df, meal_type: str, targets: Dict[str, float], used_ids: set) -> Dict[str, Any]:
+    candidates = df
+    if "_id" in df.columns and used_ids:
+        candidates = candidates[~candidates["_id"].isin(used_ids)]
+    base_candidates = candidates
+
+    if meal_type == "breakfast" and "_is_breakfast" in candidates.columns:
+        breakfast_mask = candidates["_is_breakfast"].fillna(False).astype(bool)
+        breakfast_filtered = candidates[breakfast_mask]
+        if not breakfast_filtered.empty:
+            candidates = breakfast_filtered
+
+    if meal_type in {"lunch", "snack"} and "_is_lunch" in candidates.columns:
+        lunch_mask = candidates["_is_lunch"].fillna(False).astype(bool)
+        lunch_filtered = candidates[lunch_mask]
+        if not lunch_filtered.empty:
+            candidates = lunch_filtered
+
+    if "_tags" in candidates.columns and candidates["_tags"].notna().any():
+        tag_filtered = candidates[candidates["_tags"].apply(lambda value: _tag_matches(meal_type, value))]
+        if not tag_filtered.empty:
+            candidates = tag_filtered
+
+    if "_meal_type" in candidates.columns and candidates["_meal_type"].notna().any():
+        filtered = candidates[
+            candidates["_meal_type"]
+            .astype(str)
+            .str.contains(meal_type, case=False, na=False)
+        ]
+        if not filtered.empty:
+            candidates = filtered
+
+    if candidates.empty:
+        candidates = base_candidates if not base_candidates.empty else df
+
+    scored = candidates.copy()
+    scored["_score"] = scored.apply(lambda row: _score_recipe(row, targets), axis=1)
+    best = scored.nsmallest(1, "_score").iloc[0]
+
+    return {
+        "id": _jsonify_value(best.get("_id")),
+        "name": _jsonify_value(best.get("_name") or "Recipe"),
+        "meal_type": meal_type,
+        "calories": float(best.get("_calories", 0)),
+        "protein": float(best.get("_protein", 0)),
+        "carbs": float(best.get("_carbs", 0)),
+        "fat": float(best.get("_fat", 0)),
+        "url": _jsonify_value(best.get("_url")),
+        "instructions": _format_instructions(best.get("_instructions")),
+        "ingredients": _format_list_values(best.get("_ingredients")),
+        "tags": _format_list_values(best.get("_tags")),
+    }
+
+
+def match_recipes_to_macro_goal(
+    pref: Any,
+    macro_goal: Dict[str, Any],
+    recipes_df=None,
+    used_ids: Optional[set] = None,
+    db: Optional[Session] = None,
+) -> Dict[str, Any]:
+    if not macro_goal:
+        return {"meals": [], "totals": None, "error": "Missing macro targets."}
+
+    dto = _normalize_preference(pref)
+    if recipes_df is None:
+        df = _load_recipes_df(db)
+        prepared, meta = _prepare_recipes(df)
+        prepared = _budget_filter(prepared, dto.budget_range, meta["cost"], meta["tier"])
+    else:
+        prepared = recipes_df
+    if prepared.empty:
+        return {"meals": [], "totals": None, "error": "No recipes match the selected budget."}
+
+    meal_slots = _build_meal_slots(dto.meals_per_day or 3)
+
+    macro_targets = macro_goal.get("macroTargets") if isinstance(macro_goal, dict) else None
+    targets = {
+        "calories": float(macro_goal.get("calorieTarget", 0)),
+        "protein": float(macro_targets.get("protein", 0)) if isinstance(macro_targets, dict) else 0.0,
+        "carbs": float(macro_targets.get("carbs", 0)) if isinstance(macro_targets, dict) else 0.0,
+        "fat": float(macro_targets.get("fat", 0)) if isinstance(macro_targets, dict) else 0.0,
+    }
+
+    remaining = targets.copy()
+    selected: List[Dict[str, Any]] = []
+    used_ids_local: set = used_ids if used_ids is not None else set()
+
+    for index, slot in enumerate(meal_slots):
+        remaining_meals = max(len(meal_slots) - index, 1)
+        per_meal = {
+            "calories": max(remaining["calories"] / remaining_meals, 0),
+            "protein": max(remaining["protein"] / remaining_meals, 0),
+            "carbs": max(remaining["carbs"] / remaining_meals, 0),
+            "fat": max(remaining["fat"] / remaining_meals, 0),
+        }
+        recipe = _pick_recipe(prepared, slot, per_meal, used_ids_local)
+        selected.append(recipe)
+        if recipe.get("id") is not None:
+            used_ids_local.add(recipe["id"])
+        remaining["calories"] = max(remaining["calories"] - recipe["calories"], 0)
+        remaining["protein"] = max(remaining["protein"] - recipe["protein"], 0)
+        remaining["carbs"] = max(remaining["carbs"] - recipe["carbs"], 0)
+        remaining["fat"] = max(remaining["fat"] - recipe["fat"], 0)
+
+    totals = {
+        "calories": round(sum(item["calories"] for item in selected), 2),
+        "protein": round(sum(item["protein"] for item in selected), 2),
+        "carbs": round(sum(item["carbs"] for item in selected), 2),
+        "fat": round(sum(item["fat"] for item in selected), 2),
+    }
+
+    return {
+        "meals": selected,
+        "totals": totals,
+        "error": None,
+    }
+
+
+def _format_meal(recipe: Dict[str, Any], fallback_name: str) -> Dict[str, Any]:
+    name = recipe.get("name") or fallback_name
+    url = recipe.get("url")
+    instructions = recipe.get("instructions") or (f"Recipe link: {url}" if url else "")
+    return {
+        "name": name,
+        "calories": float(recipe.get("calories", 0)),
+        "protein": float(recipe.get("protein", 0)),
+        "carbs": float(recipe.get("carbs", 0)),
+        "fat": float(recipe.get("fat", 0)),
+        "cookTime": "",
+        "tags": recipe.get("tags") or [],
+        "ingredients": recipe.get("ingredients") or [],
+        "instructions": instructions,
+    }
+
+
+def _aggregate_snacks(recipes: List[Dict[str, Any]]) -> Dict[str, Any]:
+    names = [meal.get("name") or "Snack" for meal in recipes]
+    urls = [meal.get("url") for meal in recipes if meal.get("url")]
+    instructions = " ".join(
+        step for step in (meal.get("instructions") for meal in recipes) if step
+    ).strip()
+    if not instructions and urls:
+        instructions = "Recipe links: " + ", ".join(urls[:3])
+    return {
+        "name": "Snacks: " + ", ".join(names[:3]) if names else "Snacks",
+        "calories": float(sum(meal.get("calories", 0) for meal in recipes)),
+        "protein": float(sum(meal.get("protein", 0) for meal in recipes)),
+        "carbs": float(sum(meal.get("carbs", 0) for meal in recipes)),
+        "fat": float(sum(meal.get("fat", 0) for meal in recipes)),
+        "cookTime": "",
+        "tags": [],
+        "ingredients": [],
+        "instructions": instructions,
+    }
+
+
+def _build_day_plan(day_name: str, recipes: List[Dict[str, Any]], totals: Dict[str, float]) -> Dict[str, Any]:
+    meal_map: Dict[str, List[Dict[str, Any]]] = {
+        "breakfast": [],
+        "lunch": [],
+        "dinner": [],
+        "snack": [],
+    }
+    for meal in recipes:
+        meal_type = str(meal.get("meal_type", "snack")).lower()
+        if meal_type not in meal_map:
+            meal_type = "snack"
+        meal_map[meal_type].append(meal)
+
+    meals_payload = {
+        "Breakfast": _format_meal(meal_map["breakfast"][0], "Breakfast") if meal_map["breakfast"] else None,
+        "Lunch": _format_meal(meal_map["lunch"][0], "Lunch") if meal_map["lunch"] else None,
+        "Dinner": _format_meal(meal_map["dinner"][0], "Dinner") if meal_map["dinner"] else None,
+        "Snacks": _aggregate_snacks(meal_map["snack"]) if meal_map["snack"] else None,
+    }
+
+    return {
+        "name": day_name,
+        "calories": round(totals.get("calories", 0), 2),
+        "macros": {
+            "protein": round(totals.get("protein", 0), 2),
+            "carbs": round(totals.get("carbs", 0), 2),
+            "fat": round(totals.get("fat", 0), 2),
+        },
+        "meals": meals_payload,
+    }
+
+
+def _build_weekly_plan(macro_goal: Dict[str, Any], days: List[Dict[str, Any]]) -> Dict[str, Any]:
+    return {
+        "calorieTarget": float(macro_goal.get("calorieTarget", 0)),
+        "macroTargets": {
+            "protein": float(macro_goal.get("macroTargets", {}).get("protein", 0)),
+            "carbs": float(macro_goal.get("macroTargets", {}).get("carbs", 0)),
+            "fat": float(macro_goal.get("macroTargets", {}).get("fat", 0)),
+        },
+        "days": days,
+    }
+
+
+def translate_plan(plan: Dict[str, Any], language: Optional[str]) -> Dict[str, Any]:
+    if not plan or not _is_english(language):
+        return {"plan": plan, "error": None}
+
+    translator = RecipeTranslator(target_language="English")
+    if translator.client is None:
+        return {"plan": plan, "error": "Translation disabled: OPENAI_API_KEY not configured."}
+
+    translated_plan = copy.deepcopy(plan)
+    failures = 0
+    days = translated_plan.get("days", [])
+    if isinstance(days, list):
+        for day in days:
+            meals = day.get("meals") if isinstance(day, dict) else None
+            if not isinstance(meals, dict):
+                continue
+            for meal_key, meal in meals.items():
+                if not isinstance(meal, dict):
+                    continue
+                result = translator.translate_recipe(meal)
+                if result.error is None:
+                    meals[meal_key] = result.data
+                else:
+                    failures += 1
+
+    error = None
+    if failures:
+        error = f"Failed to translate {failures} meal(s)."
+    return {"plan": translated_plan, "error": error}
+
+
+def generate_daily_plan(pref: Any, translate: bool = False, db: Optional[Session] = None) -> Dict[str, Any]:
+    macro_response = generate_daily_macro_goal(pref)
+    if macro_response.get("error"):
+        return {"plan": None, "raw_text": None, "error": macro_response["error"]}
+
+    macro_goal = macro_response.get("goal")
+    dto = _normalize_preference(pref)
+    df = _load_recipes_df(db)
+    prepared, meta = _prepare_recipes(df)
+    prepared = _budget_filter(prepared, dto.budget_range, meta["cost"], meta["tier"])
+    if prepared.empty:
+        return {"plan": None, "raw_text": None, "error": "No recipes match the selected budget."}
+
+    days: List[Dict[str, Any]] = []
+    used_ids: set = set()
+    for day in WEEK_DAYS:
+        recipe_match = match_recipes_to_macro_goal(
+            pref,
+            macro_goal,
+            recipes_df=prepared,
+            used_ids=used_ids,
+            db=db,
+        )
+        if recipe_match.get("error"):
+            return {"plan": None, "raw_text": None, "error": recipe_match["error"]}
+        meals_for_day = recipe_match.get("meals") or []
+
+        day_plan = _build_day_plan(day, meals_for_day, recipe_match.get("totals") or {})
+        days.append(day_plan)
+
+    plan_payload = _build_weekly_plan(macro_goal, days)
+    plan_language = "en" if translate and _is_english(dto.language) else "no"
+    if translate and _is_english(dto.language):
+        translation = translate_plan(plan_payload, dto.language)
+        return {
+            "plan": translation["plan"],
+            "raw_text": None,
+            "error": translation["error"],
+            "language": "en",
+        }
+    return {"plan": plan_payload, "raw_text": None, "error": None, "language": plan_language}
+
+
+def generate_daily_plan_for_preference(db: Session, pref_id: int) -> Dict[str, Any]:
     pref = db.get(Preference, pref_id)
     if pref is None:
         raise ValueError(f"Preference {pref_id} not found")
-
-    raw_data = pref.raw_data if isinstance(pref.raw_data, dict) else {}
-    language = raw_data.get("language") or raw_data.get("lang")
-    dto = PreferenceDTO(
-        age=pref.age,
-        gender=pref.gender,
-        height_cm=pref.height_cm,
-        weight_kg=pref.weight_kg,
-        activity_level=pref.activity_level,
-        nutrition_goal=pref.nutrition_goal,
-        meals_per_day=pref.meals_per_day,
-        budget_range=pref.budget_range,
-        cooking_time_preference=pref.cooking_time_preference,
-        dietary_restrictions=pref.dietary_restrictions or [],
-        preferred_cuisines=pref.preferred_cuisines or [],
-        language=language,
-    )
-    return generate_meal_plan(dto)
+    return generate_daily_plan(pref, translate=False, db=db)
