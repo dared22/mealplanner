@@ -9,6 +9,10 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      CLERK_JWKS_URL: ${CLERK_JWKS_URL:-https://api.clerk.com/v1/jwks}
+      CLERK_JWT_ISSUER: ${CLERK_JWT_ISSUER:-}
+      CLERK_AUDIENCE: ${CLERK_AUDIENCE:-}
+      CLERK_AUTHORIZED_PARTIES: ${CLERK_AUTHORIZED_PARTIES:-}
       ENSURE_SCHEMA_ON_STARTUP: "false"
     volumes:
       - ./Backend/fastapi_app:/app
@@ -22,6 +26,7 @@ services:
       sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
     environment:
       VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+      VITE_CLERK_PUBLISHABLE_KEY: ${VITE_CLERK_PUBLISHABLE_KEY:-}
     volumes:
       - ./Frontend:/app
       - frontend_node_modules:/app/node_modules

@@ -1,3 +1,13 @@
 # Environment secrets
 .env
+.env.*
+Backend/.env
+Frontend/.env
+
+# Allow example env files
+!.env.example
+!Backend/.env.example
+!Frontend/.env.example
+
+# OS files
 .DS_Store

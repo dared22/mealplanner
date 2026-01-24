@@ -18,6 +18,8 @@ python -m venv venv
 source venv/bin/activate  # or venv\Scripts\activate on Windows
 pip install -r requirements.txt
 export DATABASE_URL="postgresql+psycopg://<user>:<password>@<host>/<db>?sslmode=require"
+export CLERK_JWKS_URL="https://api.clerk.com/v1/jwks"
+export CLERK_JWT_ISSUER="https://your-clerk-instance.clerk.accounts.dev"
 uvicorn main:app --reload --port 8000
 ```
 
@@ -26,6 +28,7 @@ uvicorn main:app --reload --port 8000
 ```bash
 cd Frontend
 npm install
+export VITE_CLERK_PUBLISHABLE_KEY="YOUR_PUBLISHABLE_KEY"
 npm run dev
 ```
 

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { useAuth } from '@clerk/clerk-react'
 import { AnimatePresence, motion as Motion } from 'framer-motion'
 import { ArrowLeft, ArrowRight, Moon, Sun } from 'lucide-react'
 import { UserPreferences } from '@/Entities/UserPreferences'
@@ -52,7 +53,8 @@ const persistProgress = (storageKey, payload) => {
 };
 
 
-export default function MealPlanner({ onLogout, user }) {
+export default function MealPlanner({ user }) {
+  const { getToken } = useAuth();
   const { lang, setLang, t } = useLanguage();
   const userId = user?.id ?? user?.user_id ?? user?.userId ?? null;
   const storageKey = userId ? `mealplanner_progress_${userId}` : null;
@@ -132,12 +134,22 @@ export default function MealPlanner({ onLogout, user }) {
     }
   };
 
+  const getAuthToken = useCallback(async () => {
+    try {
+      return await getToken();
+    } catch (error) {
+      console.warn('Failed to fetch Clerk token', error);
+      return null;
+    }
+  }, [getToken]);
+
   const pollForPlan = useCallback(async (preferenceId, language) => {
     const maxAttempts = 60;
     const delayMs = 2000;
 
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-      const response = await UserPreferences.fetch(preferenceId, language);
+      const token = await getAuthToken();
+      const response = await UserPreferences.fetch(preferenceId, language, token);
       const status = response?.plan_status;
       const serverPlan = response?.plan ?? null;
       const rawText = response?.raw_plan ?? '';
@@ -183,7 +195,7 @@ export default function MealPlanner({ onLogout, user }) {
 
     setPlanStatus('error');
     setPlanError(t('Plan generation is taking longer than expected. Please try again soon.'));
-  }, [t]);
+  }, [t, getAuthToken]);
 
   useEffect(() => {
     if (!storageKey) return;
@@ -218,7 +230,8 @@ export default function MealPlanner({ onLogout, user }) {
     let isActive = true;
     const refreshPlan = async () => {
       try {
-        const response = await UserPreferences.fetch(preferenceId, lang);
+        const token = await getAuthToken();
+        const response = await UserPreferences.fetch(preferenceId, lang, token);
         if (!isActive) return;
         const translationStatus = response?.translation_status;
         const translationError = response?.translation_error;
@@ -245,7 +258,7 @@ export default function MealPlanner({ onLogout, user }) {
     return () => {
       isActive = false;
     };
-  }, [lang, preferenceId, planStatus, pollForPlan, t]);
+  }, [lang, preferenceId, planStatus, pollForPlan, t, getAuthToken]);
 
   const handleFinish = async () => {
     if (!userId) {
@@ -263,11 +276,11 @@ export default function MealPlanner({ onLogout, user }) {
     setCurrentStep(TOTAL_STEPS);
 
     try {
+      const token = await getAuthToken();
       const response = await UserPreferences.create({
         ...formData,
-        user_id: userId,
         language: lang,
-      });
+      }, token);
       const serverPlan = response?.plan ?? null;
       const rawText = response?.raw_plan ?? '';
       const serverError = response?.error ?? '';
@@ -332,23 +345,10 @@ export default function MealPlanner({ onLogout, user }) {
     }
   };
 
-  const handleLogoutClick = () => {
-    onLogout?.()
-  }
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#F5F5F5] via-white to-[#F5F5F5] p-4 md:p-8 transition-colors dark:from-[#0F172A] dark:via-[#111827] dark:to-[#0F172A]">
       <div className="max-w-3xl mx-auto">
         <div className="flex justify-end items-center gap-3 mb-4">
-          {onLogout && (
-            <Button
-              variant="outline"
-              onClick={handleLogoutClick}
-              className="rounded-full bg-white/70 text-gray-600 shadow-sm hover:bg-white dark:bg-slate-800/70 dark:text-gray-200 dark:hover:bg-slate-700"
-            >
-              {t('Log out')}
-            </Button>
-          )}
           <Button
             variant="outline"
             onClick={() => setLang(lang === 'en' ? 'no' : 'en')}
