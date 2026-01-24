@@ -1,94 +1,123 @@
-import React from 'react';
+import React, { memo, useCallback, useMemo } from 'react';
 import { motion as Motion } from 'framer-motion';
-import { Target } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { useLanguage } from '@/i18n/LanguageContext';
 
-export default function GoalsStep({ data, onChange }) {
+const GoalsStep = memo(function GoalsStep({ data, onChange }) {
   const { t } = useLanguage();
-  const goals = [
-    {
-      value: 'lose_weight',
-      title: t('Lose weight'),
-      description: t('Gradual, sustainable weight reduction'),
-      icon: 'LW'
+
+  const goals = useMemo(
+    () => [
+      {
+        value: 'lose_weight',
+        title: t('Lose Weight'),
+        description: t('Calorie deficit with high-volume, nutrient-dense meals'),
+        icon: (
+          <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 6L9 12.75l4.286-4.286a11.948 11.948 0 014.306 6.43l.776 2.898m0 0l3.182-5.511m-3.182 5.51l-5.511-3.181" />
+          </svg>
+        ),
+      },
+      {
+        value: 'build_muscle',
+        title: t('Build Muscle'),
+        description: t('Protein-optimized meals for recovery and growth'),
+        icon: (
+          <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
+          </svg>
+        ),
+      },
+      {
+        value: 'maintain_weight',
+        title: t('Maintain Weight'),
+        description: t('Balanced macros for sustained energy'),
+        icon: (
+          <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v17.25m0 0c-1.472 0-2.882.265-4.185.75M12 20.25c1.472 0 2.882.265 4.185.75M18.75 4.97A48.416 48.416 0 0012 4.5c-2.291 0-4.545.16-6.75.47m13.5 0c1.01.143 2.01.317 3 .52m-3-.52l2.62 10.726c.122.499-.106 1.028-.589 1.202a5.988 5.988 0 01-2.031.352 5.988 5.988 0 01-2.031-.352c-.483-.174-.711-.703-.59-1.202L18.75 4.971zm-16.5.52c.99-.203 1.99-.377 3-.52m0 0l2.62 10.726c.122.499-.106 1.028-.589 1.202a5.989 5.989 0 01-2.031.352 5.989 5.989 0 01-2.031-.352c-.483-.174-.711-.703-.59-1.202L5.25 4.971z" />
+          </svg>
+        ),
+      },
+      {
+        value: 'improve_health',
+        title: t('Improve Health'),
+        description: t('Micronutrient-dense foods for vitality'),
+        icon: (
+          <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
+          </svg>
+        ),
+      },
+    ],
+    [t]
+  );
+
+  const handleSelect = useCallback(
+    (value) => {
+      onChange({ nutrition_goal: value });
     },
-    {
-      value: 'maintain_weight',
-      title: t('Maintain weight'),
-      description: t('Keep your current weight stable'),
-      icon: 'MW'
-    },
-    {
-      value: 'gain_weight',
-      title: t('Gain weight'),
-      description: t('Increase weight in a healthy way'),
-      icon: 'GW'
-    },
-    {
-      value: 'build_muscle',
-      title: t('Build muscle'),
-      description: t('Increase muscle mass and strength'),
-      icon: 'BM'
-    },
-    {
-      value: 'improve_health',
-      title: t('Improve health'),
-      description: t('Support overall metabolic health'),
-      icon: 'IH'
-    }
-  ];
+    [onChange]
+  );
 
   return (
     <Motion.div
-      initial={{ opacity: 0, x: 50 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -50 }}
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
       transition={{ duration: 0.4 }}
-      className="space-y-6"
+      className="space-y-10"
     >
-      <div className="text-center mb-8">
-        <Motion.div
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
-          className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center bg-primary/20 text-primary"
-        >
-          <Target className="w-8 h-8" />
-        </Motion.div>
-        <h2 className="text-2xl font-semibold mb-2 text-slate-900 dark:text-slate-100">
-          {t("What's your primary goal?")}
-        </h2>
-        <p className="text-gray-600 dark:text-gray-300">
-          {t("We'll tune calories and macros to match.")}
+      {/* Headline */}
+      <div>
+        <h1 className="headline-serif mb-3">
+          {t('What is your')} <span className="accent">{t('primary goal')}</span>?
+        </h1>
+        <p className="text-muted-foreground text-lg">
+          {t("Select your health objective and we'll tailor your meal plans.")}
         </p>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-4">
-        {goals.map((goal, index) => (
-          <Motion.div
-            key={goal.value}
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.1 * index }}
-            className={`p-6 rounded-xl border-2 cursor-pointer transition-all duration-200 ${
-              data.nutrition_goal === goal.value
-                ? 'border-primary bg-primary/10 shadow-sm'
-                : 'border-gray-200 hover:border-primary/70 hover:bg-gray-50 dark:border-slate-700 dark:hover:border-primary/60 dark:hover:bg-slate-800'
-            }`}
-            onClick={() => onChange({ nutrition_goal: goal.value })}
-          >
-            <div className="text-center">
-              <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-secondary text-xs font-semibold uppercase tracking-wide text-slate-900 dark:text-slate-100">
+      {/* Goal Cards - 4 in a row */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
+        {goals.map((goal, index) => {
+          const isSelected = data.nutrition_goal === goal.value;
+
+          return (
+            <Motion.button
+              key={goal.value}
+              type="button"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.05 * index }}
+              onClick={() => handleSelect(goal.value)}
+              className={`goal-card ${isSelected ? 'selected' : ''}`}
+            >
+              {/* Check indicator */}
+              {isSelected && (
+                <div className="check-icon">
+                  <Check className="w-4 h-4" />
+                </div>
+              )}
+
+              {/* Icon */}
+              <div className="card-icon">
                 {goal.icon}
               </div>
-              <h3 className="font-semibold mb-1 text-slate-900 dark:text-slate-50">
-                {goal.title}
-              </h3>
-              <p className="text-sm text-gray-600 dark:text-gray-300">{goal.description}</p>
-            </div>
-          </Motion.div>
-        ))}
+
+              {/* Content */}
+              <h3 className="card-title">{goal.title}</h3>
+              <p className="card-description">{goal.description}</p>
+            </Motion.button>
+          );
+        })}
       </div>
+
+      {/* Helper text */}
+      <p className="text-center text-sm text-muted-foreground">
+        {t('You can change this later in your settings')}
+      </p>
     </Motion.div>
   );
-}
+});
+
+export default GoalsStep;

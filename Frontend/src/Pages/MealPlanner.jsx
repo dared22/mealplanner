@@ -1,20 +1,18 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { useAuth } from '@clerk/clerk-react'
-import { AnimatePresence, motion as Motion } from 'framer-motion'
-import { ArrowLeft, ArrowRight, Moon, Sun } from 'lucide-react'
-import { UserPreferences } from '@/Entities/UserPreferences'
+import React, { useCallback, useEffect, useMemo, useState, memo } from 'react';
+import { SignedIn, SignedOut, UserButton, useAuth } from '@clerk/clerk-react';
+import { AnimatePresence, motion as Motion } from 'framer-motion';
+import { ArrowLeft, ArrowRight, Calendar, Lock, Moon, Search, ShoppingCart, Sun, TrendingUp, User, Utensils } from 'lucide-react';
+import { UserPreferences } from '@/Entities/UserPreferences';
+import { useLanguage } from '@/i18n/LanguageContext';
 
-import { Button } from '@/components/ui/button'
-import { useLanguage } from '@/i18n/LanguageContext'
-
-import ProgressBar from '@/components/questionnaire/ProgressBar'
-import PersonalInfoStep, { validatePersonalInfo } from '@/components/questionnaire/PersonalInfoStep'
-import ActivityStep from '@/components/questionnaire/ActivityStep'
-import GoalsStep from '@/components/questionnaire/GoalsStep'
-import DietaryStep from '@/components/questionnaire/DietaryStep'
-import CuisineStep from '@/components/questionnaire/CuisineStep'
-import PreferencesStep from '@/components/questionnaire/PreferencesStep'
-import ResultsStep from '@/components/questionnaire/ResultsStep'
+import ProgressBar from '@/components/questionnaire/ProgressBar';
+import PersonalInfoStep, { validatePersonalInfo } from '@/components/questionnaire/PersonalInfoStep';
+import ActivityStep from '@/components/questionnaire/ActivityStep';
+import GoalsStep from '@/components/questionnaire/GoalsStep';
+import DietaryStep from '@/components/questionnaire/DietaryStep';
+import CuisineStep from '@/components/questionnaire/CuisineStep';
+import PreferencesStep from '@/components/questionnaire/PreferencesStep';
+import ResultsStep from '@/components/questionnaire/ResultsStep';
 
 const STORAGE_VERSION = 1;
 const TOTAL_STEPS = 7;
@@ -34,8 +32,7 @@ const loadStoredProgress = (storageKey) => {
     if (!parsed || typeof parsed !== 'object') return null;
     if (parsed.version !== STORAGE_VERSION) return null;
     return parsed;
-  } catch (error) {
-    console.warn('Failed to read stored meal planner progress', error);
+  } catch {
     return null;
   }
 };
@@ -47,29 +44,239 @@ const persistProgress = (storageKey, payload) => {
       storageKey,
       JSON.stringify({ version: STORAGE_VERSION, ...payload })
     );
-  } catch (error) {
-    console.warn('Failed to store meal planner progress', error);
-  }
+  } catch {}
 };
 
+// Step metadata for left panel content
+const STEP_META = [
+  {
+    title: 'Foundation of Growth',
+    subtitle: 'Every journey is unique. Your biometrics provide the essential data to calibrate your personalized nutrition plan.',
+    icon: TrendingUp,
+  },
+  {
+    title: 'Energy Calibration',
+    subtitle: 'Your physical activity level is a key factor in calculating your Basal Metabolic Rate (BMR) and Total Daily Energy Expenditure.',
+    icon: TrendingUp,
+  },
+  {
+    title: 'Goal Alignment',
+    subtitle: 'Understanding your primary objective helps us design meal plans that support your specific health and fitness targets.',
+    icon: TrendingUp,
+  },
+  {
+    title: 'Dietary Intelligence',
+    subtitle: 'Your dietary preferences and restrictions shape every recipe recommendation to ensure safe and enjoyable meals.',
+    icon: TrendingUp,
+  },
+  {
+    title: 'Flavor Profile',
+    subtitle: 'Cuisine preferences help us curate meals that match your taste, making healthy eating a delightful experience.',
+    icon: TrendingUp,
+  },
+  {
+    title: 'Lifestyle Fit',
+    subtitle: 'Cooking time and budget preferences ensure your meal plan fits seamlessly into your daily routine.',
+    icon: TrendingUp,
+  },
+];
+
+// Header with logo, step dots, and controls
+const Header = memo(function Header({ currentStep, totalSteps, lang, setLang, isDarkMode, setIsDarkMode, t }) {
+  if (currentStep === 7) {
+    return (
+      <header className="header dashboard-header">
+        <div className="dashboard-nav-inner">
+          <div className="nav-left">
+            <div className="dashboard-logo">
+              <div className="dashboard-logo-icon">
+                <Utensils className="w-4 h-4 text-white" />
+              </div>
+              <span className="dashboard-logo-text">Meal Intelligence</span>
+            </div>
+
+            <div className="nav-links">
+              <a href="#" className="nav-link">{t('Recipes')}</a>
+              <a href="#" className="nav-link">{t('Meal Tips')}</a>
+              <a href="#" className="nav-link active">{t('Weekly Plan')}</a>
+              <a href="#" className="nav-link">{t('More')}</a>
+            </div>
+          </div>
+
+          <div className="nav-search">
+            <Search className="nav-search-icon" />
+            <input
+              className="nav-search-input"
+              type="text"
+              placeholder={t('Search for meals or nutrients...')}
+              aria-label={t('Search for meals or nutrients')}
+            />
+          </div>
+
+          <div className="nav-icons">
+            <button className="nav-icon-btn" type="button">
+              <Calendar className="w-5 h-5" />
+              <span className="nav-icon-label">{t('Planner')}</span>
+            </button>
+            <button className="nav-icon-btn" type="button">
+              <ShoppingCart className="w-5 h-5" />
+              <span className="nav-icon-label">{t('Groceries')}</span>
+            </button>
+            <SignedIn>
+              <div className="nav-user">
+                <UserButton appearance={{ elements: { userButtonAvatarBox: 'nav-avatar-box' } }} />
+                <span className="nav-icon-label">{t('Profile')}</span>
+              </div>
+            </SignedIn>
+            <SignedOut>
+              <button className="nav-icon-btn" type="button">
+                <User className="w-5 h-5" />
+                <span className="nav-icon-label">{t('Log In')}</span>
+              </button>
+            </SignedOut>
+            <div className="nav-divider" />
+            <div className="nav-controls">
+              <button onClick={() => setLang(lang === 'en' ? 'no' : 'en')} className="nav-lang-btn" type="button">
+                {lang === 'en' ? 'NO' : 'EN'}
+              </button>
+              <button onClick={() => setIsDarkMode(p => !p)} className="nav-theme-btn" type="button" aria-label={t('Toggle theme')}>
+                {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+    );
+  }
+
+  return (
+    <header className="header">
+      <div className="header-inner">
+        {/* Logo */}
+        <div className="logo">
+          <div className="logo-icon">
+            <Utensils className="w-5 h-5 text-white" />
+          </div>
+          <span className="logo-text">Meal Intelligence</span>
+        </div>
+
+        {/* Step dots - only show on onboarding */}
+        {currentStep < 7 && (
+          <div className="step-dots">
+            {Array.from({ length: totalSteps - 1 }).map((_, i) => (
+              <div
+                key={i}
+                className={`step-dot ${i + 1 === currentStep ? 'active' : ''} ${i + 1 < currentStep ? 'completed' : ''}`}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Controls */}
+        <div className="flex items-center gap-3">
+          <button onClick={() => setLang(lang === 'en' ? 'no' : 'en')} className="btn-secondary px-4 py-2 text-xs">
+            {lang === 'en' ? 'NO' : 'EN'}
+          </button>
+          <button onClick={() => setIsDarkMode(p => !p)} className="btn-icon">
+            {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+          </button>
+        </div>
+      </div>
+    </header>
+  );
+});
+
+// Left decorative panel for onboarding
+const LeftPanel = memo(function LeftPanel({ currentStep, t }) {
+  const meta = STEP_META[currentStep - 1] || STEP_META[0];
+  const Icon = meta.icon;
+
+  return (
+    <div className="onboarding-left">
+      <div className="onboarding-left-content">
+        {/* Decorative icon/illustration */}
+        <Motion.div
+          key={currentStep}
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.5 }}
+          className="mb-8"
+        >
+          <svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M30 90V50L45 35L60 50V90" stroke="var(--primary)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M60 90V30L75 15L90 30V90" stroke="var(--primary)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+            <line x1="20" y1="90" x2="100" y2="90" stroke="var(--primary)" strokeWidth="3" strokeLinecap="round"/>
+          </svg>
+        </Motion.div>
+
+        {/* Title */}
+        <Motion.h2
+          key={`title-${currentStep}`}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.1 }}
+          className="text-3xl font-medium text-foreground mb-4 font-serif"
+        >
+          {t(meta.title)}
+        </Motion.h2>
+
+        {/* Subtitle */}
+        <Motion.p
+          key={`sub-${currentStep}`}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.2 }}
+          className="text-muted-foreground max-w-sm leading-relaxed"
+        >
+          {t(meta.subtitle)}
+        </Motion.p>
+
+        {/* Progress indicator at bottom */}
+        <Motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.3 }}
+          className="mt-12 w-24 h-1 bg-border rounded-full overflow-hidden"
+        >
+          <div
+            className="h-full bg-primary rounded-full transition-all duration-500"
+            style={{ width: `${(currentStep / 6) * 100}%` }}
+          />
+        </Motion.div>
+      </div>
+    </div>
+  );
+});
+
+// Footer with privacy note
+const Footer = memo(function Footer({ t }) {
+  return (
+    <footer className="footer">
+      <div className="footer-inner">
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <Lock className="w-4 h-4" />
+          <span className="footer-text">
+            {t('Your data is encrypted and used solely for nutritional analysis.')}
+          </span>
+        </div>
+        <button className="footer-link font-semibold">
+          {t('View Privacy Policy')}
+        </button>
+      </div>
+    </footer>
+  );
+});
 
 export default function MealPlanner({ user }) {
   const { getToken } = useAuth();
   const { lang, setLang, t } = useLanguage();
   const userId = user?.id ?? user?.user_id ?? user?.userId ?? null;
   const storageKey = userId ? `mealplanner_progress_${userId}` : null;
-  const initialProgress = useMemo(
-    () => loadStoredProgress(storageKey),
-    [storageKey]
-  );
+  const initialProgress = useMemo(() => loadStoredProgress(storageKey), [storageKey]);
 
-  const [currentStep, setCurrentStep] = useState(() =>
-    clampStep(initialProgress?.currentStep ?? 1)
-  );
+  const [currentStep, setCurrentStep] = useState(() => clampStep(initialProgress?.currentStep ?? 1));
   const [formData, setFormData] = useState(() =>
-    initialProgress?.formData && typeof initialProgress.formData === 'object'
-      ? initialProgress.formData
-      : {}
+    initialProgress?.formData && typeof initialProgress.formData === 'object' ? initialProgress.formData : {}
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [planPayload, setPlanPayload] = useState(() => initialProgress?.planPayload ?? null);
@@ -81,75 +288,66 @@ export default function MealPlanner({ user }) {
     if (typeof window === 'undefined') return false;
     const stored = window.localStorage.getItem('theme');
     if (stored) return stored === 'dark';
-    const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)')?.matches;
-    return prefersDark ?? false;
+    return window.matchMedia?.('(prefers-color-scheme: dark)')?.matches ?? false;
   });
 
   useEffect(() => {
     const root = document.documentElement;
-    if (isDarkMode) {
-      root.classList.add('dark');
-    } else {
-      root.classList.remove('dark');
-    }
+    root.classList.toggle('dark', isDarkMode);
     if (typeof window !== 'undefined') {
       window.localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
     }
   }, [isDarkMode]);
 
-  const totalSteps = TOTAL_STEPS;
+  const updateFormData = useCallback((newData) => {
+    setFormData((prev) => ({ ...prev, ...newData }));
+  }, []);
 
-  const updateFormData = (newData) => {
-    setFormData(prev => ({ ...prev, ...newData }));
-  };
-
-  const nextStep = () => {
-    if (currentStep < totalSteps) {
-      setCurrentStep(prev => prev + 1);
+  const resetQuestionnaire = useCallback(() => {
+    setCurrentStep(1);
+    setFormData({});
+    setPlanPayload(null);
+    setRawPlanText('');
+    setPlanStatus('idle');
+    setPlanError(null);
+    setPreferenceId(null);
+    setIsSubmitting(false);
+    if (storageKey && typeof window !== 'undefined') {
+      try { window.localStorage.removeItem(storageKey); } catch {}
     }
-  };
+  }, [storageKey]);
 
-  const prevStep = () => {
-    if (currentStep > 1) {
-      setCurrentStep(prev => prev - 1);
-    }
-  };
+  const nextStep = useCallback(() => {
+    setCurrentStep((prev) => Math.min(prev + 1, TOTAL_STEPS));
+  }, []);
 
-  const isStepValid = () => {
+  const prevStep = useCallback(() => {
+    setCurrentStep((prev) => Math.max(prev - 1, 1));
+  }, []);
+
+  const isStepValid = useMemo(() => {
     switch (currentStep) {
-      case 1:
-        return validatePersonalInfo(formData).isValid;
-      case 2:
-        return formData.activity_level;
-      case 3:
-        return formData.nutrition_goal;
-      case 4:
-        return formData.dietary_restrictions && formData.dietary_restrictions.length > 0;
-      case 5:
-        return formData.preferred_cuisines && formData.preferred_cuisines.length > 0;
-      case 6:
-        return formData.cooking_time_preference && formData.meals_per_day && formData.budget_range;
-      default:
-        return true;
+      case 1: return validatePersonalInfo(formData).isValid;
+      case 2: return Boolean(formData.activity_level);
+      case 3: return Boolean(formData.nutrition_goal);
+      case 4: return formData.dietary_restrictions?.length > 0;
+      case 5: return formData.preferred_cuisines?.length > 0;
+      case 6: return Boolean(formData.cooking_time_preference && formData.meals_per_day && formData.budget_range);
+      default: return true;
     }
-  };
+  }, [currentStep, formData]);
 
   const getAuthToken = useCallback(async () => {
-    try {
-      return await getToken();
-    } catch (error) {
-      console.warn('Failed to fetch Clerk token', error);
-      return null;
-    }
+    try { return await getToken(); } catch { return null; }
   }, [getToken]);
 
-  const pollForPlan = useCallback(async (preferenceId, language) => {
+  const pollForPlan = useCallback(async (prefId, language) => {
     const maxAttempts = 60;
     const delayMs = 2000;
 
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       const token = await getAuthToken();
-      const response = await UserPreferences.fetch(preferenceId, language, token);
+      const response = await UserPreferences.fetch(prefId, language, token);
       const status = response?.plan_status;
       const serverPlan = response?.plan ?? null;
       const rawText = response?.raw_plan ?? '';
@@ -162,15 +360,13 @@ export default function MealPlanner({ user }) {
         setRawPlanText('');
         setPlanStatus('loading');
         setPlanError(null);
-        await new Promise(resolve => setTimeout(resolve, delayMs));
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
         continue;
       }
 
       if (translationStatus === 'error') {
         setPlanStatus('error');
-        setPlanError(
-          translationError || 'The plan could not be translated. Please try again.'
-        );
+        setPlanError(translationError || 'The plan could not be translated.');
         return;
       }
 
@@ -184,44 +380,24 @@ export default function MealPlanner({ user }) {
 
       if (status === 'error') {
         setPlanStatus('error');
-        setPlanError(
-          serverError || t('The AI response did not include a plan. Please try again.')
-        );
+        setPlanError(serverError || t('Plan generation failed. Please try again.'));
         return;
       }
 
-      await new Promise(resolve => setTimeout(resolve, delayMs));
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
 
     setPlanStatus('error');
-    setPlanError(t('Plan generation is taking longer than expected. Please try again soon.'));
+    setPlanError(t('Plan generation timed out. Please try again.'));
   }, [t, getAuthToken]);
 
   useEffect(() => {
     if (!storageKey) return;
-    persistProgress(storageKey, {
-      currentStep,
-      formData,
-      planPayload,
-      rawPlanText,
-      planStatus,
-      planError,
-      preferenceId,
-    });
-  }, [
-    storageKey,
-    currentStep,
-    formData,
-    planPayload,
-    rawPlanText,
-    planStatus,
-    planError,
-    preferenceId,
-  ]);
+    persistProgress(storageKey, { currentStep, formData, planPayload, rawPlanText, planStatus, planError, preferenceId });
+  }, [storageKey, currentStep, formData, planPayload, rawPlanText, planStatus, planError, preferenceId]);
 
   useEffect(() => {
-    if (!preferenceId) return;
-    if (planStatus !== 'loading' && planStatus !== 'pending') return;
+    if (!preferenceId || (planStatus !== 'loading' && planStatus !== 'pending')) return;
     pollForPlan(preferenceId, lang);
   }, [planStatus, pollForPlan, preferenceId, lang]);
 
@@ -234,39 +410,26 @@ export default function MealPlanner({ user }) {
         const response = await UserPreferences.fetch(preferenceId, lang, token);
         if (!isActive) return;
         const translationStatus = response?.translation_status;
-        const translationError = response?.translation_error;
         if (translationStatus === 'pending') {
           setPlanStatus('loading');
-          setPlanError(null);
           await pollForPlan(preferenceId, lang);
           return;
         }
         if (translationStatus === 'error') {
           setPlanStatus('error');
-          setPlanError(
-            translationError || t('The plan could not be translated. Please try again.')
-          );
+          setPlanError(response?.translation_error || t('Translation failed.'));
           return;
         }
         setPlanPayload(response?.plan ?? null);
         setRawPlanText(response?.raw_plan ?? '');
-      } catch (error) {
-        console.warn('Failed to refresh plan for language switch', error);
-      }
+      } catch {}
     };
     refreshPlan();
-    return () => {
-      isActive = false;
-    };
+    return () => { isActive = false; };
   }, [lang, preferenceId, planStatus, pollForPlan, t, getAuthToken]);
 
-  const handleFinish = async () => {
-    if (!userId) {
-      console.error(t('Cannot submit preferences without user context.'))
-      return
-    }
-    const language = lang;
-
+  const handleFinish = useCallback(async () => {
+    if (!userId) return;
     setPlanError(null);
     setPlanPayload(null);
     setRawPlanText('');
@@ -277,18 +440,13 @@ export default function MealPlanner({ user }) {
 
     try {
       const token = await getAuthToken();
-      const response = await UserPreferences.create({
-        ...formData,
-        language: lang,
-      }, token);
+      const response = await UserPreferences.create({ ...formData, language: lang }, token);
       const serverPlan = response?.plan ?? null;
       const rawText = response?.raw_plan ?? '';
       const serverError = response?.error ?? '';
       const returnedId = response?.id ?? null;
 
-      if (returnedId) {
-        setPreferenceId(returnedId);
-      }
+      if (returnedId) setPreferenceId(returnedId);
 
       if (serverPlan) {
         setPlanPayload(serverPlan);
@@ -296,145 +454,96 @@ export default function MealPlanner({ user }) {
         setPlanStatus('success');
       } else if (response?.plan_status === 'error') {
         setPlanStatus('error');
-        setPlanError(
-          serverError || t('The AI response did not include a plan. Please try again.')
-        );
+        setPlanError(serverError || t('Plan generation failed.'));
       } else if (response?.id) {
-        await pollForPlan(response.id, language);
+        await pollForPlan(response.id, lang);
       } else {
         setPlanStatus('error');
-        setPlanError(t('Unable to start plan generation. Please try again.'));
+        setPlanError(t('Unable to start plan generation.'));
       }
     } catch (error) {
-      console.error('Error saving preferences:', error);
       setPlanStatus('error');
-      setPlanError(error.message || t('Something went wrong while creating your plan.'));
+      setPlanError(error.message || t('Something went wrong.'));
     } finally {
       setIsSubmitting(false);
     }
-  };
+  }, [userId, formData, lang, getAuthToken, pollForPlan, t]);
 
   const renderStep = () => {
     switch (currentStep) {
-      case 1:
-        return <PersonalInfoStep data={formData} onChange={updateFormData} />;
-      case 2:
-        return <ActivityStep data={formData} onChange={updateFormData} />;
-      case 3:
-        return <GoalsStep data={formData} onChange={updateFormData} />;
-      case 4:
-        return <DietaryStep data={formData} onChange={updateFormData} />;
-      case 5:
-        return <CuisineStep data={formData} onChange={updateFormData} />;
-      case 6:
-        return <PreferencesStep data={formData} onChange={updateFormData} />;
-      case 7:
-        return (
-          <ResultsStep
-            data={formData}
-            plan={planPayload}
-            rawPlanText={rawPlanText}
-            status={planStatus}
-            errorMessage={planError}
-            onRegenerate={handleFinish}
-            regenerateDisabled={isSubmitting}
-          />
-        );
-      default:
-        return null;
+      case 1: return <PersonalInfoStep data={formData} onChange={updateFormData} />;
+      case 2: return <ActivityStep data={formData} onChange={updateFormData} />;
+      case 3: return <GoalsStep data={formData} onChange={updateFormData} />;
+      case 4: return <DietaryStep data={formData} onChange={updateFormData} />;
+      case 5: return <CuisineStep data={formData} onChange={updateFormData} />;
+      case 6: return <PreferencesStep data={formData} onChange={updateFormData} />;
+      case 7: return (
+        <ResultsStep
+          data={formData}
+          plan={planPayload}
+          rawPlanText={rawPlanText}
+          status={planStatus}
+          errorMessage={planError}
+          onRegenerate={handleFinish}
+          regenerateDisabled={isSubmitting}
+          onRestart={resetQuestionnaire}
+        />
+      );
+      default: return null;
     }
   };
 
+  // Dashboard layout for results
+  if (currentStep === 7) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header currentStep={currentStep} totalSteps={TOTAL_STEPS} lang={lang} setLang={setLang} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} t={t} />
+        <main className="pt-20 pb-12 px-4 md:px-8">
+          <div className="max-w-6xl mx-auto">
+            <AnimatePresence mode="wait">{renderStep()}</AnimatePresence>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  // Onboarding layout with split screen
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#F5F5F5] via-white to-[#F5F5F5] p-4 md:p-8 transition-colors dark:from-[#0F172A] dark:via-[#111827] dark:to-[#0F172A]">
-      <div className="max-w-3xl mx-auto">
-        <div className="flex justify-end items-center gap-3 mb-4">
-          <Button
-            variant="outline"
-            onClick={() => setLang(lang === 'en' ? 'no' : 'en')}
-            className="rounded-full bg-white/70 text-gray-600 shadow-sm hover:bg-white dark:bg-slate-800/70 dark:text-gray-200 dark:hover:bg-slate-700"
-          >
-            {lang === 'en' ? 'NO' : 'EN'}
-            <span className="sr-only">{t('Language')}</span>
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setIsDarkMode(prev => !prev)}
-            className="rounded-full bg-white/70 text-gray-600 shadow-sm hover:bg-white dark:bg-slate-800/70 dark:text-gray-200 dark:hover:bg-slate-700"
-          >
-            {isDarkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-            <span className="sr-only">{t('Toggle dark mode')}</span>
-          </Button>
-        </div>
-        <Motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-center mb-8"
-        >
-          <h1 className="text-3xl md:text-4xl font-semibold mb-3 text-[#0f172a] dark:text-gray-100">
-            {t('Meal Intelligence')}
-          </h1>
-          <p className="text-gray-600 dark:text-gray-300">
-            {t(
-              'Answer a few focused questions to tailor your weekly plan. Clear, structured, and ready to use.'
+    <div className="onboarding-container">
+      {/* Left decorative panel */}
+      <LeftPanel currentStep={currentStep} t={t} />
+
+      {/* Right form panel */}
+      <div className="onboarding-right">
+        <Header currentStep={currentStep} totalSteps={TOTAL_STEPS} lang={lang} setLang={setLang} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} t={t} />
+
+        <main className="flex-1 flex flex-col pt-24 pb-8 px-6 md:px-12 lg:px-16">
+          <div className="flex-1 max-w-xl mx-auto w-full">
+            <AnimatePresence mode="wait">{renderStep()}</AnimatePresence>
+          </div>
+
+          {/* Navigation */}
+          <div className="max-w-xl mx-auto w-full mt-12 flex items-center justify-between">
+            <button onClick={prevStep} disabled={currentStep === 1} className="btn-text disabled:opacity-30">
+              <ArrowLeft className="w-4 h-4" />
+              {t('Back')}
+            </button>
+
+            {currentStep === 6 ? (
+              <button onClick={handleFinish} disabled={!isStepValid || isSubmitting} className="btn-primary">
+                {isSubmitting ? t('Generating...') : t('Continue')}
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            ) : (
+              <button onClick={nextStep} disabled={!isStepValid} className="btn-primary">
+                {t('Continue')}
+                <ArrowRight className="w-4 h-4" />
+              </button>
             )}
-          </p>
-        </Motion.div>
+          </div>
+        </main>
 
-        <Motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="bg-white rounded-2xl shadow-xl p-6 md:p-8 transition-colors dark:bg-slate-900 dark:shadow-[0_24px_60px_rgba(7,11,23,0.45)]"
-        >
-          {currentStep < 7 && (
-            <ProgressBar currentStep={currentStep} totalSteps={6} />
-          )}
-
-          <AnimatePresence mode="wait">
-            {renderStep()}
-          </AnimatePresence>
-
-          {currentStep < 7 && (
-            <Motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.5 }}
-              className="flex justify-between mt-8"
-            >
-              <Button
-                variant="outline"
-                onClick={prevStep}
-                disabled={currentStep === 1}
-                className="flex items-center gap-2 dark:border-slate-700 dark:text-gray-200"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                {t('Back')}
-              </Button>
-
-              {currentStep === 6 ? (
-                <Button
-                  onClick={handleFinish}
-                  disabled={!isStepValid() || isSubmitting}
-                  className="flex items-center gap-2 px-8"
-                >
-                  {isSubmitting ? t('Preparing your plan...') : t('Generate my plan')}
-                  <ArrowRight className="w-4 h-4" />
-                </Button>
-              ) : (
-                <Button
-                  onClick={nextStep}
-                  disabled={!isStepValid()}
-                  className="flex items-center gap-2"
-                >
-                  {t('Continue')}
-                  <ArrowRight className="w-4 h-4" />
-                </Button>
-              )}
-            </Motion.div>
-          )}
-        </Motion.div>
+        <Footer t={t} />
       </div>
     </div>
   );
