@@ -6,6 +6,13 @@ import Login from '@/Pages/Login.jsx'
 import Recipes from '@/Pages/Recipes.jsx'
 import Groceries from '@/Pages/Groceries.jsx'
 import { LanguageProvider } from '@/i18n/LanguageContext'
+import AdminGuard from '@/components/admin/AdminGuard'
+import AdminDashboard from '@/Pages/AdminDashboard'
+import AdminUsers from '@/Pages/AdminUsers'
+import AdminRecipes from '@/Pages/AdminRecipes'
+import AdminLogs from '@/Pages/AdminLogs'
+import AdminUserDetails from '@/Pages/AdminUserDetails'
+import Forbidden from '@/Pages/Forbidden'
 
 function AppRoutes() {
   const { user } = useUser()
@@ -17,6 +24,14 @@ function AppRoutes() {
     <>
       <SignedIn>
         <Routes>
+          <Route path="/admin" element={<AdminGuard />}>
+            <Route index element={<AdminDashboard />} />
+            <Route path="users" element={<AdminUsers />} />
+            <Route path="users/:userId" element={<AdminUserDetails />} />
+            <Route path="recipes" element={<AdminRecipes />} />
+            <Route path="logs" element={<AdminLogs />} />
+          </Route>
+          <Route path="/forbidden" element={<Forbidden />} />
           <Route path="/" element={<Navigate to="/planner" replace />} />
           <Route path="/planner" element={<MealPlanner user={normalizedUser} />} />
           <Route path="/recipes" element={<Recipes />} />
