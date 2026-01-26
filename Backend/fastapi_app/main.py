@@ -116,6 +116,8 @@ def current_user_dependency(
 ) -> User:
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account suspended")
     return user
 
 
@@ -235,36 +237,51 @@ def _persist_plan_result(db: Session, preference: Preference, plan_result: Dict[
     existing_raw = preference.raw_data if isinstance(preference.raw_data, dict) else {}
     updated_raw = dict(existing_raw)
     updated_raw["generated_plan"] = _json_safe(plan_result)
-    updated_raw["generated_plan"] = _json_safe(plan_result)
     preference.raw_data = updated_raw
     db.add(preference)
     db.commit()
     db.refresh(preference)
 
 
+def _flatten_ingredients(value: Any) -> list[str]:
+    items: list[str] = []
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, (list, tuple)):
+        for item in value:
+            if isinstance(item, dict):
+                text = item.get("original_text") or item.get("name")
+                if text:
+                    items.append(str(text))
+            elif item is not None:
+                items.append(str(item))
+    return items
+
+
 def _recipe_to_dict(recipe: Recipe) -> Dict[str, Any]:
     """Normalize a Recipe ORM object into a JSON-serializable dict."""
     nutrition = recipe.nutrition if isinstance(recipe.nutrition, dict) else {}
-    calories = nutrition.get("calories_kcal") or nutrition.get("calories")
+    calories = nutrition.get("calories") or nutrition.get("calories_kcal")
 
-    primary_image = None
-    if isinstance(recipe.local_images, list) and recipe.local_images:
-        primary_image = recipe.local_images[0]
-    elif isinstance(recipe.images, list) and recipe.images:
-        primary_image = recipe.images[0]
+    primary_image = recipe.image_url
+    images = [recipe.image_url] if recipe.image_url else []
+
+    meal_type = (recipe.meal_type or "").lower()
+    is_breakfast = meal_type == "breakfast"
+    is_lunch = meal_type == "lunch"
 
     payload = {
         "id": recipe.id,
-        "name": recipe.name,
-        "url": recipe.url,
-        "source": recipe.source,
-        "type": recipe.type,
-        "price_tier": recipe.price_tier,
+        "name": recipe.title,
+        "url": recipe.source_url,
+        "source": recipe.author or "unknown",
+        "type": recipe.dish_type,
+        "price_tier": None,
         "tags": recipe.tags or [],
-        "ingredients": recipe.ingredients or [],
+        "ingredients": _flatten_ingredients(recipe.ingredients) if recipe.ingredients else [],
         "instructions": recipe.instructions or [],
-        "images": recipe.images or [],
-        "local_images": recipe.local_images or [],
+        "images": images,
+        "local_images": [],
         "image": primary_image,
         "nutrition": {
             "calories": calories,
@@ -272,8 +289,8 @@ def _recipe_to_dict(recipe: Recipe) -> Dict[str, Any]:
             "carbs_g": nutrition.get("carbs_g"),
             "fat_g": nutrition.get("fat_g"),
         },
-        "is_breakfast": recipe.is_breakfast,
-        "is_lunch": recipe.is_lunch,
+        "is_breakfast": is_breakfast,
+        "is_lunch": is_lunch,
     }
     return _json_safe(payload)
 
@@ -605,10 +622,24 @@ def get_admin_dashboard_metrics(
         )
 
         total_recipes = db.scalar(select(func.count(Recipe.id))) or 0
-        # Recipe timestamps are not tracked yet; keep weekly deltas at zero until schema supports it
-        recipes_current_week = 0
-        recipes_previous_week = 0
-        recipes_wow = 0.0
+        recipes_current_week = (
+            db.scalar(
+                select(func.count(Recipe.id)).where(
+                    Recipe.created_at >= current_week_start
+                )
+            )
+            or 0
+        )
+        recipes_previous_week = (
+            db.scalar(
+                select(func.count(Recipe.id)).where(
+                    Recipe.created_at >= previous_week_start,
+                    Recipe.created_at < current_week_start,
+                )
+            )
+            or 0
+        )
+        recipes_wow = _wow_percent(recipes_current_week, recipes_previous_week)
 
         health = HealthStatus(status="healthy", checks={"database": "ok"})
     except Exception as exc:  # pragma: no cover - defensive fallback
@@ -671,7 +702,7 @@ def list_recipes(
     filters = []
 
     if search:
-        filters.append(Recipe.name.ilike(f"%{search.strip()}%"))
+        filters.append(Recipe.title.ilike(f"%{search.strip()}%"))
     if tag:
         filters.append(Recipe.tags.any(tag))
 
@@ -683,7 +714,7 @@ def list_recipes(
     total = db.scalar(count_stmt) or 0
 
     rows = db.scalars(
-        base_stmt.order_by(Recipe.id).offset(offset).limit(limit)
+        base_stmt.order_by(Recipe.created_at.desc().nullslast(), Recipe.slug).offset(offset).limit(limit)
     ).all()
 
     return {
