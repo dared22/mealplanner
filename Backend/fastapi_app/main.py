@@ -1,5 +1,7 @@
 import logging
 import os
+import re
+from uuid import UUID, uuid4
 from typing import Any, Dict, Optional
 
 from fastapi import BackgroundTasks, Body, Depends, FastAPI, HTTPException, Query, Request, status
@@ -8,7 +10,12 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
-from clerk_auth import extract_primary_email, get_session_token, verify_session_token
+from clerk_auth import (
+    extract_primary_email,
+    extract_username,
+    get_session_token,
+    verify_session_token,
+)
 from database import Base, SessionLocal, engine, get_session
 from models import Preference, Recipe, User
 from planner import generate_daily_plan_for_preference
@@ -20,9 +27,18 @@ logger = logging.getLogger(__name__)
 
 
 class SessionResponse(BaseModel):
-    user_id: int
+    user_id: UUID
     clerk_user_id: str
     email: Optional[EmailStr] = None
+    username: str
+
+
+class AdminSessionResponse(BaseModel):
+    user_id: UUID
+    clerk_user_id: str
+    email: Optional[EmailStr] = None
+    username: str
+    is_admin: bool
 
 
 def optional_current_user(
@@ -38,8 +54,17 @@ def optional_current_user(
     if not clerk_user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session token")
 
+    preferred_username = extract_username(payload)
+
     user = db.scalar(select(User).where(User.clerk_user_id == clerk_user_id))
     if user is not None:
+        if not user.username:
+            user.username = _generate_username(db, user.email, clerk_user_id, preferred_username)
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+        else:
+            _maybe_update_username(db, user, preferred_username)
         return user
 
     email = extract_primary_email(payload)
@@ -47,12 +72,20 @@ def optional_current_user(
         existing = db.scalar(select(User).where(func.lower(User.email) == email.lower()))
         if existing is not None:
             existing.clerk_user_id = clerk_user_id
+            if not existing.username:
+                existing.username = _generate_username(db, existing.email, clerk_user_id, preferred_username)
+            else:
+                _maybe_update_username(db, existing, preferred_username)
             db.add(existing)
             db.commit()
             db.refresh(existing)
             return existing
 
-    user = User(clerk_user_id=clerk_user_id, email=email)
+    user = User(
+        clerk_user_id=clerk_user_id,
+        email=email,
+        username=_generate_username(db, email, clerk_user_id, preferred_username),
+    )
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -64,6 +97,14 @@ def current_user_dependency(
 ) -> User:
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    return user
+
+
+def admin_user_dependency(
+    user: User = Depends(current_user_dependency),
+) -> User:
+    if not user.is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     return user
 
 
@@ -90,6 +131,60 @@ def _normalize_language(value: Optional[str]) -> Optional[str]:
 
 def _language_label(code: str) -> str:
     return LANGUAGE_LABELS.get(code, code)
+
+
+def _slugify_username_seed(seed: str) -> str:
+    cleaned = re.sub(r"[^a-z0-9]+", "_", seed.lower()).strip("_")
+    return cleaned or "user"
+
+
+def _generate_username(
+    db: Session,
+    email: Optional[str],
+    clerk_user_id: Optional[str],
+    preferred_username: Optional[str] = None,
+) -> str:
+    seeds: list[str] = []
+    if preferred_username:
+        seeds.append(preferred_username.strip())
+    if email:
+        seeds.append(email.split("@")[0])
+    if clerk_user_id:
+        seeds.append(clerk_user_id)
+    seeds.append("user")
+
+    for seed in seeds:
+        if preferred_username and seed == preferred_username.strip() and seed:
+            base = seed
+        else:
+            base = _slugify_username_seed(seed)
+        candidate = base
+        suffix = 1
+        while db.scalar(select(User.id).where(User.username == candidate)) is not None:
+            suffix += 1
+            candidate = f"{base}_{suffix}"
+            if suffix > 50:
+                break
+        if candidate:
+            return candidate
+
+    return f"user_{uuid4().hex[:8]}"
+
+
+def _maybe_update_username(
+    db: Session,
+    user: User,
+    preferred_username: Optional[str],
+) -> None:
+    if not preferred_username:
+        return
+
+    desired = _generate_username(db, user.email, user.clerk_user_id, preferred_username)
+    if desired != user.username:
+        user.username = desired
+        db.add(user)
+        db.commit()
+        db.refresh(user)
 
 
 def _json_safe(value: Any) -> Any:
@@ -301,8 +396,13 @@ def save_preferences(
         raise HTTPException(status_code=400, detail="Request body cannot be empty")
 
     user_id = payload.get("user_id")
-    if user_id is not None and user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Cannot submit preferences for another user")
+    if user_id is not None:
+        try:
+            provided_id = UUID(str(user_id))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid user_id format") from exc
+        if provided_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Cannot submit preferences for another user")
 
     preference = Preference(
         age=payload.get("age"),
@@ -441,12 +541,24 @@ def get_active_session(user: User = Depends(current_user_dependency)) -> Session
         user_id=user.id,
         clerk_user_id=user.clerk_user_id or "",
         email=user.email,
+        username=user.username,
+    )
+
+
+@app.get("/admin/session", response_model=AdminSessionResponse)
+def get_admin_session(user: User = Depends(admin_user_dependency)) -> AdminSessionResponse:
+    return AdminSessionResponse(
+        user_id=user.id,
+        clerk_user_id=user.clerk_user_id or "",
+        email=user.email,
+        username=user.username,
+        is_admin=user.is_admin,
     )
 
 
 @app.get("/users/{user_id}/preferences")
 def list_user_preferences(
-    user_id: int,
+    user_id: UUID,
     db: Session = Depends(get_session),
     current_user: User = Depends(current_user_dependency),
 ) -> Dict[str, Any]:
