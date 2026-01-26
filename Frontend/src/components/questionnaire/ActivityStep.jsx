@@ -1,107 +1,149 @@
-import React from 'react';
+import React, { memo, useCallback, useMemo } from 'react';
 import { motion as Motion } from 'framer-motion';
-import { Activity } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { useLanguage } from '@/i18n/LanguageContext';
 
-export default function ActivityStep({ data, onChange }) {
+const ActivityStep = memo(function ActivityStep({ data, onChange }) {
   const { t } = useLanguage();
-  const activityLevels = [
-    {
-      value: 'sedentary',
-      title: t('Sedentary'),
-      description: t('Minimal movement, desk-based work'),
-      icon: 'S'
+
+  const activityLevels = useMemo(
+    () => [
+      {
+        value: 'sedentary',
+        title: t('Sedentary'),
+        description: t('Minimal movement, desk-based work'),
+        level: 1,
+        icon: (
+          <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0" />
+          </svg>
+        ),
+      },
+      {
+        value: 'lightly_active',
+        title: t('Lightly Active'),
+        description: t('Light exercise 1-3 days/week'),
+        level: 2,
+        icon: (
+          <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
+          </svg>
+        ),
+      },
+      {
+        value: 'moderately_active',
+        title: t('Moderately Active'),
+        description: t('Moderate exercise 3-5 days/week'),
+        level: 3,
+        icon: (
+          <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
+          </svg>
+        ),
+      },
+      {
+        value: 'very_active',
+        title: t('Very Active'),
+        description: t('Intense exercise 6-7 days/week'),
+        level: 4,
+        icon: (
+          <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15.362 5.214A8.252 8.252 0 0112 21 8.25 8.25 0 016.038 7.048 8.287 8.287 0 009 9.6a8.983 8.983 0 013.361-6.867 8.21 8.21 0 003 2.48z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 18a3.75 3.75 0 00.495-7.467 5.99 5.99 0 00-1.925 3.546 5.974 5.974 0 01-2.133-1A3.75 3.75 0 0012 18z" />
+          </svg>
+        ),
+      },
+      {
+        value: 'extremely_active',
+        title: t('Extremely Active'),
+        description: t('Intense daily training'),
+        level: 5,
+        icon: (
+          <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
+          </svg>
+        ),
+      },
+    ],
+    [t]
+  );
+
+  const handleSelect = useCallback(
+    (value) => {
+      onChange({ activity_level: value });
     },
-    {
-      value: 'lightly_active',
-      title: t('Lightly Active'),
-      description: t('Light exercise 1–3 days per week'),
-      icon: 'L'
-    },
-    {
-      value: 'moderately_active',
-      title: t('Moderately Active'),
-      description: t('Moderate exercise 3–5 days per week'),
-      icon: 'M'
-    },
-    {
-      value: 'very_active',
-      title: t('Very Active'),
-      description: t('Intense exercise 6–7 days per week'),
-      icon: 'V'
-    },
-    {
-      value: 'extremely_active',
-      title: t('Extremely Active'),
-      description: t('Heavy training or physically demanding work'),
-      icon: 'E'
-    }
-  ];
+    [onChange]
+  );
 
   return (
     <Motion.div
-      initial={{ opacity: 0, x: 50 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -50 }}
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
       transition={{ duration: 0.4 }}
-      className="space-y-6"
+      className="space-y-10"
     >
-      <div className="text-center mb-8">
-        <Motion.div
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
-          className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center bg-primary/20 text-primary"
-        >
-          <Activity className="w-8 h-8" />
-        </Motion.div>
-        <h2 className="text-2xl font-semibold mb-2 text-slate-900 dark:text-slate-100">
-          {t("What's your activity level?")}
-        </h2>
-        <p className="text-gray-600 dark:text-gray-300">
+      {/* Headline */}
+      <div>
+        <h1 className="headline-serif mb-3">
+          {t("What's your")} <span className="accent">{t('activity level')}</span>?
+        </h1>
+        <p className="text-muted-foreground text-lg">
           {t('Helps us set your daily energy needs.')}
         </p>
       </div>
 
-      <div className="space-y-4">
-        {activityLevels.map((level, index) => (
-          <Motion.div
-            key={level.value}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 * index }}
-            className={`p-4 rounded-xl border-2 cursor-pointer transition-all duration-200 ${
-              data.activity_level === level.value
-                ? 'border-primary bg-primary/10 shadow-sm'
-                : 'border-gray-200 hover:border-primary/70 hover:bg-gray-50 dark:border-slate-700 dark:hover:border-primary/60 dark:hover:bg-slate-800'
-            }`}
-            onClick={() => onChange({ activity_level: level.value })}
-          >
-            <div className="flex items-center space-x-4">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-secondary text-sm font-semibold text-slate-900 dark:text-slate-100">
+      {/* Activity Cards - Horizontal Row */}
+      <div className="activity-grid">
+        {activityLevels.map((level, index) => {
+          const isSelected = data.activity_level === level.value;
+          return (
+            <Motion.button
+              key={level.value}
+              type="button"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.05 * index }}
+              onClick={() => handleSelect(level.value)}
+              className={`activity-card ${isSelected ? 'selected' : ''}`}
+            >
+              {/* Check indicator */}
+              {isSelected && (
+                <div className="check-icon">
+                  <Check className="w-4 h-4" />
+                </div>
+              )}
+
+              {/* Icon */}
+              <div className="card-icon">
                 {level.icon}
               </div>
-              <div className="flex-1">
-                <h3 className="font-semibold text-slate-900 dark:text-slate-50">
-                  {level.title}
-                </h3>
-                <p className="text-sm text-gray-600 dark:text-gray-300">{level.description}</p>
+
+              {/* Content */}
+              <h3 className="card-title">{level.title}</h3>
+              {/* Activity level dots */}
+              <div className="activity-dots">
+                {[1, 2, 3, 4, 5].map((dot) => (
+                  <div
+                    key={dot}
+                    className={`activity-dot ${
+                      dot <= level.level
+                        ? isSelected
+                          ? 'bg-primary'
+                          : 'bg-primary/60'
+                        : 'bg-border'
+                    }`}
+                  />
+                ))}
               </div>
-              <div
-                className={`relative flex h-5 w-5 items-center justify-center rounded-full border-2 transition-colors duration-200 ${
-                  data.activity_level === level.value
-                    ? 'border-primary bg-primary/10 shadow-[0_0_0_4px_rgba(58,175,169,0.25)]'
-                    : 'border-gray-300 bg-white'
-                }`}
-              >
-                {data.activity_level === level.value && (
-                  <span className="block h-2.5 w-2.5 rounded-full bg-primary" />
-                )}
-              </div>
-            </div>
-          </Motion.div>
-        ))}
+              <p className="card-description">{level.description}</p>
+            </Motion.button>
+          );
+        })}
       </div>
     </Motion.div>
   );
-}
+});
+
+export default ActivityStep;

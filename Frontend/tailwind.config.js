@@ -9,6 +9,15 @@ export default {
     extend: {
       fontFamily: {
         sans: ["var(--font-sans)", ...defaultTheme.fontFamily.sans],
+        display: ["var(--font-display)", ...defaultTheme.fontFamily.sans],
+      },
+      colors: {
+        primary: "var(--primary)",
+        accent: "var(--accent)",
+        background: "var(--background)",
+        foreground: "var(--foreground)",
+        card: "var(--card)",
+        border: "var(--border)",
       },
     },
   },

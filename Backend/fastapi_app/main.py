@@ -2,7 +2,7 @@ import logging
 import os
 from typing import Any, Dict, Optional
 
-from fastapi import BackgroundTasks, Body, Depends, FastAPI, HTTPException, Request, status
+from fastapi import BackgroundTasks, Body, Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select, func
@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from clerk_auth import extract_primary_email, get_session_token, verify_session_token
 from database import Base, SessionLocal, engine, get_session
-from models import Preference, User
+from models import Preference, Recipe, User
 from planner import generate_daily_plan_for_preference
 from recipe_translator import PlanTranslator
 
@@ -126,6 +126,42 @@ def _persist_plan_result(db: Session, preference: Preference, plan_result: Dict[
     db.add(preference)
     db.commit()
     db.refresh(preference)
+
+
+def _recipe_to_dict(recipe: Recipe) -> Dict[str, Any]:
+    """Normalize a Recipe ORM object into a JSON-serializable dict."""
+    nutrition = recipe.nutrition if isinstance(recipe.nutrition, dict) else {}
+    calories = nutrition.get("calories_kcal") or nutrition.get("calories")
+
+    primary_image = None
+    if isinstance(recipe.local_images, list) and recipe.local_images:
+        primary_image = recipe.local_images[0]
+    elif isinstance(recipe.images, list) and recipe.images:
+        primary_image = recipe.images[0]
+
+    payload = {
+        "id": recipe.id,
+        "name": recipe.name,
+        "url": recipe.url,
+        "source": recipe.source,
+        "type": recipe.type,
+        "price_tier": recipe.price_tier,
+        "tags": recipe.tags or [],
+        "ingredients": recipe.ingredients or [],
+        "instructions": recipe.instructions or [],
+        "images": recipe.images or [],
+        "local_images": recipe.local_images or [],
+        "image": primary_image,
+        "nutrition": {
+            "calories": calories,
+            "protein_g": nutrition.get("protein_g"),
+            "carbs_g": nutrition.get("carbs_g"),
+            "fat_g": nutrition.get("fat_g"),
+        },
+        "is_breakfast": recipe.is_breakfast,
+        "is_lunch": recipe.is_lunch,
+    }
+    return _json_safe(payload)
 
 
 def _translate_plan_in_background(pref_id: int, lang: str) -> None:
@@ -428,4 +464,42 @@ def list_user_preferences(
             }
             for entry in entries
         ],
+    }
+
+
+@app.get("/recipes")
+def list_recipes(
+    search: Optional[str] = Query(None, description="Case-insensitive name match"),
+    tag: Optional[str] = Query(None, description="Filter by tag"),
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_session),
+    _user: Optional[User] = Depends(optional_current_user),
+) -> Dict[str, Any]:
+    """Return recipes from the database with lightweight filtering."""
+    filters = []
+
+    if search:
+        filters.append(Recipe.name.ilike(f"%{search.strip()}%"))
+    if tag:
+        filters.append(Recipe.tags.any(tag))
+
+    base_stmt = select(Recipe)
+    if filters:
+        base_stmt = base_stmt.where(*filters)
+
+    count_stmt = select(func.count()).select_from(base_stmt.subquery())
+    total = db.scalar(count_stmt) or 0
+
+    rows = db.scalars(
+        base_stmt.order_by(Recipe.id).offset(offset).limit(limit)
+    ).all()
+
+    return {
+        "items": [_recipe_to_dict(row) for row in rows],
+        "pagination": {
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+        },
     }
