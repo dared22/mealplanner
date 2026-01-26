@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@clerk/clerk-react';
+import { Link } from 'react-router-dom';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { API_URL } from '@/Entities/api';
 import { Button } from '@/components/ui/button';
@@ -17,6 +18,13 @@ const formatDate = (value) => {
 const formatDateParam = (value, isEnd = false) => {
   if (!value) return null;
   return `${value}T${isEnd ? '23:59:59' : '00:00:00'}Z`;
+};
+
+const getStatusBadge = (isActive) => {
+  if (isActive) {
+    return 'bg-emerald-100 text-emerald-700';
+  }
+  return 'bg-rose-100 text-rose-700';
 };
 
 export default function AdminUsers() {
@@ -39,6 +47,18 @@ export default function AdminUsers() {
     startDate: '',
     endDate: '',
   });
+
+  const totalPages = useMemo(() => {
+    if (!pagination.total) return 1;
+    return Math.max(1, Math.ceil(pagination.total / pagination.limit));
+  }, [pagination.limit, pagination.total]);
+
+  const currentPage = useMemo(() => {
+    return Math.floor(pagination.offset / pagination.limit) + 1;
+  }, [pagination.limit, pagination.offset]);
+
+  const canGoBack = pagination.offset > 0;
+  const canGoNext = pagination.offset + pagination.limit < pagination.total;
 
   const applyFilters = () => {
     setFilters({
@@ -110,6 +130,15 @@ export default function AdminUsers() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters, pagination.offset, pagination.limit]);
 
+  const handlePageChange = (direction) => {
+    if (direction === 'prev' && canGoBack) {
+      setPagination((prev) => ({ ...prev, offset: Math.max(0, prev.offset - prev.limit) }));
+    }
+    if (direction === 'next' && canGoNext) {
+      setPagination((prev) => ({ ...prev, offset: prev.offset + prev.limit }));
+    }
+  };
+
   if (status === 'loading') {
     return (
       <div className="min-h-[50vh] flex items-center justify-center text-muted-foreground">
@@ -137,6 +166,9 @@ export default function AdminUsers() {
       </div>
     );
   }
+
+  const startIndex = pagination.total === 0 ? 0 : pagination.offset + 1;
+  const endIndex = Math.min(pagination.offset + pagination.limit, pagination.total);
 
   return (
     <div className="space-y-6">
@@ -197,11 +229,16 @@ export default function AdminUsers() {
         </div>
       </div>
 
-      <div className="rounded-xl border border-border bg-card shadow-sm">
-        <div className="border-b border-border px-6 py-4">
-          <div className="text-sm font-medium text-foreground">All users</div>
+      <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-6 py-4">
+          <div>
+            <div className="text-sm font-medium text-foreground">All users</div>
+            <div className="text-xs text-muted-foreground">
+              {pagination.total} total users
+            </div>
+          </div>
           <div className="text-xs text-muted-foreground">
-            {pagination.total} total users
+            Page {currentPage} of {totalPages}
           </div>
         </div>
 
@@ -210,24 +247,77 @@ export default function AdminUsers() {
             No users match your filters. Try adjusting the search or date range.
           </div>
         ) : (
-          <ul className="divide-y divide-border">
-            {users.map((user) => (
-              <li key={user.id} className="px-6 py-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <div className="font-medium text-foreground">
-                      {user.username || 'Unnamed user'}
-                    </div>
-                    <div className="text-xs text-muted-foreground">{user.email}</div>
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    Signed up {formatDate(user.created_at)}
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/40 text-muted-foreground">
+                <tr>
+                  <th className="px-6 py-3 text-left font-medium">User</th>
+                  <th className="px-6 py-3 text-left font-medium">Email</th>
+                  <th className="px-6 py-3 text-left font-medium">Signup date</th>
+                  <th className="px-6 py-3 text-left font-medium">Status</th>
+                  <th className="px-6 py-3 text-right font-medium">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {users.map((user) => {
+                  const statusLabel = user.is_active ? 'Active' : 'Suspended';
+                  return (
+                    <tr key={user.id} className="hover:bg-muted/20">
+                      <td className="px-6 py-4 font-medium text-foreground">
+                        {user.username || 'Unnamed user'}
+                      </td>
+                      <td className="px-6 py-4 text-muted-foreground">{user.email}</td>
+                      <td className="px-6 py-4 text-muted-foreground">
+                        {formatDate(user.created_at)}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span
+                          className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${getStatusBadge(
+                            user.is_active,
+                          )}`}
+                        >
+                          {statusLabel}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <Link
+                          to={`/admin/users/${user.id}`}
+                          className="text-sm font-medium text-foreground underline-offset-4 hover:underline"
+                        >
+                          View details
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
+
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-6 py-4">
+          <div className="text-xs text-muted-foreground">
+            Showing {startIndex}-{endIndex} of {pagination.total}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handlePageChange('prev')}
+              disabled={!canGoBack}
+            >
+              Previous
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handlePageChange('next')}
+              disabled={!canGoNext}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
       </div>
     </div>
   );
