@@ -1,5 +1,79 @@
 export const translations = {
   no: {
+    // Navigation
+    Recipes: 'Oppskrifter',
+    'Meal Tips': 'M\u00e5ltidstips',
+    'Weekly Plan': 'Ukeplan',
+    More: 'Mer',
+    'Search for meals or nutrients...': 'S\u00f8k etter m\u00e5ltider eller n\u00e6ringsstoffer...',
+    'Search for meals or nutrients': 'S\u00f8k etter m\u00e5ltider eller n\u00e6ringsstoffer',
+    Planner: 'Planlegger',
+    Groceries: 'Handleliste',
+    Profile: 'Profil',
+    'Log In': 'Logg inn',
+    'Toggle theme': 'Bytt tema',
+    Regenerate: 'Regenerer',
+
+    // Left panel onboarding
+    'Foundation of Growth': 'Grunnlaget for vekst',
+    'Every journey is unique. Your biometrics provide the essential data to calibrate your personalized nutrition plan.':
+      'Hver reise er unik. Din biometri gir de essensielle dataene for \u00e5 kalibrere din personlige ern\u00e6ringsplan.',
+    'Energy Calibration': 'Energikalibrering',
+    'Your physical activity level is a key factor in calculating your Basal Metabolic Rate (BMR) and Total Daily Energy Expenditure.':
+      'Ditt fysiske aktivitetsniv\u00e5 er en n\u00f8kkelfaktor i beregningen av din basalmetabolisme (BMR) og totale daglige energiforbruk.',
+    'Goal Alignment': 'M\u00e5ljustering',
+    'Understanding your primary objective helps us design meal plans that support your specific health and fitness targets.':
+      '\u00c5 forst\u00e5 ditt prim\u00e6re m\u00e5l hjelper oss med \u00e5 designe m\u00e5ltidsplaner som st\u00f8tter dine spesifikke helse- og treningsmål.',
+    'Dietary Intelligence': 'Kostholdsanalyse',
+    'Your dietary preferences and restrictions shape every recipe recommendation to ensure safe and enjoyable meals.':
+      'Dine kostpreferanser og restriksjoner former hver oppskriftsanbefaling for \u00e5 sikre trygge og gode m\u00e5ltider.',
+    'Flavor Profile': 'Smaksprofil',
+    'Cuisine preferences help us curate meals that match your taste, making healthy eating a delightful experience.':
+      'Kj\u00f8kkenpreferanser hjelper oss med \u00e5 kuratere m\u00e5ltider som matcher din smak, og gj\u00f8r sunn mat til en herlig opplevelse.',
+    'Lifestyle Fit': 'Livsstilstilpasning',
+    'Cooking time and budget preferences ensure your meal plan fits seamlessly into your daily routine.':
+      'Tilberedningstid og budsjettpreferanser sikrer at m\u00e5ltidsplanen passer s\u00f8ml\u00f8st inn i din daglige rutine.',
+
+    // Footer
+    'Your data is encrypted and used solely for nutritional analysis.':
+      'Dine data er kryptert og brukes kun til ern\u00e6ringsanalyse.',
+    'View Privacy Policy': 'Se personvernregler',
+
+    // Results page
+    Your: 'Din',
+    'meal plan': 'm\u00e5ltidsplan',
+    'is ready': 'er klar',
+    'Preparing your': 'Forbereder din',
+    plan: 'plan',
+    'Something went': 'Noe gikk',
+    wrong: 'galt',
+    'Balanced menus aligned with your goals and preferences.':
+      'Balanserte menyer tilpasset dine m\u00e5l og preferanser.',
+    "We're assembling your personalized plan.":
+      'Vi setter sammen din personlige plan.',
+    'Please try again or adjust your preferences.':
+      'Vennligst pr\u00f8v igjen eller juster preferansene dine.',
+    'This usually takes less than a minute.':
+      'Dette tar vanligvis under ett minutt.',
+    "We couldn't finalize your plan":
+      'Vi kunne ikke ferdigstille planen din',
+    'Please adjust your answers or try generating again.':
+      'Vennligst juster svarene dine eller pr\u00f8v \u00e5 generere p\u00e5 nytt.',
+    'Retake questionnaire': 'Ta sp\u00f8rreskjemaet p\u00e5 nytt',
+    'Week Overview': 'Ukeoversikt',
+    'Your Weekly Plan': 'Din ukeplan',
+    Day: 'Dag',
+    "Today's Meals": 'Dagens m\u00e5ltider',
+    'Macro Balance': 'Makrobalanse',
+    'Day Summary': 'Dagsoppsummering',
+    'Total Calories': 'Totalt kalorier',
+    Target: 'M\u00e5l',
+    Difference: 'Forskjell',
+    'View AI Response': 'Se AI-svar',
+    Protein: 'Protein',
+    Carbs: 'Karbohydrater',
+    Fat: 'Fett',
+
     Language: 'Spr\u00e5k',
     'Access your planner': 'F\u00e5 tilgang til planleggeren',
     'Create your account': 'Opprett konto',
@@ -167,6 +241,7 @@ export const translations = {
     'Weekly Plan Snapshot': 'Ukesammendrag',
     'Preferred cuisines': 'Foretrukne kj\u00f8kken',
     'Dietary needs': 'Kostholdsbehov',
+    'Show more': 'Vis mer',
     'Show less': 'Vis mindre',
     'more ({count})': 'flere ({count})',
     'Cooking preferences': 'Matlagingspreferanser',
@@ -227,5 +302,39 @@ export const translations = {
     Friday: 'Fredag',
     Saturday: 'L\u00f8rdag',
     Sunday: 'S\u00f8ndag',
+
+    // Recipes page
+    'Your recipe library': 'Ditt oppskriftsbibliotek',
+    'Curated recipes pulled directly from your database.': 'Kuraterte oppskrifter hentet direkte fra databasen din.',
+    '{count} recipes loaded': '{count} oppskrifter lastet',
+    'Top tags': 'Mest brukte etiketter',
+    Snapshot: '\u00d8yeblikksbilde',
+    'Averages per recipe': 'Snitt per oppskrift',
+    'Avg calories': 'Snitt kalorier',
+    'Avg protein': 'Snitt protein',
+    'Avg carbs': 'Snitt karbohydrater',
+    'Avg fat': 'Snitt fett',
+    'Search recipes': 'S\u00f8k i oppskrifter',
+    All: 'Alle',
+    Reset: 'Nullstill',
+    Refresh: 'Oppdater',
+    'Could not load recipes.': 'Kunne ikke laste oppskrifter.',
+    'Try again': 'Pr\u00f8v igjen',
+    'No recipes match your filters.': 'Ingen oppskrifter matcher filtrene dine.',
+    'Try adjusting the search or tag selection.': 'Pr\u00f8v \u00e5 justere s\u00f8ket eller taggene.',
+    'No ingredients listed': 'Ingen ingredienser oppf\u00f8rt',
+    'No instructions listed': 'Ingen instruksjoner oppf\u00f8rt',
+    'View recipe': 'Se oppskrift',
+    Source: 'Kilde',
+    Unknown: 'Ukjent',
+
+    // Under construction pages
+    'Under construction...': 'Under arbeid...',
+    'This page is coming soon with delicious recipe recommendations tailored to your preferences.':
+      'Denne siden kommer snart med deilige oppskriftsanbefalinger tilpasset dine preferanser.',
+    'This page is coming soon with helpful tips and tricks for healthy eating and meal preparation.':
+      'Denne siden kommer snart med nyttige tips og triks for sunn spising og m\u00e5ltidsforberedelse.',
+    'This page is coming soon with additional features and settings.':
+      'Denne siden kommer snart med flere funksjoner og innstillinger.',
   },
 };

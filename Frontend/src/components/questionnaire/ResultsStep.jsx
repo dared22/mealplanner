@@ -3,7 +3,7 @@ import { motion as Motion } from 'framer-motion';
 import {
   CheckCircle, RefreshCw, ChevronLeft, ChevronRight,
   Shuffle, MoreHorizontal, Sun, Coffee, Utensils, Moon,
-  Info
+  Info, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { useLanguage } from '@/i18n/LanguageContext';
 
@@ -113,6 +113,7 @@ const normalizeServerPlan = (plan, t) => {
         fat: Number(safeMeal.fat) || 0,
         cookTime: safeMeal.cookTime || '20 min',
         ingredients: Array.isArray(safeMeal.ingredients) ? safeMeal.ingredients : [],
+        instructions: safeMeal.instructions || '',
       };
       return acc;
     }, {});
@@ -178,28 +179,71 @@ const DayCard = memo(function DayCard({ day, targetCalories, isActive, onSelect,
 // Meal Item for the list
 const MealItem = memo(function MealItem({ meal, mealType, onSwap, t }) {
   const translate = t || ((v) => v);
+  const [showMore, setShowMore] = useState(false);
+
   if (!meal) return null;
 
   const Icon = MEAL_ICONS[mealType] || Utensils;
+  const hasDetails = meal.instructions || (meal.ingredients && meal.ingredients.length > 0);
 
   return (
-    <div className="meal-item">
-      <div className="meal-icon">
-        <Icon className="w-6 h-6 text-primary" />
-      </div>
-      <div className="meal-content">
-        <span className="meal-type">{translate(mealType)}</span>
-        <h4 className="meal-name">{meal.name}</h4>
-        <div className="meal-meta">
-          <span>{meal.calories} kcal</span>
-          <span>P{meal.protein}g</span>
-          <span>C{meal.carbs}g</span>
-          <span>F{meal.fat}g</span>
+    <div className="meal-item-wrapper">
+      <div className="meal-item">
+        <div className="meal-icon">
+          <Icon className="w-6 h-6 text-primary" />
+        </div>
+        <div className="meal-content">
+          <span className="meal-type">{translate(mealType)}</span>
+          <h4 className="meal-name">{meal.name}</h4>
+          <div className="meal-meta">
+            <span>{meal.calories} kcal</span>
+            <span>P{meal.protein}g</span>
+            <span>C{meal.carbs}g</span>
+            <span>F{meal.fat}g</span>
+          </div>
+        </div>
+        <div className="meal-actions">
+          {hasDetails && (
+            <button
+              onClick={() => setShowMore(!showMore)}
+              className="meal-action"
+              title={showMore ? translate('Show less') : translate('Show more')}
+            >
+              {showMore ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+            </button>
+          )}
+          <button onClick={onSwap} className="meal-action" title={translate('Swap meal')}>
+            <Shuffle className="w-5 h-5" />
+          </button>
         </div>
       </div>
-      <button onClick={onSwap} className="meal-action">
-        <Shuffle className="w-5 h-5" />
-      </button>
+
+      {showMore && hasDetails && (
+        <Motion.div
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: 'auto' }}
+          exit={{ opacity: 0, height: 0 }}
+          className="meal-details"
+        >
+          {meal.ingredients && meal.ingredients.length > 0 && (
+            <div className="meal-section">
+              <h5 className="meal-section-title">{translate('Ingredients')}</h5>
+              <ul className="meal-list">
+                {meal.ingredients.map((ingredient, idx) => (
+                  <li key={idx} className="meal-list-item">{ingredient}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {meal.instructions && (
+            <div className="meal-section">
+              <h5 className="meal-section-title">{translate('Instructions')}</h5>
+              <p className="meal-instructions">{meal.instructions}</p>
+            </div>
+          )}
+        </Motion.div>
+      )}
     </div>
   );
 });

@@ -408,11 +408,11 @@
   }
 
   .dashboard-nav-inner {
-    @apply max-w-7xl mx-auto px-6 py-4 flex items-center gap-6;
+    @apply max-w-7xl mx-auto px-6 py-4 flex items-center justify-between;
   }
 
   .nav-left {
-    @apply flex items-center gap-8 shrink-0;
+    @apply flex items-center gap-8 shrink-0 ml-8;
   }
 
   .dashboard-logo {
@@ -452,7 +452,7 @@
   }
 
   .nav-icons {
-    @apply flex items-center gap-5 shrink-0;
+    @apply flex items-center gap-5 shrink-0 mr-8;
   }
 
   .nav-icon-btn {
@@ -612,8 +612,12 @@
   }
 
   /* Meal list item */
+  .meal-item-wrapper {
+    @apply border-b border-border last:border-0;
+  }
+
   .meal-item {
-    @apply flex items-center gap-4 p-4 border-b border-border last:border-0;
+    @apply flex items-center gap-4 p-4;
   }
 
   .meal-item .meal-icon {
@@ -636,8 +640,37 @@
     @apply flex items-center gap-3 text-xs text-muted-foreground;
   }
 
+  .meal-item .meal-actions {
+    @apply flex items-center gap-2;
+  }
+
   .meal-item .meal-action {
-    @apply text-muted-foreground hover:text-primary transition-colors;
+    @apply p-2 rounded-lg text-muted-foreground hover:text-primary hover:bg-secondary transition-colors cursor-pointer;
+  }
+
+  /* Expanded meal details */
+  .meal-details {
+    @apply px-4 pb-4 bg-secondary/30;
+  }
+
+  .meal-section {
+    @apply mb-4 last:mb-0;
+  }
+
+  .meal-section-title {
+    @apply text-xs font-semibold uppercase tracking-wider text-primary mb-2;
+  }
+
+  .meal-list {
+    @apply list-disc list-inside space-y-1;
+  }
+
+  .meal-list-item {
+    @apply text-sm text-foreground pl-2;
+  }
+
+  .meal-instructions {
+    @apply text-sm text-foreground leading-relaxed whitespace-pre-line;
   }
 
   /* Macro balance panel */

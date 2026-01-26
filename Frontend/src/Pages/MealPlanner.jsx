@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState, memo } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { SignedIn, SignedOut, UserButton, useAuth } from '@clerk/clerk-react';
 import { AnimatePresence, motion as Motion } from 'framer-motion';
-import { ArrowLeft, ArrowRight, Calendar, Lock, Moon, Search, ShoppingCart, Sun, TrendingUp, User, Utensils } from 'lucide-react';
+import { ArrowLeft, ArrowRight, BookOpen, Calendar, Lock, Moon, Search, ShoppingCart, Sun, TrendingUp, User, Utensils } from 'lucide-react';
 import { UserPreferences } from '@/Entities/UserPreferences';
 import { useLanguage } from '@/i18n/LanguageContext';
 
@@ -83,24 +84,20 @@ const STEP_META = [
 
 // Header with logo, step dots, and controls
 const Header = memo(function Header({ currentStep, totalSteps, lang, setLang, isDarkMode, setIsDarkMode, t }) {
+  const location = useLocation();
+  const isActive = (path) => location.pathname === path;
+
   if (currentStep === 7) {
     return (
       <header className="header dashboard-header">
         <div className="dashboard-nav-inner">
           <div className="nav-left">
-            <div className="dashboard-logo">
+            <Link to="/planner" className="dashboard-logo">
               <div className="dashboard-logo-icon">
                 <Utensils className="w-4 h-4 text-white" />
               </div>
               <span className="dashboard-logo-text">Meal Intelligence</span>
-            </div>
-
-            <div className="nav-links">
-              <a href="#" className="nav-link">{t('Recipes')}</a>
-              <a href="#" className="nav-link">{t('Meal Tips')}</a>
-              <a href="#" className="nav-link active">{t('Weekly Plan')}</a>
-              <a href="#" className="nav-link">{t('More')}</a>
-            </div>
+            </Link>
           </div>
 
           <div className="nav-search">
@@ -114,14 +111,18 @@ const Header = memo(function Header({ currentStep, totalSteps, lang, setLang, is
           </div>
 
           <div className="nav-icons">
-            <button className="nav-icon-btn" type="button">
+            <Link to="/planner" className="nav-icon-btn">
               <Calendar className="w-5 h-5" />
               <span className="nav-icon-label">{t('Planner')}</span>
-            </button>
-            <button className="nav-icon-btn" type="button">
+            </Link>
+            <Link to="/recipes" className="nav-icon-btn">
+              <BookOpen className="w-5 h-5" />
+              <span className="nav-icon-label">{t('Recipes')}</span>
+            </Link>
+            <Link to="/groceries" className="nav-icon-btn">
               <ShoppingCart className="w-5 h-5" />
               <span className="nav-icon-label">{t('Groceries')}</span>
-            </button>
+            </Link>
             <SignedIn>
               <div className="nav-user">
                 <UserButton appearance={{ elements: { userButtonAvatarBox: 'nav-avatar-box' } }} />
@@ -498,7 +499,7 @@ export default function MealPlanner({ user }) {
     return (
       <div className="min-h-screen bg-background">
         <Header currentStep={currentStep} totalSteps={TOTAL_STEPS} lang={lang} setLang={setLang} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} t={t} />
-        <main className="pt-20 pb-12 px-4 md:px-8">
+        <main className="pt-32 pb-12 px-4 md:px-8">
           <div className="max-w-6xl mx-auto">
             <AnimatePresence mode="wait">{renderStep()}</AnimatePresence>
           </div>
