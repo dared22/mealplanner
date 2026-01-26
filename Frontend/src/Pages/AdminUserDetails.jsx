@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '@clerk/clerk-react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { API_URL } from '@/Entities/api';
+import { Button } from '@/components/ui/button';
 
 const formatDateTime = (value) => {
   if (!value) return '—';
@@ -37,6 +38,8 @@ export default function AdminUserDetails() {
   const [status, setStatus] = useState('loading');
   const [user, setUser] = useState(null);
   const [error, setError] = useState(null);
+  const [actionError, setActionError] = useState(null);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   const preferences = useMemo(() => user?.preferences || [], [user]);
 
@@ -68,6 +71,42 @@ export default function AdminUserDetails() {
     fetchUser();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
+
+  const handleToggleStatus = async () => {
+    if (!user || !userId) return;
+    if (user.is_active) {
+      const confirmed = window.confirm(
+        'Suspend this user? They will be blocked from accessing the application.'
+      );
+      if (!confirmed) return;
+    }
+    setIsUpdating(true);
+    setActionError(null);
+    try {
+      const token = await getToken();
+      if (!token) {
+        throw new Error('Missing authentication token. Please sign in again.');
+      }
+      const nextStatus = !user.is_active;
+      const response = await fetch(`${API_URL}/admin/users/${userId}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ is_active: nextStatus }),
+      });
+      if (!response.ok) {
+        throw new Error(`Status update failed with ${response.status}`);
+      }
+      const updated = await response.json();
+      setUser((prev) => (prev ? { ...prev, ...updated } : prev));
+    } catch (err) {
+      setActionError(err);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
 
   if (status === 'loading') {
     return (
@@ -119,8 +158,31 @@ export default function AdminUserDetails() {
           >
             {user.is_active ? 'Active' : 'Suspended'}
           </span>
+          <Button
+            variant={user.is_active ? 'destructive' : 'default'}
+            onClick={handleToggleStatus}
+            disabled={isUpdating}
+          >
+            {isUpdating
+              ? 'Updating...'
+              : user.is_active
+              ? 'Suspend user'
+              : 'Reactivate user'}
+          </Button>
         </div>
       </div>
+
+      {actionError && (
+        <div className="rounded-xl border border-destructive/40 bg-destructive/5 p-6">
+          <div className="flex items-center gap-2 text-destructive">
+            <AlertTriangle className="w-5 h-5" />
+            <span className="font-semibold">Status update failed</span>
+          </div>
+          <p className="mt-2 text-sm text-muted-foreground">
+            {actionError?.message || 'Unable to update user status.'}
+          </p>
+        </div>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-[2fr,1fr]">
         <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
