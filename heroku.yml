@@ -1,0 +1,8 @@
+build:
+  docker:
+    web: Frontend/Dockerfile
+  config:
+    VITE_CLERK_PUBLISHABLE_KEY:
+    VITE_API_URL:
+run:
+  web: serve -s dist -l $PORT
