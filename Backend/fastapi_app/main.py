@@ -608,12 +608,14 @@ def get_admin_dashboard_metrics(
         # Recipe timestamps are not tracked yet; keep weekly deltas at zero until schema supports it
         recipes_current_week = 0
         recipes_previous_week = 0
+        recipes_wow = 0.0
 
         health = HealthStatus(status="healthy", checks={"database": "ok"})
     except Exception as exc:  # pragma: no cover - defensive fallback
         logger.exception("Failed to compute admin dashboard metrics: %s", exc)
         total_users = users_current_week = users_previous_week = 0
         total_recipes = recipes_current_week = recipes_previous_week = 0
+        recipes_wow = 0.0
         health = HealthStatus(status="degraded", checks={"database": "error"})
 
     return DashboardMetricsResponse(
@@ -627,7 +629,7 @@ def get_admin_dashboard_metrics(
             total=total_recipes,
             current_week=recipes_current_week,
             previous_week=recipes_previous_week,
-            wow_percent=_wow_percent(recipes_current_week, recipes_previous_week),
+            wow_percent=recipes_wow,
         ),
         health=health,
     )
