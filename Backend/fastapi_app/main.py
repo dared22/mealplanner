@@ -1,8 +1,9 @@
 import logging
 import os
 import re
+from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Literal
 
 from fastapi import BackgroundTasks, Body, Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -39,6 +40,24 @@ class AdminSessionResponse(BaseModel):
     email: Optional[EmailStr] = None
     username: str
     is_admin: bool
+
+
+class GrowthStat(BaseModel):
+    total: int
+    current_week: int
+    previous_week: int
+    wow_percent: float
+
+
+class HealthStatus(BaseModel):
+    status: Literal["healthy", "degraded"]
+    checks: Dict[str, str]
+
+
+class DashboardMetricsResponse(BaseModel):
+    users: GrowthStat
+    recipes: GrowthStat
+    health: HealthStatus
 
 
 def optional_current_user(
@@ -553,6 +572,64 @@ def get_admin_session(user: User = Depends(admin_user_dependency)) -> AdminSessi
         email=user.email,
         username=user.username,
         is_admin=user.is_admin,
+    )
+
+
+def _wow_percent(current: int, previous: int) -> float:
+    if previous == 0:
+        return 100.0 if current > 0 else 0.0
+    return float(round(((current - previous) / previous) * 100))
+
+
+@app.get("/admin/dashboard/metrics", response_model=DashboardMetricsResponse)
+def get_admin_dashboard_metrics(
+    db: Session = Depends(get_session),
+    _admin: User = Depends(admin_user_dependency),
+) -> DashboardMetricsResponse:
+    now = datetime.now(timezone.utc)
+    current_week_start = now - timedelta(days=7)
+    previous_week_start = now - timedelta(days=14)
+
+    try:
+        total_users = db.scalar(select(func.count(User.id))) or 0
+        users_current_week = (
+            db.scalar(select(func.count(User.id)).where(User.created_at >= current_week_start)) or 0
+        )
+        users_previous_week = (
+            db.scalar(
+                select(func.count(User.id)).where(
+                    User.created_at >= previous_week_start, User.created_at < current_week_start
+                )
+            )
+            or 0
+        )
+
+        total_recipes = db.scalar(select(func.count(Recipe.id))) or 0
+        # Recipe timestamps are not tracked yet; keep weekly deltas at zero until schema supports it
+        recipes_current_week = 0
+        recipes_previous_week = 0
+
+        health = HealthStatus(status="healthy", checks={"database": "ok"})
+    except Exception as exc:  # pragma: no cover - defensive fallback
+        logger.exception("Failed to compute admin dashboard metrics: %s", exc)
+        total_users = users_current_week = users_previous_week = 0
+        total_recipes = recipes_current_week = recipes_previous_week = 0
+        health = HealthStatus(status="degraded", checks={"database": "error"})
+
+    return DashboardMetricsResponse(
+        users=GrowthStat(
+            total=total_users,
+            current_week=users_current_week,
+            previous_week=users_previous_week,
+            wow_percent=_wow_percent(users_current_week, users_previous_week),
+        ),
+        recipes=GrowthStat(
+            total=total_recipes,
+            current_week=recipes_current_week,
+            previous_week=recipes_previous_week,
+            wow_percent=_wow_percent(recipes_current_week, recipes_previous_week),
+        ),
+        health=health,
     )
 
 
