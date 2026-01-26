@@ -8,7 +8,7 @@ from typing import Any, Dict, Optional, Literal
 from fastapi import BackgroundTasks, Body, Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 from sqlalchemy.orm import Session
 
 from clerk_auth import (
@@ -58,6 +58,48 @@ class DashboardMetricsResponse(BaseModel):
     users: GrowthStat
     recipes: GrowthStat
     health: HealthStatus
+
+
+class AdminUserSummary(BaseModel):
+    id: UUID
+    username: str
+    email: Optional[EmailStr] = None
+    created_at: datetime
+    is_admin: bool
+    is_active: bool
+
+
+class AdminPagination(BaseModel):
+    total: int
+    limit: int
+    offset: int
+
+
+class AdminUserListResponse(BaseModel):
+    items: list[AdminUserSummary]
+    pagination: AdminPagination
+
+
+class AdminPreferenceSummary(BaseModel):
+    id: int
+    submitted_at: str
+    raw_data: Dict[str, Any]
+    plan_status: str
+
+
+class AdminUserDetailResponse(BaseModel):
+    id: UUID
+    username: str
+    email: Optional[EmailStr] = None
+    clerk_user_id: Optional[str] = None
+    created_at: datetime
+    is_admin: bool
+    is_active: bool
+    preferences: list[AdminPreferenceSummary]
+
+
+class AdminUserStatusUpdate(BaseModel):
+    is_active: bool
 
 
 def optional_current_user(
@@ -206,6 +248,23 @@ def _maybe_update_username(
         db.add(user)
         db.commit()
         db.refresh(user)
+
+
+def _ensure_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _plan_status_from_raw_data(raw_data: Any) -> str:
+    if not isinstance(raw_data, dict):
+        return "pending"
+    generated_plan = raw_data.get("generated_plan")
+    if not isinstance(generated_plan, dict):
+        return "pending"
+    if generated_plan.get("plan"):
+        return "success"
+    return "error"
 
 
 def _json_safe(value: Any) -> Any:
@@ -663,6 +722,117 @@ def get_admin_dashboard_metrics(
             wow_percent=recipes_wow,
         ),
         health=health,
+    )
+
+
+@app.get("/admin/users", response_model=AdminUserListResponse)
+def list_admin_users(
+    search: Optional[str] = Query(None, description="Match username or email (case-insensitive)"),
+    start_date: Optional[datetime] = Query(None, description="Filter by signup date (UTC)"),
+    end_date: Optional[datetime] = Query(None, description="Filter by signup date (UTC)"),
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_session),
+    _admin: User = Depends(admin_user_dependency),
+) -> AdminUserListResponse:
+    filters = []
+    if search:
+        normalized = search.strip()
+        if normalized:
+            pattern = f"%{normalized}%"
+            filters.append(or_(User.username.ilike(pattern), User.email.ilike(pattern)))
+
+    if start_date:
+        filters.append(User.created_at >= _ensure_utc(start_date))
+    if end_date:
+        filters.append(User.created_at <= _ensure_utc(end_date))
+
+    base_stmt = select(User)
+    if filters:
+        base_stmt = base_stmt.where(*filters)
+
+    total = db.scalar(select(func.count()).select_from(base_stmt.subquery())) or 0
+    users = db.scalars(
+        base_stmt.order_by(User.created_at.desc().nullslast(), User.username)
+        .offset(offset)
+        .limit(limit)
+    ).all()
+
+    return AdminUserListResponse(
+        items=[
+            AdminUserSummary(
+                id=user.id,
+                username=user.username,
+                email=user.email,
+                created_at=user.created_at,
+                is_admin=user.is_admin,
+                is_active=user.is_active,
+            )
+            for user in users
+        ],
+        pagination=AdminPagination(total=total, limit=limit, offset=offset),
+    )
+
+
+@app.get("/admin/users/{user_id}", response_model=AdminUserDetailResponse)
+def get_admin_user_detail(
+    user_id: UUID,
+    db: Session = Depends(get_session),
+    _admin: User = Depends(admin_user_dependency),
+) -> AdminUserDetailResponse:
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    preferences = db.scalars(
+        select(Preference)
+        .where(Preference.user_id == user_id)
+        .order_by(Preference.id.desc())
+    ).all()
+
+    return AdminUserDetailResponse(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        clerk_user_id=user.clerk_user_id,
+        created_at=user.created_at,
+        is_admin=user.is_admin,
+        is_active=user.is_active,
+        preferences=[
+            AdminPreferenceSummary(
+                id=entry.id,
+                submitted_at=entry.submitted_at,
+                raw_data=entry.raw_data,
+                plan_status=_plan_status_from_raw_data(entry.raw_data),
+            )
+            for entry in preferences
+        ],
+    )
+
+
+@app.patch("/admin/users/{user_id}/status", response_model=AdminUserSummary)
+def update_admin_user_status(
+    user_id: UUID,
+    payload: AdminUserStatusUpdate,
+    db: Session = Depends(get_session),
+    _admin: User = Depends(admin_user_dependency),
+) -> AdminUserSummary:
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.is_active = payload.is_active
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    return AdminUserSummary(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        created_at=user.created_at,
+        is_admin=user.is_admin,
+        is_active=user.is_active,
     )
 
 
