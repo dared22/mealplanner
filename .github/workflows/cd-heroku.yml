@@ -81,9 +81,11 @@ jobs:
       - name: Build frontend image
         env:
           VITE_API_URL: https://mealplanner-backend-d6ab87c9c7b5.herokuapp.com
+          VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
         run: |
           docker build \
             --build-arg VITE_API_URL=$VITE_API_URL \
+            --build-arg VITE_CLERK_PUBLISHABLE_KEY=$VITE_CLERK_PUBLISHABLE_KEY \
             -f Frontend/Dockerfile \
             -t registry.heroku.com/$HEROKU_APP_FRONTEND/web \
             Frontend
