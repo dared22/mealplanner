@@ -80,6 +80,55 @@ class AdminUserListResponse(BaseModel):
     pagination: AdminPagination
 
 
+class AdminRecipeSummary(BaseModel):
+    id: UUID
+    title: str
+    slug: str
+    meal_type: Optional[str] = None
+    tags: list[str]
+    is_active: bool
+    created_at: Optional[datetime] = None
+
+
+class AdminRecipeDetail(BaseModel):
+    id: UUID
+    title: str
+    slug: str
+    source_url: Optional[str] = None
+    image_url: Optional[str] = None
+    description: Optional[str] = None
+    instructions: Optional[list[Any]] = None
+    ingredients: Optional[list[Any]] = None
+    prep_time_minutes: Optional[int] = None
+    cook_time_minutes: Optional[int] = None
+    total_time_minutes: Optional[int] = None
+    yield_qty: Optional[float] = None
+    yield_unit: Optional[str] = None
+    cuisine: Optional[str] = None
+    meal_type: Optional[str] = None
+    dish_type: Optional[str] = None
+    dietary_flags: Optional[Dict[str, Any]] = None
+    allergens: Optional[list[str]] = None
+    nutrition: Optional[Dict[str, Any]] = None
+    cost_per_serving_cents: Optional[int] = None
+    equipment: Optional[list[str]] = None
+    difficulty: Optional[str] = None
+    spice_level: Optional[int] = None
+    author: Optional[str] = None
+    language: Optional[str] = None
+    tags: Optional[list[str]] = None
+    popularity_score: Optional[float] = None
+    health_score: Optional[float] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    scraped_at: Optional[datetime] = None
+    scrape_hash: Optional[str] = None
+    is_active: bool
+
+
+class AdminRecipeListResponse(BaseModel):
+    items: list[AdminRecipeSummary]
+    pagination: AdminPagination
 class AdminPreferenceSummary(BaseModel):
     id: int
     submitted_at: str
@@ -352,6 +401,56 @@ def _recipe_to_dict(recipe: Recipe) -> Dict[str, Any]:
         "is_lunch": is_lunch,
     }
     return _json_safe(payload)
+
+
+def _admin_recipe_summary(recipe: Recipe) -> AdminRecipeSummary:
+    return AdminRecipeSummary(
+        id=recipe.id,
+        title=recipe.title,
+        slug=recipe.slug,
+        meal_type=recipe.meal_type,
+        tags=recipe.tags or [],
+        is_active=recipe.is_active,
+        created_at=recipe.created_at,
+    )
+
+
+def _admin_recipe_detail(recipe: Recipe) -> AdminRecipeDetail:
+    return AdminRecipeDetail(
+        id=recipe.id,
+        title=recipe.title,
+        slug=recipe.slug,
+        source_url=recipe.source_url,
+        image_url=recipe.image_url,
+        description=recipe.description,
+        instructions=_json_safe(recipe.instructions),
+        ingredients=_json_safe(recipe.ingredients),
+        prep_time_minutes=recipe.prep_time_minutes,
+        cook_time_minutes=recipe.cook_time_minutes,
+        total_time_minutes=recipe.total_time_minutes,
+        yield_qty=_json_safe(recipe.yield_qty),
+        yield_unit=recipe.yield_unit,
+        cuisine=recipe.cuisine,
+        meal_type=recipe.meal_type,
+        dish_type=recipe.dish_type,
+        dietary_flags=_json_safe(recipe.dietary_flags),
+        allergens=_json_safe(recipe.allergens),
+        nutrition=_json_safe(recipe.nutrition),
+        cost_per_serving_cents=recipe.cost_per_serving_cents,
+        equipment=_json_safe(recipe.equipment),
+        difficulty=recipe.difficulty,
+        spice_level=recipe.spice_level,
+        author=recipe.author,
+        language=recipe.language,
+        tags=_json_safe(recipe.tags),
+        popularity_score=_json_safe(recipe.popularity_score),
+        health_score=_json_safe(recipe.health_score),
+        created_at=recipe.created_at,
+        updated_at=recipe.updated_at,
+        scraped_at=recipe.scraped_at,
+        scrape_hash=recipe.scrape_hash,
+        is_active=recipe.is_active,
+    )
 
 
 def _translate_plan_in_background(pref_id: int, lang: str) -> None:
@@ -834,6 +933,56 @@ def update_admin_user_status(
         is_admin=user.is_admin,
         is_active=user.is_active,
     )
+
+
+@app.get("/admin/recipes", response_model=AdminRecipeListResponse)
+def list_admin_recipes(
+    search: Optional[str] = Query(None, description="Match title or tags (case-insensitive)"),
+    active: Optional[bool] = Query(None, description="Filter by active status"),
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_session),
+    _admin: User = Depends(admin_user_dependency),
+) -> AdminRecipeListResponse:
+    filters = []
+    if search:
+        normalized = search.strip()
+        if normalized:
+            pattern = f"%{normalized}%"
+            tags_text = func.coalesce(func.array_to_string(Recipe.tags, " "), "")
+            filters.append(or_(Recipe.title.ilike(pattern), tags_text.ilike(pattern)))
+
+    if active is not None:
+        filters.append(Recipe.is_active == active)
+
+    base_stmt = select(Recipe)
+    if filters:
+        base_stmt = base_stmt.where(*filters)
+
+    total = db.scalar(select(func.count()).select_from(base_stmt.subquery())) or 0
+    recipes = db.scalars(
+        base_stmt.order_by(Recipe.created_at.desc().nullslast(), Recipe.title)
+        .offset(offset)
+        .limit(limit)
+    ).all()
+
+    return AdminRecipeListResponse(
+        items=[_admin_recipe_summary(recipe) for recipe in recipes],
+        pagination=AdminPagination(total=total, limit=limit, offset=offset),
+    )
+
+
+@app.get("/admin/recipes/{recipe_id}", response_model=AdminRecipeDetail)
+def get_admin_recipe_detail(
+    recipe_id: UUID,
+    db: Session = Depends(get_session),
+    _admin: User = Depends(admin_user_dependency),
+) -> AdminRecipeDetail:
+    recipe = db.get(Recipe, recipe_id)
+    if recipe is None:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+
+    return _admin_recipe_detail(recipe)
 
 
 @app.get("/users/{user_id}/preferences")
