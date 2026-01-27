@@ -48,6 +48,10 @@ export default function AdminRecipes() {
     status: 'all',
   });
   const [deletingId, setDeletingId] = useState(null);
+  const [importFile, setImportFile] = useState(null);
+  const [importStatus, setImportStatus] = useState('idle');
+  const [importResult, setImportResult] = useState(null);
+  const [importError, setImportError] = useState(null);
 
   const totalPages = useMemo(() => {
     if (!pagination.total) return 1;
@@ -155,6 +159,50 @@ export default function AdminRecipes() {
     }
   };
 
+  const handleImport = async () => {
+    if (!importFile) {
+      setImportError(new Error('Select a CSV or Parquet file to upload.'));
+      return;
+    }
+
+    setImportStatus('uploading');
+    setImportError(null);
+    setImportResult(null);
+
+    try {
+      const token = await getToken();
+      if (!token) {
+        throw new Error('Missing authentication token. Please sign in again.');
+      }
+
+      const ext = importFile.name.split('.').pop()?.toLowerCase();
+      const contentType = ext === 'csv' ? 'text/csv' : 'application/octet-stream';
+      const payload = await importFile.arrayBuffer();
+
+      const response = await fetch(`${API_URL}/admin/recipes/import`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': contentType,
+          'X-File-Name': importFile.name,
+        },
+        body: payload,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Import failed with status ${response.status}`);
+      }
+
+      const data = await response.json();
+      setImportResult(data);
+      setImportStatus('success');
+      await fetchRecipes();
+    } catch (err) {
+      setImportError(err);
+      setImportStatus('error');
+    }
+  };
+
 
   useEffect(() => {
     fetchRecipes();
@@ -254,6 +302,45 @@ export default function AdminRecipes() {
             Clear
           </Button>
         </div>
+      </div>
+
+      <div className="rounded-xl border border-border bg-card p-6 shadow-sm space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold text-foreground">Bulk import</h2>
+            <p className="text-sm text-muted-foreground">
+              Upload a CSV or Parquet file to add or update recipes in bulk.
+            </p>
+          </div>
+          <Button onClick={handleImport} disabled={importStatus === 'uploading'}>
+            {importStatus === 'uploading' ? 'Uploading...' : 'Upload file'}
+          </Button>
+        </div>
+        <div className="flex flex-col gap-3 md:flex-row md:items-center">
+          <input
+            type="file"
+            accept=".csv,.parquet,.pq"
+            onChange={(event) => {
+              setImportFile(event.target.files?.[0] || null);
+              setImportStatus('idle');
+              setImportError(null);
+              setImportResult(null);
+            }}
+          />
+          <div className="text-sm text-muted-foreground">
+            {importFile ? importFile.name : 'No file selected'}
+          </div>
+        </div>
+        {importError && (
+          <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
+            {importError?.message || 'Import failed.'}
+          </div>
+        )}
+        {importResult && (
+          <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm text-foreground">
+            Imported {importResult.created} created, {importResult.updated} updated, {importResult.skipped} skipped.
+          </div>
+        )}
       </div>
 
       <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
