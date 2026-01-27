@@ -923,7 +923,7 @@ def list_admin_users(
     db: Session = Depends(get_session),
     _admin: User = Depends(admin_user_dependency),
 ) -> AdminUserListResponse:
-    filters = []
+    filters = [Recipe.is_active.is_(True)]
     if search:
         normalized = search.strip()
         if normalized:

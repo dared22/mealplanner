@@ -270,26 +270,79 @@ def _load_recipes_df(db: Session):
     if db is None:
         raise RuntimeError("Database session is required to load recipes.")
 
+    def _flatten_ingredients(value):
+        if isinstance(value, list):
+            items = []
+            for item in value:
+                if isinstance(item, dict):
+                    text = item.get("original_text") or item.get("name")
+                    if text:
+                        items.append(str(text))
+                elif item is not None:
+                    items.append(str(item))
+            return items
+        if value is None:
+            return []
+        return [str(value)]
+
+    def _normalize_instructions(value):
+        if value is None:
+            return []
+        if isinstance(value, list):
+            return [str(item) for item in value if str(item).strip()]
+        if isinstance(value, str):
+            return [value]
+        return [str(value)]
+
     stmt = select(
         Recipe.id,
-        Recipe.source,
-        Recipe.url,
-        Recipe.name,
+        Recipe.slug,
+        Recipe.title,
+        Recipe.source_url,
+        Recipe.image_url,
+        Recipe.description,
         Recipe.ingredients,
         Recipe.instructions,
         Recipe.nutrition,
-        Recipe.images,
         Recipe.tags,
-        Recipe.local_images,
-        Recipe.type,
-        Recipe.price_tier,
-        Recipe.url_norm,
-        Recipe.is_breakfast,
-        Recipe.is_lunch,
-    )
+        Recipe.meal_type,
+        Recipe.dish_type,
+        Recipe.cuisine,
+        Recipe.dietary_flags,
+        Recipe.allergens,
+        Recipe.popularity_score,
+        Recipe.health_score,
+        Recipe.prep_time_minutes,
+        Recipe.cook_time_minutes,
+        Recipe.total_time_minutes,
+        Recipe.cost_per_serving_cents,
+    ).where(Recipe.is_active.is_(True))
     result = db.execute(stmt)
     rows = result.mappings().all()
-    return pd.DataFrame(rows)
+    df = pd.DataFrame(rows)
+
+    if df.empty:
+        return df
+
+    # Derived/normalized fields for downstream filters
+    if "meal_type" in df.columns:
+        normalized_meal = df["meal_type"].astype(str).str.lower()
+        df["is_breakfast"] = normalized_meal == "breakfast"
+        df["is_lunch"] = normalized_meal == "lunch"
+
+    if "ingredients" in df.columns:
+        df["ingredients"] = df["ingredients"].apply(_flatten_ingredients)
+
+    if "instructions" in df.columns:
+        df["instructions"] = df["instructions"].apply(_normalize_instructions)
+
+    if "title" in df.columns and "name" not in df.columns:
+        df["name"] = df["title"]
+
+    if "source_url" in df.columns and "url" not in df.columns:
+        df["url"] = df["source_url"]
+
+    return df
 
 
 def _prepare_recipes(df):
@@ -309,7 +362,7 @@ def _prepare_recipes(df):
     meal_col = _find_column(df.columns, ["meal_type", "meal", "course", "category", "dish_type"])
     breakfast_col = _find_column(df.columns, ["is_breakfast", "breakfast"])
     lunch_col = _find_column(df.columns, ["is_lunch", "lunch"])
-    cost_col = _find_column(df.columns, ["price", "cost", "amount", "price_value"])
+    cost_col = _find_column(df.columns, ["price", "cost", "amount", "price_value", "cost_per_serving", "cost_per_serving_cents"])
     tier_col = _find_column(df.columns, ["price_tier", "budget_range", "price_level", "cost_level", "price_category"])
     id_col = _find_column(df.columns, ["id", "recipe_id", "slug"])
     url_col = _find_column(df.columns, ["url", "link", "source_url"])
@@ -328,7 +381,13 @@ def _prepare_recipes(df):
             except json.JSONDecodeError:
                 return None
             if isinstance(parsed, dict):
-                return parsed.get(key)
+                payload = parsed
+            else:
+                return None
+        if isinstance(payload, dict):
+            if key == "calories_kcal":
+                return payload.get("calories_kcal") or payload.get("calories")
+            return payload.get(key)
         return None
 
     if nutrition_col:
@@ -470,7 +529,15 @@ def _format_list_values(value: Any) -> List[str]:
                 list_value = None
 
     if list_value is not None:
-        return [str(item).strip() for item in list_value if str(item).strip()]
+        formatted: List[str] = []
+        for item in list_value:
+            if isinstance(item, dict):
+                text = item.get("original_text") or item.get("name")
+                if text and str(text).strip():
+                    formatted.append(str(text).strip())
+            elif str(item).strip():
+                formatted.append(str(item).strip())
+        return formatted
 
     if isinstance(value, str):
         text = value.strip()
