@@ -1074,6 +1074,25 @@ def get_admin_recipe_detail(
     return _admin_recipe_detail(recipe)
 
 
+@app.delete("/admin/recipes/{recipe_id}", response_model=AdminRecipeDetail)
+def delete_admin_recipe(
+    recipe_id: UUID,
+    db: Session = Depends(get_session),
+    _admin: User = Depends(admin_user_dependency),
+) -> AdminRecipeDetail:
+    recipe = db.get(Recipe, recipe_id)
+    if recipe is None:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+
+    recipe.is_active = False
+    recipe.updated_at = datetime.now(timezone.utc)
+    db.add(recipe)
+    db.commit()
+    db.refresh(recipe)
+
+    return _admin_recipe_detail(recipe)
+
+
 @app.post("/admin/recipes", response_model=AdminRecipeDetail, status_code=status.HTTP_201_CREATED)
 def create_admin_recipe(
     payload: AdminRecipeCreate,
