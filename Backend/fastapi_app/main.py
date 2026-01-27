@@ -688,6 +688,10 @@ def _read_import_dataframe(payload: bytes, file_format: str):
     )
 
 
+def _max_import_errors() -> int:
+    return 25
+
+
 def _resolve_import_columns(columns: Iterable[str]) -> Dict[str, Optional[str]]:
     return {
         "title": _find_import_column(columns, ["title", "name", "recipe", "recipe_name"]),
@@ -1370,6 +1374,90 @@ def update_admin_recipe(
     db.refresh(recipe)
 
     return _admin_recipe_detail(recipe)
+
+
+@app.post("/admin/recipes/import", response_model=AdminRecipeImportResponse)
+async def import_admin_recipes(
+    request: Request,
+    db: Session = Depends(get_session),
+    _admin: User = Depends(admin_user_dependency),
+) -> AdminRecipeImportResponse:
+    payload = await request.body()
+    if not payload:
+        raise HTTPException(status_code=400, detail="Request body cannot be empty")
+
+    file_format = _infer_import_format(request)
+    df = _read_import_dataframe(payload, file_format)
+    if df.empty:
+        return AdminRecipeImportResponse(created=0, updated=0, skipped=0, errors=[])
+
+    columns = _resolve_import_columns(df.columns)
+    if not columns.get("title"):
+        raise HTTPException(
+            status_code=400,
+            detail="Missing title column in import file.",
+        )
+
+    created = 0
+    updated = 0
+    skipped = 0
+    errors: list[AdminRecipeImportError] = []
+
+    for index, row in enumerate(df.to_dict("records"), start=1):
+        try:
+            normalized = _normalize_import_row(row, columns)
+            base_slug = normalized["slug"]
+            existing = db.scalar(select(Recipe).where(Recipe.slug == base_slug))
+
+            if existing is not None:
+                existing.title = normalized["title"]
+                existing.ingredients = _json_safe(normalized["ingredients"])
+                existing.instructions = _json_safe(normalized["instructions"])
+                existing.nutrition = _json_safe(normalized["nutrition"])
+                existing.tags = _json_safe(normalized["tags"])
+                existing.meal_type = normalized["meal_type"]
+                existing.updated_at = datetime.now(timezone.utc)
+                db.add(existing)
+                db.commit()
+                db.refresh(existing)
+                updated += 1
+                continue
+
+            slug = _ensure_unique_recipe_slug(db, base_slug)
+            recipe = Recipe(
+                id=uuid4(),
+                title=normalized["title"],
+                slug=slug,
+                ingredients=_json_safe(normalized["ingredients"]),
+                instructions=_json_safe(normalized["instructions"]),
+                nutrition=_json_safe(normalized["nutrition"]),
+                tags=_json_safe(normalized["tags"]),
+                meal_type=normalized["meal_type"],
+                is_active=True,
+            )
+            db.add(recipe)
+            db.commit()
+            db.refresh(recipe)
+            created += 1
+        except ValueError as exc:
+            skipped += 1
+            if len(errors) < _max_import_errors():
+                errors.append(
+                    AdminRecipeImportError(row=index, field="title", message=str(exc))
+                )
+        except Exception as exc:
+            skipped += 1
+            db.rollback()
+            logger.exception("Failed to import recipe row %s", index)
+            if len(errors) < _max_import_errors():
+                errors.append(AdminRecipeImportError(row=index, message=str(exc)))
+
+    return AdminRecipeImportResponse(
+        created=created,
+        updated=updated,
+        skipped=skipped,
+        errors=errors,
+    )
 
 
 @app.get("/users/{user_id}/preferences")
