@@ -1,9 +1,11 @@
+import io
+import json
 import logging
 import os
 import re
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
-from typing import Any, Dict, Optional, Literal
+from typing import Any, Dict, Optional, Literal, Iterable
 
 from fastapi import BackgroundTasks, Body, Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -189,6 +191,19 @@ class AdminRecipeUpdate(BaseModel):
     popularity_score: Optional[float] = None
     health_score: Optional[float] = None
     is_active: Optional[bool] = None
+
+
+class AdminRecipeImportError(BaseModel):
+    row: Optional[int] = None
+    field: Optional[str] = None
+    message: str
+
+
+class AdminRecipeImportResponse(BaseModel):
+    created: int
+    updated: int
+    skipped: int
+    errors: list[AdminRecipeImportError]
 class AdminPreferenceSummary(BaseModel):
     id: int
     submitted_at: str
@@ -540,6 +555,188 @@ def _admin_recipe_detail(recipe: Recipe) -> AdminRecipeDetail:
         scrape_hash=recipe.scrape_hash,
         is_active=recipe.is_active,
     )
+
+
+def _normalize_import_column_name(value: str) -> str:
+    return "".join(ch for ch in str(value).lower() if ch.isalnum())
+
+
+def _find_import_column(columns: Iterable[str], candidates: Iterable[str]) -> Optional[str]:
+    normalized = {_normalize_import_column_name(col): col for col in columns}
+    for candidate in candidates:
+        needle = _normalize_import_column_name(candidate)
+        if needle in normalized:
+            return normalized[needle]
+        for key, original in normalized.items():
+            if needle and needle in key:
+                return original
+    return None
+
+
+def _is_blank(value: Any) -> bool:
+    if value is None:
+        return True
+    try:
+        import pandas as pd
+
+        if pd.isna(value):
+            return True
+    except Exception:
+        pass
+    if isinstance(value, str) and not value.strip():
+        return True
+    return False
+
+
+def _parse_import_list_field(value: Any) -> list[str]:
+    if _is_blank(value):
+        return []
+    if isinstance(value, dict):
+        text = value.get("original_text") or value.get("name")
+        return [str(text).strip()] if text and str(text).strip() else []
+    if isinstance(value, (list, tuple, set)):
+        items: list[str] = []
+        for item in value:
+            if isinstance(item, dict):
+                text = item.get("original_text") or item.get("name")
+                if text and str(text).strip():
+                    items.append(str(text).strip())
+            else:
+                text = str(item).strip()
+                if text:
+                    items.append(text)
+        return items
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return []
+        if text.startswith("[") and text.endswith("]"):
+            try:
+                parsed = json.loads(text)
+            except json.JSONDecodeError:
+                parsed = None
+            if isinstance(parsed, list):
+                return [str(item).strip() for item in parsed if str(item).strip()]
+        if "\n" in text:
+            return [segment.strip() for segment in text.splitlines() if segment.strip()]
+        if "," in text:
+            return [segment.strip() for segment in text.split(",") if segment.strip()]
+        return [text]
+    text = str(value).strip()
+    return [text] if text else []
+
+
+def _parse_import_nutrition(value: Any) -> Dict[str, Any]:
+    if _is_blank(value):
+        return {}
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return {}
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            return {}
+        if isinstance(parsed, dict):
+            return parsed
+    return {}
+
+
+def _infer_import_format(request: Request) -> str:
+    content_type = (request.headers.get("content-type") or "").lower()
+    filename = (request.headers.get("x-file-name") or "").lower()
+    if "parquet" in content_type or filename.endswith((".parquet", ".pq")):
+        return "parquet"
+    if "csv" in content_type or filename.endswith(".csv"):
+        return "csv"
+    if content_type in {"application/octet-stream", "binary/octet-stream"} and filename:
+        if filename.endswith((".parquet", ".pq")):
+            return "parquet"
+        if filename.endswith(".csv"):
+            return "csv"
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Unsupported file format. Provide a CSV or Parquet payload.",
+    )
+
+
+def _read_import_dataframe(payload: bytes, file_format: str):
+    try:
+        import pandas as pd
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="pandas is required to import recipe files.",
+        ) from exc
+
+    buffer = io.BytesIO(payload)
+    try:
+        if file_format == "csv":
+            return pd.read_csv(buffer)
+        if file_format == "parquet":
+            return pd.read_parquet(buffer)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to parse {file_format} payload.",
+        ) from exc
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Unsupported file format. Provide a CSV or Parquet payload.",
+    )
+
+
+def _resolve_import_columns(columns: Iterable[str]) -> Dict[str, Optional[str]]:
+    return {
+        "title": _find_import_column(columns, ["title", "name", "recipe", "recipe_name"]),
+        "ingredients": _find_import_column(columns, ["ingredients", "ingredient_list"]),
+        "instructions": _find_import_column(
+            columns, ["instructions", "instruction", "steps", "directions"]
+        ),
+        "nutrition": _find_import_column(columns, ["nutrition", "nutrients", "macros"]),
+        "tags": _find_import_column(columns, ["tags", "labels", "categories"]),
+        "meal_type": _find_import_column(columns, ["meal_type", "meal", "course", "category"]),
+        "slug": _find_import_column(columns, ["slug"]),
+    }
+
+
+def _normalize_import_row(
+    row: Dict[str, Any],
+    columns: Dict[str, Optional[str]],
+) -> Dict[str, Any]:
+    title_col = columns.get("title")
+    title_value = row.get(title_col) if title_col else None
+    if _is_blank(title_value):
+        raise ValueError("Missing recipe title")
+    title = str(title_value).strip()
+
+    slug_col = columns.get("slug")
+    slug_value = row.get(slug_col) if slug_col else None
+    slug_source = slug_value if not _is_blank(slug_value) else title
+    base_slug = _slugify_recipe_title(str(slug_source))
+
+    ingredients_col = columns.get("ingredients")
+    instructions_col = columns.get("instructions")
+    nutrition_col = columns.get("nutrition")
+    tags_col = columns.get("tags")
+    meal_type_col = columns.get("meal_type")
+
+    meal_type_value = row.get(meal_type_col) if meal_type_col else None
+    meal_type = None if _is_blank(meal_type_value) else str(meal_type_value).strip().lower()
+
+    return {
+        "title": title,
+        "slug": base_slug,
+        "ingredients": _parse_import_list_field(row.get(ingredients_col) if ingredients_col else None),
+        "instructions": _parse_import_list_field(
+            row.get(instructions_col) if instructions_col else None
+        ),
+        "nutrition": _parse_import_nutrition(row.get(nutrition_col) if nutrition_col else None),
+        "tags": _parse_import_list_field(row.get(tags_col) if tags_col else None),
+        "meal_type": meal_type,
+    }
 
 
 def _translate_plan_in_background(pref_id: int, lang: str) -> None:
