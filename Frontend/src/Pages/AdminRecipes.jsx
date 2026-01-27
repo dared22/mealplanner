@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@clerk/clerk-react';
+import { Link } from 'react-router-dom';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { API_URL } from '@/Entities/api';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
 const DEFAULT_LIMIT = 20;
@@ -46,6 +47,7 @@ export default function AdminRecipes() {
     search: '',
     status: 'all',
   });
+  const [deletingId, setDeletingId] = useState(null);
 
   const totalPages = useMemo(() => {
     if (!pagination.total) return 1;
@@ -121,6 +123,38 @@ export default function AdminRecipes() {
     }
   };
 
+  const handleDelete = async (recipeId, recipeTitle) => {
+    const confirmed = window.confirm(
+      `Delete "${recipeTitle}"? This will deactivate the recipe and remove it from meal plan generation.`,
+    );
+    if (!confirmed) return;
+
+    setDeletingId(recipeId);
+    setError(null);
+    try {
+      const token = await getToken();
+      if (!token) {
+        throw new Error('Missing authentication token. Please sign in again.');
+      }
+
+      const response = await fetch(`${API_URL}/admin/recipes/${recipeId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Delete failed with status ${response.status}`);
+      }
+
+      await fetchRecipes();
+    } catch (err) {
+      setError(err);
+      setStatus('error');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
 
   useEffect(() => {
     fetchRecipes();
@@ -169,11 +203,16 @@ export default function AdminRecipes() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Recipe Database</h1>
-        <p className="text-muted-foreground">
-          Search recipes, review tags, and manage active listings.
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Recipe Database</h1>
+          <p className="text-muted-foreground">
+            Search recipes, review tags, and manage active listings.
+          </p>
+        </div>
+        <Link to="/admin/recipes/new" className={buttonVariants({ size: 'sm' })}>
+          Add recipe
+        </Link>
       </div>
 
       <div className="rounded-xl border border-border bg-card p-6 shadow-sm space-y-4">
@@ -235,34 +274,64 @@ export default function AdminRecipes() {
             No recipes match your filters. Try adjusting the search or status.
           </div>
         ) : (
-          <div className="divide-y divide-border">
-            {recipes.map((recipe) => {
-              const statusLabel = recipe.is_active ? 'Active' : 'Inactive';
-              const tagsLabel = recipe.tags?.length ? recipe.tags.join(', ') : 'No tags';
-              return (
-                <div
-                  key={recipe.id}
-                  className="flex flex-wrap items-center justify-between gap-4 px-6 py-4"
-                >
-                  <div>
-                    <div className="font-medium text-foreground">{recipe.title}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {formatMealType(recipe.meal_type)} · {tagsLabel}
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-3 text-xs">
-                    <span
-                      className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${getStatusBadge(
-                        recipe.is_active,
-                      )}`}
-                    >
-                      {statusLabel}
-                    </span>
-                    <span className="text-muted-foreground">{formatDate(recipe.created_at)}</span>
-                  </div>
-                </div>
-              );
-            })}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/40 text-muted-foreground">
+                <tr>
+                  <th className="px-6 py-3 text-left font-medium">Name</th>
+                  <th className="px-6 py-3 text-left font-medium">Tags</th>
+                  <th className="px-6 py-3 text-left font-medium">Meal type</th>
+                  <th className="px-6 py-3 text-left font-medium">Status</th>
+                  <th className="px-6 py-3 text-left font-medium">Last updated</th>
+                  <th className="px-6 py-3 text-right font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {recipes.map((recipe) => {
+                  const statusLabel = recipe.is_active ? 'Active' : 'Inactive';
+                  const tagsLabel = recipe.tags?.length ? recipe.tags.join(', ') : '—';
+                  return (
+                    <tr key={recipe.id} className="hover:bg-muted/20">
+                      <td className="px-6 py-4 font-medium text-foreground">{recipe.title}</td>
+                      <td className="px-6 py-4 text-muted-foreground">{tagsLabel}</td>
+                      <td className="px-6 py-4 text-muted-foreground">
+                        {formatMealType(recipe.meal_type)}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span
+                          className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${getStatusBadge(
+                            recipe.is_active,
+                          )}`}
+                        >
+                          {statusLabel}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-muted-foreground">
+                        {formatDate(recipe.created_at)}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex flex-wrap justify-end gap-2">
+                          <Link
+                            to={`/admin/recipes/${recipe.id}/edit`}
+                            className="text-sm font-medium text-foreground underline-offset-4 hover:underline"
+                          >
+                            Edit
+                          </Link>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => handleDelete(recipe.id, recipe.title)}
+                            disabled={deletingId === recipe.id}
+                          >
+                            Delete
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
 
