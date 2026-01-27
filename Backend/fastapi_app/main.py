@@ -129,6 +129,66 @@ class AdminRecipeDetail(BaseModel):
 class AdminRecipeListResponse(BaseModel):
     items: list[AdminRecipeSummary]
     pagination: AdminPagination
+
+
+class AdminRecipeCreate(BaseModel):
+    title: str
+    ingredients: list[Any]
+    instructions: list[Any]
+    nutrition: Dict[str, Any]
+    tags: list[str]
+    meal_type: str
+    source_url: Optional[str] = None
+    image_url: Optional[str] = None
+    description: Optional[str] = None
+    prep_time_minutes: Optional[int] = None
+    cook_time_minutes: Optional[int] = None
+    total_time_minutes: Optional[int] = None
+    yield_qty: Optional[float] = None
+    yield_unit: Optional[str] = None
+    cuisine: Optional[str] = None
+    dish_type: Optional[str] = None
+    dietary_flags: Optional[Dict[str, Any]] = None
+    allergens: Optional[list[str]] = None
+    cost_per_serving_cents: Optional[int] = None
+    equipment: Optional[list[str]] = None
+    difficulty: Optional[str] = None
+    spice_level: Optional[int] = None
+    author: Optional[str] = None
+    language: Optional[str] = None
+    popularity_score: Optional[float] = None
+    health_score: Optional[float] = None
+
+
+class AdminRecipeUpdate(BaseModel):
+    title: Optional[str] = None
+    slug: Optional[str] = None
+    source_url: Optional[str] = None
+    image_url: Optional[str] = None
+    description: Optional[str] = None
+    instructions: Optional[list[Any]] = None
+    ingredients: Optional[list[Any]] = None
+    prep_time_minutes: Optional[int] = None
+    cook_time_minutes: Optional[int] = None
+    total_time_minutes: Optional[int] = None
+    yield_qty: Optional[float] = None
+    yield_unit: Optional[str] = None
+    cuisine: Optional[str] = None
+    meal_type: Optional[str] = None
+    dish_type: Optional[str] = None
+    dietary_flags: Optional[Dict[str, Any]] = None
+    allergens: Optional[list[str]] = None
+    nutrition: Optional[Dict[str, Any]] = None
+    cost_per_serving_cents: Optional[int] = None
+    equipment: Optional[list[str]] = None
+    difficulty: Optional[str] = None
+    spice_level: Optional[int] = None
+    author: Optional[str] = None
+    language: Optional[str] = None
+    tags: Optional[list[str]] = None
+    popularity_score: Optional[float] = None
+    health_score: Optional[float] = None
+    is_active: Optional[bool] = None
 class AdminPreferenceSummary(BaseModel):
     id: int
     submitted_at: str
@@ -248,6 +308,35 @@ def _language_label(code: str) -> str:
 def _slugify_username_seed(seed: str) -> str:
     cleaned = re.sub(r"[^a-z0-9]+", "_", seed.lower()).strip("_")
     return cleaned or "user"
+
+
+def _slugify_recipe_title(title: str) -> str:
+    cleaned = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
+    return cleaned or "recipe"
+
+
+def _recipe_slug_exists(db: Session, slug: str, exclude_id: Optional[UUID] = None) -> bool:
+    stmt = select(Recipe.id).where(Recipe.slug == slug)
+    if exclude_id is not None:
+        stmt = stmt.where(Recipe.id != exclude_id)
+    return db.scalar(stmt) is not None
+
+
+def _ensure_unique_recipe_slug(
+    db: Session,
+    base_slug: str,
+    exclude_id: Optional[UUID] = None,
+) -> str:
+    candidate = base_slug
+    suffix = 1
+    while _recipe_slug_exists(db, candidate, exclude_id=exclude_id):
+        suffix += 1
+        candidate = f"{base_slug}-{suffix}"
+        if suffix > 50:
+            candidate = f"{base_slug}-{uuid4().hex[:6]}"
+            if not _recipe_slug_exists(db, candidate, exclude_id=exclude_id):
+                break
+    return candidate
 
 
 def _generate_username(
@@ -981,6 +1070,88 @@ def get_admin_recipe_detail(
     recipe = db.get(Recipe, recipe_id)
     if recipe is None:
         raise HTTPException(status_code=404, detail="Recipe not found")
+
+    return _admin_recipe_detail(recipe)
+
+
+@app.post("/admin/recipes", response_model=AdminRecipeDetail, status_code=status.HTTP_201_CREATED)
+def create_admin_recipe(
+    payload: AdminRecipeCreate,
+    db: Session = Depends(get_session),
+    _admin: User = Depends(admin_user_dependency),
+) -> AdminRecipeDetail:
+    base_slug = _slugify_recipe_title(payload.title)
+    slug = _ensure_unique_recipe_slug(db, base_slug)
+
+    recipe = Recipe(
+        id=uuid4(),
+        title=payload.title,
+        slug=slug,
+        source_url=payload.source_url,
+        image_url=payload.image_url,
+        description=payload.description,
+        instructions=_json_safe(payload.instructions),
+        ingredients=_json_safe(payload.ingredients),
+        prep_time_minutes=payload.prep_time_minutes,
+        cook_time_minutes=payload.cook_time_minutes,
+        total_time_minutes=payload.total_time_minutes,
+        yield_qty=payload.yield_qty,
+        yield_unit=payload.yield_unit,
+        cuisine=payload.cuisine,
+        meal_type=payload.meal_type,
+        dish_type=payload.dish_type,
+        dietary_flags=_json_safe(payload.dietary_flags),
+        allergens=_json_safe(payload.allergens),
+        nutrition=_json_safe(payload.nutrition),
+        cost_per_serving_cents=payload.cost_per_serving_cents,
+        equipment=_json_safe(payload.equipment),
+        difficulty=payload.difficulty,
+        spice_level=payload.spice_level,
+        author=payload.author,
+        language=payload.language,
+        tags=_json_safe(payload.tags),
+        popularity_score=payload.popularity_score,
+        health_score=payload.health_score,
+        is_active=True,
+    )
+
+    db.add(recipe)
+    db.commit()
+    db.refresh(recipe)
+
+    return _admin_recipe_detail(recipe)
+
+
+@app.patch("/admin/recipes/{recipe_id}", response_model=AdminRecipeDetail)
+def update_admin_recipe(
+    recipe_id: UUID,
+    payload: AdminRecipeUpdate,
+    db: Session = Depends(get_session),
+    _admin: User = Depends(admin_user_dependency),
+) -> AdminRecipeDetail:
+    recipe = db.get(Recipe, recipe_id)
+    if recipe is None:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+
+    updates = payload.dict(exclude_unset=True)
+    title_changed = "title" in updates and updates.get("title") != recipe.title
+    slug_value = updates.pop("slug", None)
+
+    if slug_value:
+        base_slug = _slugify_recipe_title(slug_value)
+        updates["slug"] = _ensure_unique_recipe_slug(db, base_slug, exclude_id=recipe.id)
+    elif title_changed:
+        base_slug = _slugify_recipe_title(str(updates.get("title")))
+        updates["slug"] = _ensure_unique_recipe_slug(db, base_slug, exclude_id=recipe.id)
+
+    updates["updated_at"] = datetime.now(timezone.utc)
+
+    for key, value in updates.items():
+        setattr(recipe, key, _json_safe(value))
+
+    db.add(recipe)
+    db.commit()
+    db.refresh(recipe)
 
     return _admin_recipe_detail(recipe)
 
