@@ -10,6 +10,7 @@ import AdminGuard from '@/components/admin/AdminGuard'
 import AdminDashboard from '@/Pages/AdminDashboard'
 import AdminUsers from '@/Pages/AdminUsers'
 import AdminRecipes from '@/Pages/AdminRecipes'
+import AdminRecipeEditor from '@/Pages/AdminRecipeEditor'
 import AdminLogs from '@/Pages/AdminLogs'
 import AdminUserDetails from '@/Pages/AdminUserDetails'
 import Forbidden from '@/Pages/Forbidden'
@@ -29,6 +30,8 @@ function AppRoutes() {
             <Route path="users" element={<AdminUsers />} />
             <Route path="users/:userId" element={<AdminUserDetails />} />
             <Route path="recipes" element={<AdminRecipes />} />
+            <Route path="recipes/new" element={<AdminRecipeEditor />} />
+            <Route path="recipes/:recipeId/edit" element={<AdminRecipeEditor />} />
             <Route path="logs" element={<AdminLogs />} />
           </Route>
           <Route path="/forbidden" element={<Forbidden />} />
