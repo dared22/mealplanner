@@ -84,6 +84,34 @@ const MEAL_ICONS = {
   Snacks: Moon
 };
 
+const formatIngredient = (value) => {
+  // Prefer structured objects from the backend (name, quantity, unit, notes).
+  if (value && typeof value === 'object') {
+    const qty = value.quantity;
+    const unit = value.unit;
+    const name = value.name || '';
+    const notes = value.notes || '';
+
+    const parts = [];
+    // Ensure each part is properly converted to string and trimmed
+    if (qty !== undefined && qty !== null && qty !== '') {
+      parts.push(String(qty));
+    }
+    if (unit) {
+      parts.push(String(unit).trim());
+    }
+    if (name) {
+      parts.push(String(name).trim());
+    }
+
+    // Join with spaces and normalize any multiple spaces to single space
+    const text = parts.join(' ').replace(/\s+/g, ' ').trim();
+    return notes ? `${text} (${notes})` : text;
+  }
+  if (value === null || value === undefined) return '';
+  return String(value).trim();
+};
+
 const toTitleCase = (value) => {
   if (!value) return '';
   return value.toString().replace(/_/g, ' ').split(' ')
@@ -97,15 +125,16 @@ const normalizeServerPlan = (plan, t) => {
   const normalizedDays = WEEK_DAYS.map((weekday) => {
     const match = plan.days.find((d) => d?.name?.toLowerCase() === weekday.toLowerCase());
     const macros = match?.macros || {};
-    const meals = MEAL_TYPES.reduce((acc, mealType) => {
-      const src = match?.meals?.[mealType];
-      const hasContent = src && (src.name || src.ingredients?.length || src.calories);
-      if (mealType === 'Snacks' && !hasContent) {
-        acc[mealType] = null;
+      const meals = MEAL_TYPES.reduce((acc, mealType) => {
+        const src = match?.meals?.[mealType];
+        const hasContent = src && (src.name || src.ingredients?.length || src.calories);
+        if (mealType === 'Snacks' && !hasContent) {
+          acc[mealType] = null;
         return acc;
       }
       const safeMeal = src || {};
       acc[mealType] = {
+        id: safeMeal.id,
         name: safeMeal.name || translate('{mealType} option', { mealType: translate(mealType) }),
         calories: Number(safeMeal.calories) || 0,
         protein: Number(safeMeal.protein) || 0,
@@ -230,7 +259,7 @@ const MealItem = memo(function MealItem({ meal, mealType, onSwap, t }) {
               <h5 className="meal-section-title">{translate('Ingredients')}</h5>
               <ul className="meal-list">
                 {meal.ingredients.map((ingredient, idx) => (
-                  <li key={idx} className="meal-list-item">{ingredient}</li>
+                  <li key={idx} className="meal-list-item">{formatIngredient(ingredient)}</li>
                 ))}
               </ul>
             </div>
@@ -406,7 +435,12 @@ export default function ResultsStep({
     const pool = swapPools[mealType] || [];
     if (pool.length <= 1) return;
     const currentMeal = displayPlan?.days?.[dayIndex]?.meals?.[mealType];
-    const filtered = currentMeal ? pool.filter((o) => o?.name !== currentMeal.name) : pool;
+    const filtered = currentMeal
+      ? pool.filter((o) => {
+          if (o?.id && currentMeal?.id) return o.id !== currentMeal.id;
+          return o?.name !== currentMeal?.name;
+        })
+      : pool;
     const candidates = filtered.length ? filtered : pool;
     const next = candidates[Math.floor(Math.random() * candidates.length)];
     if (!next) return;

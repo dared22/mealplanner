@@ -17,4 +17,4 @@ Frontend/.env
 
 # MCP servers virtual environments
 mcp-servers/**/venv/
-mcp-servers/**/__pycache__/
+mcp-servers/**/__pycache__/.planning/
