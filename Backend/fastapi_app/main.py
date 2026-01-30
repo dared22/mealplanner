@@ -9,6 +9,7 @@ from typing import Any, Dict, Optional, Literal, Iterable
 
 from fastapi import BackgroundTasks, Body, Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select, func, or_
 from sqlalchemy.orm import Session
@@ -20,8 +21,8 @@ from clerk_auth import (
     verify_session_token,
 )
 from database import Base, SessionLocal, engine, get_session
-from models import Preference, Recipe, User
-from planner import generate_daily_plan_for_preference
+from models import ActivityLog, Preference, Recipe, User
+from planner import generate_daily_plan_for_preference, _format_list_values
 from recipe_translator import PlanTranslator
 
 ENSURE_SCHEMA_ON_STARTUP = os.getenv("ENSURE_SCHEMA_ON_STARTUP", "").lower() in {"1", "true", "yes"}
@@ -77,6 +78,23 @@ class AdminPagination(BaseModel):
     offset: int
 
 
+class AdminActivityLogEntry(BaseModel):
+    id: UUID
+    created_at: datetime
+    actor_type: str
+    actor_id: Optional[UUID] = None
+    actor_label: Optional[str] = None
+    action_type: str
+    action_detail: Optional[str] = None
+    status: str
+    metadata: Optional[Dict[str, Any]] = None
+
+
+class AdminActivityLogListResponse(BaseModel):
+    items: list[AdminActivityLogEntry]
+    pagination: AdminPagination
+
+
 class AdminUserListResponse(BaseModel):
     items: list[AdminUserSummary]
     pagination: AdminPagination
@@ -87,6 +105,7 @@ class AdminRecipeSummary(BaseModel):
     title: str
     slug: str
     meal_type: Optional[str] = None
+    cost_category: Optional[str] = None
     tags: list[str]
     is_active: bool
     created_at: Optional[datetime] = None
@@ -96,6 +115,7 @@ class AdminRecipeDetail(BaseModel):
     id: UUID
     title: str
     slug: str
+    cost_category: Optional[str] = None
     source_url: Optional[str] = None
     image_url: Optional[str] = None
     description: Optional[str] = None
@@ -140,6 +160,7 @@ class AdminRecipeCreate(BaseModel):
     nutrition: Dict[str, Any]
     tags: list[str]
     meal_type: str
+    cost_category: Optional[str] = None
     source_url: Optional[str] = None
     image_url: Optional[str] = None
     description: Optional[str] = None
@@ -165,6 +186,7 @@ class AdminRecipeCreate(BaseModel):
 class AdminRecipeUpdate(BaseModel):
     title: Optional[str] = None
     slug: Optional[str] = None
+    cost_category: Optional[str] = None
     source_url: Optional[str] = None
     image_url: Optional[str] = None
     description: Optional[str] = None
@@ -274,6 +296,16 @@ def optional_current_user(
     db.add(user)
     db.commit()
     db.refresh(user)
+    log_activity(
+        db,
+        actor_type="user",
+        actor_id=user.id,
+        actor_label=user.email or user.username,
+        action_type="user_signup",
+        action_detail="User account created",
+        status="success",
+        metadata={"clerk_user_id": clerk_user_id},
+    )
     return user
 
 
@@ -296,6 +328,21 @@ def admin_user_dependency(
 
 
 app = FastAPI(title="Meal Planner API")
+
+
+@app.exception_handler(Exception)
+async def handle_unhandled_exception(request: Request, exc: Exception) -> JSONResponse:
+    log_activity(
+        None,
+        actor_type="system",
+        actor_id=None,
+        actor_label=None,
+        action_type="unhandled_exception",
+        action_detail=str(exc),
+        status="critical",
+        metadata={"path": request.url.path, "method": request.method},
+    )
+    return JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
 
 LANGUAGE_LABELS = {
     "en": "English",
@@ -445,6 +492,162 @@ def _json_safe(value: Any) -> Any:
     return str(value)
 
 
+def _repair_plan_payload(plan: Any) -> Any:
+    """Ensure ingredients are plain strings and calories/macros are populated."""
+    if not isinstance(plan, dict):
+        return plan
+
+    def _repair_meal(meal: Any) -> Any:
+        if not isinstance(meal, dict):
+            return meal
+        fixed = dict(meal)
+        fixed["ingredients"] = _format_list_values(meal.get("ingredients"))
+        # Backfill calories from macros if missing/zero.
+        cal = fixed.get("calories")
+        protein = float(fixed.get("protein") or 0)
+        carbs = float(fixed.get("carbs") or 0)
+        fat = float(fixed.get("fat") or 0)
+        if cal in (None, 0, "0", 0.0):
+            estimated = protein * 4 + carbs * 4 + fat * 9
+            fixed["calories"] = round(estimated, 2) if estimated else 0
+        return fixed
+
+    def _repair_day(day: Any) -> Any:
+        if not isinstance(day, dict):
+            return day
+        fixed_day = dict(day)
+        meals = fixed_day.get("meals") if isinstance(fixed_day.get("meals"), dict) else {}
+        repaired_meals = {}
+        for key, meal in meals.items():
+            repaired_meals[key] = _repair_meal(meal) if meal else meal
+        fixed_day["meals"] = repaired_meals
+
+        # Recompute day totals from meals if zero/missing.
+        def _sum(field: str) -> float:
+            total = 0.0
+            for meal in repaired_meals.values():
+                if not isinstance(meal, dict):
+                    continue
+                try:
+                    total += float(meal.get(field) or 0)
+                except (TypeError, ValueError):
+                    continue
+            return round(total, 2)
+
+        if float(fixed_day.get("calories") or 0) == 0:
+            fixed_day["calories"] = _sum("calories")
+        macros = fixed_day.get("macros") if isinstance(fixed_day.get("macros"), dict) else {}
+        fixed_day["macros"] = {
+            "protein": macros.get("protein") if macros.get("protein") not in (None, "") else _sum("protein"),
+            "carbs": macros.get("carbs") if macros.get("carbs") not in (None, "") else _sum("carbs"),
+            "fat": macros.get("fat") if macros.get("fat") not in (None, "") else _sum("fat"),
+        }
+        return fixed_day
+
+    repaired = dict(plan)
+    days = plan.get("days") if isinstance(plan.get("days"), list) else []
+    repaired["days"] = [_repair_day(day) for day in days]
+    return repaired
+
+
+def _normalize_text(value: Any) -> str:
+    if value is None:
+        return ""
+    text = str(value).lower()
+    return re.sub(r"[^a-z0-9]+", " ", text).strip()
+
+
+def _tokenize_title(title: Any) -> set[str]:
+    normalized = _normalize_text(title)
+    return set(normalized.split()) if normalized else set()
+
+
+def _tokenize_ingredients(value: Any) -> set[str]:
+    if value is None:
+        return set()
+    if isinstance(value, (list, tuple, set)):
+        text = " ".join(str(item) for item in value)
+    else:
+        text = str(value)
+    normalized = _normalize_text(text)
+    return set(normalized.split()) if normalized else set()
+
+
+def _jaccard_similarity(left: set[str], right: set[str]) -> float:
+    if not left or not right:
+        return 0.0
+    intersection = left.intersection(right)
+    union = left.union(right)
+    if not union:
+        return 0.0
+    return len(intersection) / len(union)
+
+
+def _is_duplicate_recipe(
+    title_tokens: set[str],
+    ingredient_tokens: set[str],
+    existing: list[dict[str, Any]],
+    *,
+    title_threshold: float = 0.75,
+    ingredient_threshold: float = 0.6,
+) -> Optional[dict[str, Any]]:
+    if not title_tokens or not ingredient_tokens:
+        return None
+    for entry in existing:
+        title_score = _jaccard_similarity(title_tokens, entry["title_tokens"])
+        if title_score < title_threshold:
+            continue
+        ingredient_score = _jaccard_similarity(ingredient_tokens, entry["ingredient_tokens"])
+        if ingredient_score >= ingredient_threshold:
+            return {
+                "title_score": title_score,
+                "ingredient_score": ingredient_score,
+                "recipe_id": entry.get("id"),
+                "title": entry.get("title"),
+            }
+    return None
+
+
+def log_activity(
+    db: Optional[Session],
+    *,
+    actor_type: str,
+    action_type: str,
+    status: str,
+    actor_id: Optional[UUID] = None,
+    actor_label: Optional[str] = None,
+    action_detail: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> None:
+    owns_session = False
+    session = db
+    if session is None:
+        session = SessionLocal()
+        owns_session = True
+
+    try:
+        entry = ActivityLog(
+            actor_type=actor_type,
+            actor_id=actor_id,
+            actor_label=actor_label,
+            action_type=action_type,
+            action_detail=action_detail,
+            status=status,
+            metadata_=_json_safe(metadata) if metadata else None,
+        )
+        session.add(entry)
+        session.commit()
+    except Exception:
+        logger.exception("Failed to write activity log")
+        try:
+            session.rollback()
+        except Exception:
+            pass
+    finally:
+        if owns_session:
+            session.close()
+
+
 def _persist_plan_result(db: Session, preference: Preference, plan_result: Dict[str, Any]) -> None:
     existing_raw = preference.raw_data if isinstance(preference.raw_data, dict) else {}
     updated_raw = dict(existing_raw)
@@ -488,7 +691,7 @@ def _recipe_to_dict(recipe: Recipe) -> Dict[str, Any]:
         "url": recipe.source_url,
         "source": recipe.author or "unknown",
         "type": recipe.dish_type,
-        "price_tier": None,
+        "price_tier": recipe.cost_category,
         "tags": recipe.tags or [],
         "ingredients": _flatten_ingredients(recipe.ingredients) if recipe.ingredients else [],
         "instructions": recipe.instructions or [],
@@ -513,6 +716,7 @@ def _admin_recipe_summary(recipe: Recipe) -> AdminRecipeSummary:
         title=recipe.title,
         slug=recipe.slug,
         meal_type=recipe.meal_type,
+        cost_category=recipe.cost_category,
         tags=recipe.tags or [],
         is_active=recipe.is_active,
         created_at=recipe.created_at,
@@ -536,6 +740,7 @@ def _admin_recipe_detail(recipe: Recipe) -> AdminRecipeDetail:
         yield_unit=recipe.yield_unit,
         cuisine=recipe.cuisine,
         meal_type=recipe.meal_type,
+        cost_category=recipe.cost_category,
         dish_type=recipe.dish_type,
         dietary_flags=_json_safe(recipe.dietary_flags),
         allergens=_json_safe(recipe.allergens),
@@ -571,6 +776,17 @@ def _find_import_column(columns: Iterable[str], candidates: Iterable[str]) -> Op
             if needle and needle in key:
                 return original
     return None
+
+
+def _normalize_cost_category(value: Any) -> Optional[str]:
+    if _is_blank(value):
+        return None
+    normalized = str(value).strip().lower().replace("_", " ")
+    if normalized in {"cheap", "low", "budget"}:
+        return "cheap"
+    if normalized in {"medium expensive", "medium", "mid", "moderate"}:
+        return "medium expensive"
+    raise ValueError("cost_category must be either 'cheap' or 'medium expensive'")
 
 
 def _is_blank(value: Any) -> bool:
@@ -702,6 +918,10 @@ def _resolve_import_columns(columns: Iterable[str]) -> Dict[str, Optional[str]]:
         "nutrition": _find_import_column(columns, ["nutrition", "nutrients", "macros"]),
         "tags": _find_import_column(columns, ["tags", "labels", "categories"]),
         "meal_type": _find_import_column(columns, ["meal_type", "meal", "course", "category"]),
+        "cost_category": _find_import_column(
+            columns,
+            ["cost_category", "price_tier", "budget_range", "price_level", "cost_level", "price_category"],
+        ),
         "slug": _find_import_column(columns, ["slug"]),
     }
 
@@ -726,9 +946,18 @@ def _normalize_import_row(
     nutrition_col = columns.get("nutrition")
     tags_col = columns.get("tags")
     meal_type_col = columns.get("meal_type")
+    cost_category_col = columns.get("cost_category")
 
     meal_type_value = row.get(meal_type_col) if meal_type_col else None
     meal_type = None if _is_blank(meal_type_value) else str(meal_type_value).strip().lower()
+
+    cost_value = row.get(cost_category_col) if cost_category_col else None
+    cost_category = None
+    if not _is_blank(cost_value):
+        try:
+            cost_category = _normalize_cost_category(cost_value)
+        except ValueError:
+            cost_category = None
 
     return {
         "title": title,
@@ -740,6 +969,7 @@ def _normalize_import_row(
         "nutrition": _parse_import_nutrition(row.get(nutrition_col) if nutrition_col else None),
         "tags": _parse_import_list_field(row.get(tags_col) if tags_col else None),
         "meal_type": meal_type,
+        "cost_category": cost_category,
     }
 
 
@@ -815,6 +1045,18 @@ def _generate_plan_in_background(pref_id: int) -> None:
             return
 
         _persist_plan_result(db, preference, plan_result)
+        status_value = "success" if plan_result.get("plan") else "error"
+        detail = "Meal plan generated" if status_value == "success" else plan_result.get("error")
+        log_activity(
+            db,
+            actor_type="user",
+            actor_id=preference.user_id,
+            actor_label=None,
+            action_type="plan_generation",
+            action_detail=detail,
+            status=status_value,
+            metadata={"preference_id": preference.id, "user_id": str(preference.user_id)},
+        )
         logger.info("Generated meal plan for preference %s", pref_id)
     except Exception:
         logger.exception("Failed to update raw_data with generated plan for preference %s", pref_id)
@@ -994,6 +1236,9 @@ def get_preferences(
                                 normalized_lang,
                             )
 
+    if plan_payload:
+        plan_payload = _repair_plan_payload(plan_payload)
+
     return {
         "id": entry.id,
         "submitted_at": entry.submitted_at,
@@ -1124,7 +1369,7 @@ def list_admin_users(
     db: Session = Depends(get_session),
     _admin: User = Depends(admin_user_dependency),
 ) -> AdminUserListResponse:
-    filters = [Recipe.is_active.is_(True)]
+    filters = []
     if search:
         normalized = search.strip()
         if normalized:
@@ -1215,6 +1460,18 @@ def update_admin_user_status(
     db.commit()
     db.refresh(user)
 
+    action = "user_activated" if payload.is_active else "user_suspended"
+    log_activity(
+        db,
+        actor_type="admin",
+        actor_id=_admin.id,
+        actor_label=_admin.email or _admin.username,
+        action_type=action,
+        action_detail=f"Admin set user {user.id} active={payload.is_active}",
+        status="success",
+        metadata={"target_user_id": str(user.id), "is_active": payload.is_active},
+    )
+
     return AdminUserSummary(
         id=user.id,
         username=user.username,
@@ -1291,6 +1548,17 @@ def delete_admin_recipe(
     db.commit()
     db.refresh(recipe)
 
+    log_activity(
+        db,
+        actor_type="admin",
+        actor_id=_admin.id,
+        actor_label=_admin.email or _admin.username,
+        action_type="recipe_deleted",
+        action_detail=f"Deleted recipe {recipe.title}",
+        status="success",
+        metadata={"recipe_id": str(recipe.id), "title": recipe.title, "is_active": False},
+    )
+
     return _admin_recipe_detail(recipe)
 
 
@@ -1300,6 +1568,11 @@ def create_admin_recipe(
     db: Session = Depends(get_session),
     _admin: User = Depends(admin_user_dependency),
 ) -> AdminRecipeDetail:
+    try:
+        normalized_cost = _normalize_cost_category(payload.cost_category)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
     base_slug = _slugify_recipe_title(payload.title)
     slug = _ensure_unique_recipe_slug(db, base_slug)
 
@@ -1307,6 +1580,7 @@ def create_admin_recipe(
         id=uuid4(),
         title=payload.title,
         slug=slug,
+        cost_category=normalized_cost,
         source_url=payload.source_url,
         image_url=payload.image_url,
         description=payload.description,
@@ -1339,6 +1613,17 @@ def create_admin_recipe(
     db.commit()
     db.refresh(recipe)
 
+    log_activity(
+        db,
+        actor_type="admin",
+        actor_id=_admin.id,
+        actor_label=_admin.email or _admin.username,
+        action_type="recipe_created",
+        action_detail=f"Created recipe {recipe.title}",
+        status="success",
+        metadata={"recipe_id": str(recipe.id), "title": recipe.title},
+    )
+
     return _admin_recipe_detail(recipe)
 
 
@@ -1354,6 +1639,11 @@ def update_admin_recipe(
         raise HTTPException(status_code=404, detail="Recipe not found")
 
     updates = payload.dict(exclude_unset=True)
+    if "cost_category" in updates:
+        try:
+            updates["cost_category"] = _normalize_cost_category(updates["cost_category"])
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
     title_changed = "title" in updates and updates.get("title") != recipe.title
     slug_value = updates.pop("slug", None)
 
@@ -1372,6 +1662,17 @@ def update_admin_recipe(
     db.add(recipe)
     db.commit()
     db.refresh(recipe)
+
+    log_activity(
+        db,
+        actor_type="admin",
+        actor_id=_admin.id,
+        actor_label=_admin.email or _admin.username,
+        action_type="recipe_updated",
+        action_detail=f"Updated recipe {recipe.title}",
+        status="success",
+        metadata={"recipe_id": str(recipe.id), "title": recipe.title},
+    )
 
     return _admin_recipe_detail(recipe)
 
@@ -1403,6 +1704,20 @@ async def import_admin_recipes(
     skipped = 0
     errors: list[AdminRecipeImportError] = []
 
+    existing_rows = db.execute(
+        select(Recipe.id, Recipe.title, Recipe.ingredients)
+    ).mappings().all()
+    existing_tokens: list[dict[str, Any]] = []
+    for row in existing_rows:
+        existing_tokens.append(
+            {
+                "id": row.get("id"),
+                "title": row.get("title"),
+                "title_tokens": _tokenize_title(row.get("title")),
+                "ingredient_tokens": _tokenize_ingredients(row.get("ingredients")),
+            }
+        )
+
     for index, row in enumerate(df.to_dict("records"), start=1):
         try:
             normalized = _normalize_import_row(row, columns)
@@ -1416,11 +1731,36 @@ async def import_admin_recipes(
                 existing.nutrition = _json_safe(normalized["nutrition"])
                 existing.tags = _json_safe(normalized["tags"])
                 existing.meal_type = normalized["meal_type"]
+                existing.cost_category = normalized["cost_category"]
                 existing.updated_at = datetime.now(timezone.utc)
                 db.add(existing)
                 db.commit()
                 db.refresh(existing)
                 updated += 1
+                continue
+
+            title_tokens = _tokenize_title(normalized["title"])
+            ingredient_tokens = _tokenize_ingredients(normalized["ingredients"])
+            duplicate_match = _is_duplicate_recipe(
+                title_tokens,
+                ingredient_tokens,
+                existing_tokens,
+            )
+            if duplicate_match is not None:
+                skipped += 1
+                if len(errors) < _max_import_errors():
+                    errors.append(
+                        AdminRecipeImportError(
+                            row=index,
+                            field="title",
+                            message=(
+                                "Duplicate detected (title similarity "
+                                f"{duplicate_match['title_score']:.2f}, "
+                                "ingredients similarity "
+                                f"{duplicate_match['ingredient_score']:.2f})."
+                            ),
+                        )
+                    )
                 continue
 
             slug = _ensure_unique_recipe_slug(db, base_slug)
@@ -1433,12 +1773,21 @@ async def import_admin_recipes(
                 nutrition=_json_safe(normalized["nutrition"]),
                 tags=_json_safe(normalized["tags"]),
                 meal_type=normalized["meal_type"],
+                cost_category=normalized["cost_category"],
                 is_active=True,
             )
             db.add(recipe)
             db.commit()
             db.refresh(recipe)
             created += 1
+            existing_tokens.append(
+                {
+                    "id": recipe.id,
+                    "title": recipe.title,
+                    "title_tokens": title_tokens,
+                    "ingredient_tokens": ingredient_tokens,
+                }
+            )
         except ValueError as exc:
             skipped += 1
             if len(errors) < _max_import_errors():
@@ -1457,6 +1806,55 @@ async def import_admin_recipes(
         updated=updated,
         skipped=skipped,
         errors=errors,
+    )
+
+
+@app.get("/admin/logs", response_model=AdminActivityLogListResponse)
+def list_admin_activity_logs(
+    start_date: Optional[datetime] = Query(None, description="Filter by start date (UTC)"),
+    end_date: Optional[datetime] = Query(None, description="Filter by end date (UTC)"),
+    actor_type: Optional[str] = Query(None, description="Filter by actor type"),
+    status_filter: Optional[str] = Query(None, alias="status", description="Filter by status"),
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_session),
+    _admin: User = Depends(admin_user_dependency),
+) -> AdminActivityLogListResponse:
+    filters = []
+    if start_date:
+        filters.append(ActivityLog.created_at >= _ensure_utc(start_date))
+    if end_date:
+        filters.append(ActivityLog.created_at <= _ensure_utc(end_date))
+    if actor_type:
+        filters.append(ActivityLog.actor_type == actor_type)
+    if status_filter:
+        filters.append(ActivityLog.status == status_filter)
+
+    base_stmt = select(ActivityLog)
+    if filters:
+        base_stmt = base_stmt.where(*filters)
+
+    total = db.scalar(select(func.count()).select_from(base_stmt.subquery())) or 0
+    entries = db.scalars(
+        base_stmt.order_by(ActivityLog.created_at.desc()).offset(offset).limit(limit)
+    ).all()
+
+    return AdminActivityLogListResponse(
+        items=[
+            AdminActivityLogEntry(
+                id=entry.id,
+                created_at=entry.created_at,
+                actor_type=entry.actor_type,
+                actor_id=entry.actor_id,
+                actor_label=entry.actor_label,
+                action_type=entry.action_type,
+                action_detail=entry.action_detail,
+                status=entry.status,
+                metadata=_json_safe(entry.metadata_),
+            )
+            for entry in entries
+        ],
+        pagination=AdminPagination(total=total, limit=limit, offset=offset),
     )
 
 

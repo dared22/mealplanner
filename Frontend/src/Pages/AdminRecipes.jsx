@@ -50,6 +50,7 @@ export default function AdminRecipes() {
   const [deletingId, setDeletingId] = useState(null);
   const [importFile, setImportFile] = useState(null);
   const [importStatus, setImportStatus] = useState('idle');
+  const [importProgress, setImportProgress] = useState(0);
   const [importResult, setImportResult] = useState(null);
   const [importError, setImportError] = useState(null);
 
@@ -166,6 +167,7 @@ export default function AdminRecipes() {
     }
 
     setImportStatus('uploading');
+    setImportProgress(0);
     setImportError(null);
     setImportResult(null);
 
@@ -179,21 +181,32 @@ export default function AdminRecipes() {
       const contentType = ext === 'csv' ? 'text/csv' : 'application/octet-stream';
       const payload = await importFile.arrayBuffer();
 
-      const response = await fetch(`${API_URL}/admin/recipes/import`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': contentType,
-          'X-File-Name': importFile.name,
-        },
-        body: payload,
+      const data = await new Promise((resolve, reject) => {
+        const request = new XMLHttpRequest();
+        request.open('POST', `${API_URL}/admin/recipes/import`);
+        request.responseType = 'json';
+        request.setRequestHeader('Authorization', `Bearer ${token}`);
+        request.setRequestHeader('Content-Type', contentType);
+        request.setRequestHeader('X-File-Name', importFile.name);
+
+        request.upload.onprogress = (event) => {
+          if (!event.lengthComputable) return;
+          const percent = Math.round((event.loaded / event.total) * 100);
+          setImportProgress(percent);
+        };
+
+        request.onerror = () => reject(new Error('Import failed due to a network error.'));
+        request.onload = () => {
+          if (request.status < 200 || request.status >= 300) {
+            reject(new Error(`Import failed with status ${request.status}`));
+            return;
+          }
+          setImportProgress(100);
+          resolve(request.response || {});
+        };
+
+        request.send(payload);
       });
-
-      if (!response.ok) {
-        throw new Error(`Import failed with status ${response.status}`);
-      }
-
-      const data = await response.json();
       setImportResult(data);
       setImportStatus('success');
       await fetchRecipes();
@@ -285,9 +298,12 @@ export default function AdminRecipes() {
             <select
               id="recipe-status"
               value={inputs.status}
-              onChange={(event) =>
-                setInputs((prev) => ({ ...prev, status: event.target.value }))
-              }
+              onChange={(event) => {
+                const nextStatus = event.target.value;
+                setInputs((prev) => ({ ...prev, status: nextStatus }));
+                setFilters((prev) => ({ ...prev, status: nextStatus }));
+                setPagination((prev) => ({ ...prev, offset: 0 }));
+              }}
               className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               <option value="all">All</option>
@@ -318,19 +334,39 @@ export default function AdminRecipes() {
         </div>
         <div className="flex flex-col gap-3 md:flex-row md:items-center">
           <input
+            id="bulk-import-file"
             type="file"
             accept=".csv,.parquet,.pq"
+            className="sr-only"
             onChange={(event) => {
               setImportFile(event.target.files?.[0] || null);
               setImportStatus('idle');
+              setImportProgress(0);
               setImportError(null);
               setImportResult(null);
             }}
           />
+          <label htmlFor="bulk-import-file" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+            Velg fil
+          </label>
           <div className="text-sm text-muted-foreground">
             {importFile ? importFile.name : 'No file selected'}
           </div>
         </div>
+        {importStatus === 'uploading' && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>Uploading...</span>
+              <span>{importProgress}%</span>
+            </div>
+            <div className="h-2 w-full rounded-full bg-muted/60">
+              <div
+                className="h-2 rounded-full bg-emerald-500 transition-all"
+                style={{ width: `${importProgress}%` }}
+              />
+            </div>
+          </div>
+        )}
         {importError && (
           <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
             {importError?.message || 'Import failed.'}

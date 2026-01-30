@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [ ] **Phase 1: Foundation** - Admin access control and UI structure
 - [ ] **Phase 2: Dashboard** - Analytics and system health monitoring
-- [ ] **Phase 3: User Management** - User administration capabilities
+- [x] **Phase 3: User Management** - User administration capabilities
 - [ ] **Phase 4: Recipe Management** - Recipe database operations
 - [ ] **Phase 5: Activity Logging** - System observability and audit trail
 
@@ -33,9 +33,9 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 3 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Backend admin auth (is_admin field + admin dependency + /admin/session endpoint)
-- [ ] 01-02-PLAN.md — Frontend admin layout (sidebar, header, 403 page)
-- [ ] 01-03-PLAN.md — Frontend admin routing + auth guard (wires backend to frontend)
+- [x] 01-01-PLAN.md — Backend admin auth (is_admin field + admin dependency + /admin/session endpoint)
+- [x] 01-02-PLAN.md — Frontend admin layout (sidebar, header, 403 page)
+- [x] 01-03-PLAN.md — Frontend admin routing + auth guard (wires backend to frontend)
 
 ### Phase 2: Dashboard
 **Goal**: Administrators can view key system metrics and health status at a glance
@@ -46,10 +46,11 @@ Plans:
   2. Dashboard displays new recipes this week count with week-over-week growth percentage
   3. Dashboard displays system health status indicator (healthy/degraded/down)
   4. Dashboard stats refresh automatically when page is loaded
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] TBD (to be determined during planning)
+- [x] 02-01-PLAN.md — Backend dashboard metrics API
+- [x] 02-02-PLAN.md — Frontend dashboard metrics UI
 
 ### Phase 3: User Management
 **Goal**: Administrators can view, search, and manage user accounts
@@ -60,10 +61,12 @@ Plans:
   2. Admin can click on any user to view their full details including preferences and meal plans
   3. Admin can suspend/ban a user account and suspended users cannot log in
   4. User list shows user status (active/suspended) and basic info (name, email, signup date)
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] TBD (to be determined during planning)
+- [x] 03-01-PLAN.md — Backend user management APIs + suspension enforcement
+- [x] 03-02-PLAN.md — Admin user list UI with filters and pagination
+- [x] 03-03-PLAN.md — Admin user detail view + suspend/activate controls
 
 ### Phase 4: Recipe Management
 **Goal**: Administrators can manage the recipe database through CRUD operations
@@ -75,10 +78,14 @@ Plans:
   3. Admin can edit existing recipe and changes are saved to database
   4. Admin can delete recipe with confirmation dialog and deleted recipes no longer appear in meal plan generation
   5. Admin can bulk import recipes from CSV or Parquet file
-**Plans**: TBD
+**Plans**: 5 plans
 
 Plans:
-- [ ] TBD (to be determined during planning)
+- [x] 04-01-PLAN.md — Admin recipe list/detail + create/update API
+- [x] 04-02-PLAN.md — Recipe delete + active-only filtering
+- [x] 04-03-PLAN.md — Bulk import API (CSV/Parquet)
+- [x] 04-04-PLAN.md — Admin recipe list UI with delete
+- [x] 04-05-PLAN.md — Admin recipe editor + bulk import UI
 
 ### Phase 5: Activity Logging
 **Goal**: Administrators can monitor and audit all system activity
@@ -89,10 +96,12 @@ Plans:
   2. System automatically logs user activity (signups, plan generations) and errors
   3. Admin can view paginated activity log table with filters for date range, action type, and status
   4. Activity log displays timestamp, action description, user/admin identifier, and status (success/warning/error/critical)
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] TBD (to be determined during planning)
+- [x] 05-01-PLAN.md — Activity log model + baseline event logging
+- [x] 05-02-PLAN.md — Admin activity logs API with filters
+- [x] 05-03-PLAN.md — Activity Logs admin UI
 
 ## Progress
 
@@ -101,8 +110,8 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 0/3 | Planning complete | - |
-| 2. Dashboard | 0/TBD | Not started | - |
-| 3. User Management | 0/TBD | Not started | - |
-| 4. Recipe Management | 0/TBD | Not started | - |
-| 5. Activity Logging | 0/TBD | Not started | - |
+| 1. Foundation | 3/3 | Done | 2026-01-26 |
+| 2. Dashboard | 2/2 | Done | 2026-01-26 |
+| 3. User Management | 3/3 | Done | 2026-01-27 |
+| 4. Recipe Management | 5/5 | Done | 2026-01-27 |
+| 5. Activity Logging | 3/3 | Done | 2026-01-27 |

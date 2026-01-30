@@ -79,3 +79,20 @@ def extract_primary_email(payload: Dict[str, Any]) -> Optional[str]:
                 if isinstance(email, str) and email.strip():
                     return email.strip()
     return None
+
+
+def extract_username(payload: Dict[str, Any]) -> Optional[str]:
+    """Prefer the Clerk username claim if present."""
+    for key in ("username", "preferred_username"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+
+    # Some Clerk setups include a nested structure
+    user_obj = payload.get("user") or payload.get("user_data")
+    if isinstance(user_obj, dict):
+        value = user_obj.get("username")
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+
+    return None

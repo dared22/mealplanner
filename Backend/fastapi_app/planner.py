@@ -316,6 +316,7 @@ def _load_recipes_df(db: Session):
         Recipe.cook_time_minutes,
         Recipe.total_time_minutes,
         Recipe.cost_per_serving_cents,
+        Recipe.cost_category,
     ).where(Recipe.is_active.is_(True))
     result = db.execute(stmt)
     rows = result.mappings().all()
@@ -363,7 +364,10 @@ def _prepare_recipes(df):
     breakfast_col = _find_column(df.columns, ["is_breakfast", "breakfast"])
     lunch_col = _find_column(df.columns, ["is_lunch", "lunch"])
     cost_col = _find_column(df.columns, ["price", "cost", "amount", "price_value", "cost_per_serving", "cost_per_serving_cents"])
-    tier_col = _find_column(df.columns, ["price_tier", "budget_range", "price_level", "cost_level", "price_category"])
+    tier_col = _find_column(
+        df.columns,
+        ["price_tier", "budget_range", "price_level", "cost_level", "price_category", "cost_category"],
+    )
     id_col = _find_column(df.columns, ["id", "recipe_id", "slug"])
     url_col = _find_column(df.columns, ["url", "link", "source_url"])
 
@@ -514,33 +518,42 @@ def _format_instructions(value: Any) -> str:
 
 
 def _format_list_values(value: Any) -> List[str]:
+    """Normalize a heterogeneous value into a list of readable strings."""
     if value is None:
         return []
 
-    list_value: Optional[List[Any]] = None
-    if isinstance(value, (list, tuple)):
-        list_value = list(value)
-    else:
-        tolist_fn = getattr(value, "tolist", None)
-        if callable(tolist_fn):
-            try:
-                list_value = list(tolist_fn())
-            except Exception:
-                list_value = None
+    def _extract(item: Any) -> Optional[str]:
+        if item is None:
+            return None
+        if isinstance(item, dict):
+            text = item.get("original_text") or item.get("name") or item.get("text")
+            if text is None:
+                return None
+            text = str(text).strip()
+            return text if text else None
+        text = str(item).strip()
+        return text if text else None
 
-    if list_value is not None:
-        formatted: List[str] = []
-        for item in list_value:
-            if isinstance(item, dict):
-                text = item.get("original_text") or item.get("name")
-                if text and str(text).strip():
-                    formatted.append(str(text).strip())
-            elif str(item).strip():
-                formatted.append(str(item).strip())
-        return formatted
+    def _from_iterable(items: Iterable[Any]) -> List[str]:
+        return [text for text in (_extract(it) for it in items) if text]
 
+    # Already a list/tuple/set
+    if isinstance(value, (list, tuple, set)):
+        return _from_iterable(value)
+
+    # Numpy/pandas objects that support tolist()
+    tolist_fn = getattr(value, "tolist", None)
+    if callable(tolist_fn):
+        try:
+            return _from_iterable(tolist_fn())
+        except Exception:
+            pass
+
+    # String that might encode a list/dict
     if isinstance(value, str):
         text = value.strip()
+
+        # List encoded as string
         if text.startswith("[") and text.endswith("]"):
             parsed = None
             try:
@@ -550,16 +563,25 @@ def _format_list_values(value: Any) -> List[str]:
                     parsed = ast.literal_eval(text)
                 except (ValueError, SyntaxError):
                     parsed = None
-            if isinstance(parsed, (list, tuple)):
-                return [str(item).strip() for item in parsed if str(item).strip()]
+            if isinstance(parsed, (list, tuple, set)):
+                return _from_iterable(parsed)
 
-            quoted = re.findall(r"'([^']+)'|\"([^\"]+)\"", text)
-            if quoted:
-                return [seg.strip() for seg in (a or b for a, b in quoted) if seg.strip()]
-        if text:
-            return [text]
+        # Dict encoded as string: try to extract original_text/name
+        if text.startswith("{") and text.endswith("}"):
+            parsed_dict = None
+            try:
+                parsed_dict = ast.literal_eval(text)
+            except Exception:
+                parsed_dict = None
+            if isinstance(parsed_dict, dict):
+                extracted = _extract(parsed_dict)
+                return [extracted] if extracted else []
 
-    return [str(value).strip()] if str(value).strip() else []
+        extracted = _extract(text)
+        return [extracted] if extracted else []
+
+    extracted = _extract(value)
+    return [extracted] if extracted else []
 
 
 def _tag_matches(meal_type: str, value: Any) -> bool:

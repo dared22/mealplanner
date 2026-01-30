@@ -19,11 +19,14 @@ Enable administrators to manage users and recipes efficiently while maintaining 
 - ✓ Translation support (Norwegian/English) - existing
 - ✓ React 19 frontend with shadcn/ui components - existing
 - ✓ FastAPI backend with background tasks - existing
+- ✓ Admin access control based on `is_admin` (backend + frontend guard)
+- ✓ 403 error page for non-admin access attempts
+- ✓ Separate `/admin` route with dedicated layout and navigation
+- ✓ Sidebar navigation matching screenshot design pattern
+- ✓ Dashboard metrics API and UI (users, recipes, system health)
 
 ### Active
 
-- [ ] Admin access control based on `is_admin` database field
-- [ ] Admin dashboard with user stats, recipe stats, and system health metrics
 - [ ] User management: view all users with filters
 - [ ] User management: view user preferences and meal plans
 - [ ] User management: suspend/ban user accounts
@@ -36,9 +39,6 @@ Enable administrators to manage users and recipes efficiently while maintaining 
 - [ ] Activity logging: track user activity (signups, plan generations)
 - [ ] Activity logging: track system events (errors, backups)
 - [ ] Activity log viewer with filters and pagination
-- [ ] 403 error page for non-admin access attempts
-- [ ] Separate `/admin` route with dedicated layout
-- [ ] Sidebar navigation matching screenshot design pattern
 
 ### Out of Scope
 
@@ -91,11 +91,14 @@ Enable administrators to manage users and recipes efficiently while maintaining 
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Separate /admin route | Isolates admin UI from user-facing app, clearer access control | — Pending |
-| Database field only for auth | Simpler than Clerk roles, sufficient for single admin level | — Pending |
-| Skip Quick Actions in v1 | Focus on core management features first, add shortcuts later | — Pending |
-| Adapt screenshot design | Maintain consistency with existing app, leverage shadcn/ui | — Pending |
-| 403 error page | Clear feedback to users who shouldn't access admin area | — Pending |
+| Separate /admin route | Isolates admin UI from user-facing app, clearer access control | Implemented in 01-03 |
+| Database field only for auth | Simpler than Clerk roles, sufficient for single admin level | Implemented in 01-01 |
+| Skip Quick Actions in v1 | Focus on core management features first, add shortcuts later | Pending (revisit in dashboard phase) |
+| Adapt screenshot design | Maintain consistency with existing app, leverage shadcn/ui | Implemented in 01-02 layout |
+| 403 error page | Clear feedback to users who shouldn't access admin area | Implemented in 01-02 |
+| Use User.created_at for weekly growth | Only timestamp available to approximate active users | Implemented in 02-01 |
+| Recipe weekly growth placeholder | Recipes lack timestamps; weekly deltas fixed at 0 until schema adds created_at | Implemented in 02-01 |
+| Health status based on DB query | Most critical dependency; avoid external checks for now | Implemented in 02-01 |
 
 ---
 *Last updated: 2026-01-26 after initialization*
