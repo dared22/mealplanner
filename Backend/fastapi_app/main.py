@@ -1,8 +1,11 @@
+import ast
+import concurrent.futures
 import io
 import json
 import logging
 import os
 import re
+from fractions import Fraction
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 from typing import Any, Dict, Optional, Literal, Iterable
@@ -28,6 +31,7 @@ from recipe_translator import PlanTranslator
 ENSURE_SCHEMA_ON_STARTUP = os.getenv("ENSURE_SCHEMA_ON_STARTUP", "").lower() in {"1", "true", "yes"}
 
 logger = logging.getLogger(__name__)
+PLAN_GENERATION_TIMEOUT = int(os.getenv("PLAN_GENERATION_TIMEOUT", "180"))
 
 
 class SessionResponse(BaseModel):
@@ -493,7 +497,7 @@ def _json_safe(value: Any) -> Any:
 
 
 def _repair_plan_payload(plan: Any) -> Any:
-    """Ensure ingredients are plain strings and calories/macros are populated."""
+    """Ensure calories/macros are populated and ingredients are properly formatted."""
     if not isinstance(plan, dict):
         return plan
 
@@ -501,7 +505,11 @@ def _repair_plan_payload(plan: Any) -> Any:
         if not isinstance(meal, dict):
             return meal
         fixed = dict(meal)
-        fixed["ingredients"] = _format_list_values(meal.get("ingredients"))
+        # Keep ingredients as structured objects (list of dicts with quantity, unit, name)
+        # instead of converting to plain strings
+        ingredients = meal.get("ingredients")
+        if ingredients is not None:
+            fixed["ingredients"] = ingredients if isinstance(ingredients, list) else []
         # Backfill calories from macros if missing/zero.
         cal = fixed.get("calories")
         protein = float(fixed.get("protein") or 0)
@@ -671,6 +679,174 @@ def _flatten_ingredients(value: Any) -> list[str]:
             elif item is not None:
                 items.append(str(item))
     return items
+
+
+_INGREDIENT_UNITS = [
+    "kg",
+    "g",
+    "mg",
+    "l",
+    "dl",
+    "cl",
+    "ml",
+    "ss",  # tablespoon (spiseskje)
+    "ts",  # teaspoon (teskje)
+    "stk",
+    "st",
+    "bat",  # "båt" (garlic clove) in ascii form
+    "fedd",
+    "klype",
+]
+
+
+def _to_float(value: str) -> Optional[float]:
+    numeric = value.replace(",", ".").strip()
+    try:
+        if "/" in numeric:
+            return float(Fraction(numeric))
+        return float(numeric)
+    except Exception:
+        return None
+
+
+def _parse_quantity_unit(text: str) -> tuple[Optional[float], Optional[str], str]:
+    if not text:
+        return None, None, ""
+
+    match = re.match(r"^\s*(?P<qty>\d+(?:[.,]\d+)?(?:/\d+)?)(?P<rest>.*)$", text)
+    if not match:
+        return None, None, text.strip()
+
+    qty_raw = match.group("qty") or ""
+    rest = (match.group("rest") or "").lstrip()
+    unit: Optional[str] = None
+    name_part = rest
+
+    lower_rest = rest.lower()
+    for unit_candidate in sorted(_INGREDIENT_UNITS, key=len, reverse=True):
+        candidate = unit_candidate.lower()
+        if lower_rest.startswith(candidate):
+            unit = candidate
+            name_part = rest[len(unit_candidate):]
+            break
+        dotted = f"{candidate}."
+        if lower_rest.startswith(dotted):
+            unit = candidate
+            name_part = rest[len(unit_candidate) + 1 :]
+            break
+
+    if unit is None and rest:
+        parts = rest.split(maxsplit=1)
+        if parts and parts[0].lower() in _INGREDIENT_UNITS:
+            unit = parts[0].lower()
+            name_part = parts[1] if len(parts) > 1 else ""
+
+    quantity = _to_float(qty_raw)
+    cleaned_name = name_part.lstrip(" .,-:\t") or rest
+    return quantity, unit, cleaned_name.strip()
+
+
+def _maybe_eval_dict(text: str) -> Optional[dict[str, Any]]:
+    if not text or not text.strip().startswith("{"):
+        return None
+    try:
+        parsed = ast.literal_eval(text)
+    except Exception:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _normalize_ingredient_item(item: Any) -> Optional[dict[str, Any]]:
+    if item is None:
+        return None
+
+    original_text = ""
+    payload: Optional[dict[str, Any]] = None
+
+    if isinstance(item, dict):
+        payload = item
+        original_text = str(item.get("original_text") or item.get("name") or "").strip()
+    elif isinstance(item, str):
+        original_text = item.strip()
+        payload = _maybe_eval_dict(original_text)
+    else:
+        original_text = str(item).strip()
+
+    if payload is None:
+        qty, unit, name = _parse_quantity_unit(original_text)
+        return {
+            "name": name or original_text,
+            "quantity": qty,
+            "unit": unit,
+            "notes": "",
+            "original_text": original_text,
+        }
+
+    name_value = str(payload.get("name") or "").strip()
+    qty_value = payload.get("quantity")
+    unit_value = payload.get("unit")
+    notes_value = payload.get("notes") or ""
+    parsed_qty, parsed_unit, parsed_name = _parse_quantity_unit(name_value or original_text)
+
+    quantity = qty_value if qty_value not in (None, "") else parsed_qty
+    unit = unit_value or parsed_unit
+    name = parsed_name or name_value or original_text
+    original = original_text or name_value or name
+
+    return {
+        "name": name.strip(),
+        "quantity": quantity,
+        "unit": unit,
+        "notes": notes_value,
+        "original_text": original.strip(),
+    }
+
+
+def _parse_import_ingredients(value: Any) -> list[dict[str, Any]]:
+    if _is_blank(value):
+        return []
+
+    items: list[Any] = []
+    if isinstance(value, dict):
+        items = [value]
+    elif isinstance(value, (list, tuple, set)):
+        items = list(value)
+    elif isinstance(value, str):
+        text = value.strip()
+        if not text:
+            items = []
+        else:
+            parsed = None
+            if text.startswith("[") and text.endswith("]"):
+                try:
+                    parsed = json.loads(text)
+                except json.JSONDecodeError:
+                    parsed = None
+            if isinstance(parsed, list):
+                items = parsed
+            elif "\n" in text:
+                items = [segment.strip() for segment in text.splitlines() if segment.strip()]
+            elif "," in text:
+                items = [segment.strip() for segment in text.split(",") if segment.strip()]
+            else:
+                items = [text]
+    else:
+        items = [value]
+
+    normalized: list[dict[str, Any]] = []
+    for item in items:
+        parsed_item = _normalize_ingredient_item(item)
+        if parsed_item and parsed_item.get("name"):
+            normalized.append(parsed_item)
+    return normalized
+
+
+def _normalize_ingredients_payload(value: Any) -> list[dict[str, Any]]:
+    try:
+        return _parse_import_ingredients(value)
+    except Exception:
+        logger.exception("Failed to normalize ingredients; falling back to string list")
+        return _parse_import_list_field(value)
 
 
 def _recipe_to_dict(recipe: Recipe) -> Dict[str, Any]:
@@ -915,6 +1091,7 @@ def _resolve_import_columns(columns: Iterable[str]) -> Dict[str, Optional[str]]:
         "instructions": _find_import_column(
             columns, ["instructions", "instruction", "steps", "directions"]
         ),
+        "cuisine": _find_import_column(columns, ["cuisine", "cuisine_type", "region"]),
         "nutrition": _find_import_column(columns, ["nutrition", "nutrients", "macros"]),
         "tags": _find_import_column(columns, ["tags", "labels", "categories"]),
         "meal_type": _find_import_column(columns, ["meal_type", "meal", "course", "category"]),
@@ -946,6 +1123,7 @@ def _normalize_import_row(
     nutrition_col = columns.get("nutrition")
     tags_col = columns.get("tags")
     meal_type_col = columns.get("meal_type")
+    cuisine_col = columns.get("cuisine")
     cost_category_col = columns.get("cost_category")
 
     meal_type_value = row.get(meal_type_col) if meal_type_col else None
@@ -959,10 +1137,13 @@ def _normalize_import_row(
         except ValueError:
             cost_category = None
 
+    cuisine_value = row.get(cuisine_col) if cuisine_col else None
+    cuisine = None if _is_blank(cuisine_value) else str(cuisine_value).strip()
+
     return {
         "title": title,
         "slug": base_slug,
-        "ingredients": _parse_import_list_field(row.get(ingredients_col) if ingredients_col else None),
+        "ingredients": _normalize_ingredients_payload(row.get(ingredients_col) if ingredients_col else None),
         "instructions": _parse_import_list_field(
             row.get(instructions_col) if instructions_col else None
         ),
@@ -970,6 +1151,7 @@ def _normalize_import_row(
         "tags": _parse_import_list_field(row.get(tags_col) if tags_col else None),
         "meal_type": meal_type,
         "cost_category": cost_category,
+        "cuisine": cuisine,
     }
 
 
@@ -1028,16 +1210,33 @@ def _translate_plan_in_background(pref_id: int, lang: str) -> None:
 
 
 def _generate_plan_in_background(pref_id: int) -> None:
+    def _generate_plan_for_pref(pref_id: int) -> Dict[str, Any]:
+        local_db = SessionLocal()
+        try:
+            return generate_daily_plan_for_preference(local_db, pref_id)
+        finally:
+            local_db.close()
+
+    def _run_with_timeout(timeout_seconds: int) -> Dict[str, Any]:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_generate_plan_for_pref, pref_id)
+            try:
+                return future.result(timeout=timeout_seconds)
+            except concurrent.futures.TimeoutError:
+                future.cancel()
+                return {
+                    "plan": None,
+                    "raw_text": None,
+                    "error": f"Plan generation timed out after {timeout_seconds} seconds.",
+                }
+            except Exception as exc:
+                return {"plan": None, "raw_text": None, "error": str(exc)}
+
     db = SessionLocal()
     try:
-        try:
-            plan_result = generate_daily_plan_for_preference(db, pref_id)
-        except ValueError:
-            logger.exception("Preference %s disappeared before plan generation", pref_id)
-            return
-        except Exception as exc:
-            logger.exception("Meal plan generation failed for preference %s", pref_id)
-            plan_result = {"plan": None, "raw_text": None, "error": str(exc)}
+        plan_result = _run_with_timeout(PLAN_GENERATION_TIMEOUT)
+        if plan_result.get("plan") is None and plan_result.get("error"):
+            logger.warning("Plan generation for %s failed/timeout: %s", pref_id, plan_result.get("error"))
 
         preference = db.get(Preference, pref_id)
         if preference is None:
@@ -1585,7 +1784,7 @@ def create_admin_recipe(
         image_url=payload.image_url,
         description=payload.description,
         instructions=_json_safe(payload.instructions),
-        ingredients=_json_safe(payload.ingredients),
+        ingredients=_json_safe(_normalize_ingredients_payload(payload.ingredients)),
         prep_time_minutes=payload.prep_time_minutes,
         cook_time_minutes=payload.cook_time_minutes,
         total_time_minutes=payload.total_time_minutes,
@@ -1657,7 +1856,10 @@ def update_admin_recipe(
     updates["updated_at"] = datetime.now(timezone.utc)
 
     for key, value in updates.items():
-        setattr(recipe, key, _json_safe(value))
+        if key == "ingredients":
+            setattr(recipe, key, _json_safe(_normalize_ingredients_payload(value)))
+        else:
+            setattr(recipe, key, _json_safe(value))
 
     db.add(recipe)
     db.commit()
@@ -1732,6 +1934,7 @@ async def import_admin_recipes(
                 existing.tags = _json_safe(normalized["tags"])
                 existing.meal_type = normalized["meal_type"]
                 existing.cost_category = normalized["cost_category"]
+                existing.cuisine = normalized["cuisine"]
                 existing.updated_at = datetime.now(timezone.utc)
                 db.add(existing)
                 db.commit()
@@ -1773,6 +1976,7 @@ async def import_admin_recipes(
                 nutrition=_json_safe(normalized["nutrition"]),
                 tags=_json_safe(normalized["tags"]),
                 meal_type=normalized["meal_type"],
+                cuisine=normalized["cuisine"],
                 cost_category=normalized["cost_category"],
                 is_active=True,
             )

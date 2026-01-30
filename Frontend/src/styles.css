@@ -330,7 +330,17 @@
   .goal-card {
     @apply relative flex flex-col p-6 rounded-2xl border-2 border-border bg-card
            cursor-pointer transition-all duration-200 items-center text-center py-8 px-6
-           hover:border-primary/50 hover:shadow-lg;
+           hover:border-primary/50 hover:shadow-lg w-full;
+  }
+
+  .goal-grid {
+    @apply grid gap-6 w-full;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  }
+
+  .cuisine-grid {
+    @apply grid gap-4 w-full;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   }
 
   .goal-card.selected {

@@ -15,7 +15,7 @@ const CuisineStep = memo(function CuisineStep({ data, onChange }) {
       { value: 'indian', title: t('Indian'), flag: '🇮🇳' },
       { value: 'american', title: t('American'), flag: '🇺🇸' },
       { value: 'french', title: t('French'), flag: '🇫🇷' },
-      { value: 'thai', title: t('Thai'), flag: '🇹🇭' },
+      { value: 'norwegian', title: t('Norwegian'), flag: '🇳🇴' },
       { value: 'japanese', title: t('Japanese'), flag: '🇯🇵' },
       { value: 'middle_eastern', title: t('Middle Eastern'), flag: '🧆' },
     ],
@@ -53,7 +53,7 @@ const CuisineStep = memo(function CuisineStep({ data, onChange }) {
       </div>
 
       {/* Cuisine Cards Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+      <div className="cuisine-grid">
         {cuisines.map((cuisine, index) => {
           const isSelected = currentCuisines.includes(cuisine.value);
 
@@ -65,7 +65,7 @@ const CuisineStep = memo(function CuisineStep({ data, onChange }) {
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.03 * index }}
               onClick={() => toggleCuisine(cuisine.value)}
-              className={`selectable-card flex flex-col items-center text-center py-6 px-4 ${
+              className={`selectable-card flex flex-col items-center text-center py-6 px-6 min-h-[140px] min-w-[170px] ${
                 isSelected ? 'selected' : ''
               }`}
             >
@@ -80,7 +80,7 @@ const CuisineStep = memo(function CuisineStep({ data, onChange }) {
               <div className="text-4xl mb-4">{cuisine.flag}</div>
 
               {/* Title */}
-              <h3 className="font-semibold text-sm text-foreground">{cuisine.title}</h3>
+              <h3 className="font-semibold text-sm text-foreground leading-snug break-words">{cuisine.title}</h3>
             </Motion.button>
           );
         })}

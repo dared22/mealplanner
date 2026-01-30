@@ -78,7 +78,7 @@ const GoalsStep = memo(function GoalsStep({ data, onChange }) {
       </div>
 
       {/* Goal Cards - 4 in a row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
+      <div className="goal-grid">
         {goals.map((goal, index) => {
           const isSelected = data.nutrition_goal === goal.value;
 

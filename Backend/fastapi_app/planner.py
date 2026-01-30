@@ -332,7 +332,8 @@ def _load_recipes_df(db: Session):
         df["is_lunch"] = normalized_meal == "lunch"
 
     if "ingredients" in df.columns:
-        df["ingredients"] = df["ingredients"].apply(_flatten_ingredients)
+        # Preserve original structured ingredients; create a flattened helper for text filters/tokenization.
+        df["ingredients_flat"] = df["ingredients"].apply(_flatten_ingredients)
 
     if "instructions" in df.columns:
         df["instructions"] = df["instructions"].apply(_normalize_instructions)
@@ -360,6 +361,7 @@ def _prepare_recipes(df):
     tags_col = _find_column(df.columns, ["tags", "categories", "labels"])
     instructions_col = _find_column(df.columns, ["instructions", "instruction", "steps", "directions"])
     ingredients_col = _find_column(df.columns, ["ingredients", "ingredient_list"])
+    ingredients_flat_col = _find_column(df.columns, ["ingredients_flat"])
     meal_col = _find_column(df.columns, ["meal_type", "meal", "course", "category", "dish_type"])
     breakfast_col = _find_column(df.columns, ["is_breakfast", "breakfast"])
     lunch_col = _find_column(df.columns, ["is_lunch", "lunch"])
@@ -422,6 +424,7 @@ def _prepare_recipes(df):
     df["_meal_type"] = df[meal_col] if meal_col else None
     df["_instructions"] = df[instructions_col] if instructions_col else None
     df["_ingredients"] = df[ingredients_col] if ingredients_col else None
+    df["_ingredients_flat"] = df[ingredients_flat_col] if ingredients_flat_col else df["_ingredients"]
     df["_is_breakfast"] = df[breakfast_col] if breakfast_col else None
     df["_is_lunch"] = df[lunch_col] if lunch_col else None
     df["_id"] = df[id_col] if id_col else df.index
@@ -465,6 +468,10 @@ def _score_recipe(row, targets: Dict[str, float]) -> float:
 def _jsonify_value(value: Any) -> Any:
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
+    if isinstance(value, dict):
+        return {str(k): _jsonify_value(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_jsonify_value(item) for item in value]
     item_fn = getattr(value, "item", None)
     if callable(item_fn):
         try:
@@ -640,7 +647,10 @@ def _pick_recipe(df, meal_type: str, targets: Dict[str, float], used_ids: set) -
 
     scored = candidates.copy()
     scored["_score"] = scored.apply(lambda row: _score_recipe(row, targets), axis=1)
-    best = scored.nsmallest(1, "_score").iloc[0]
+    # Add a bit of randomness so consecutive days don't always pick the single best.
+    top_k = min(5, len(scored))
+    top = scored.nsmallest(top_k, "_score")
+    best = top.sample(1).iloc[0] if top_k > 1 else top.iloc[0]
 
     return {
         "id": _jsonify_value(best.get("_id")),
@@ -652,7 +662,8 @@ def _pick_recipe(df, meal_type: str, targets: Dict[str, float], used_ids: set) -
         "fat": float(best.get("_fat", 0)),
         "url": _jsonify_value(best.get("_url")),
         "instructions": _format_instructions(best.get("_instructions")),
-        "ingredients": _format_list_values(best.get("_ingredients")),
+        # Preserve structured ingredients (list of dicts) so frontend can render qty/unit/name cleanly.
+        "ingredients": _jsonify_value(best.get("_ingredients")),
         "tags": _format_list_values(best.get("_tags")),
     }
 
@@ -727,6 +738,7 @@ def _format_meal(recipe: Dict[str, Any], fallback_name: str) -> Dict[str, Any]:
     url = recipe.get("url")
     instructions = recipe.get("instructions") or (f"Recipe link: {url}" if url else "")
     return {
+        "id": recipe.get("id"),
         "name": name,
         "calories": float(recipe.get("calories", 0)),
         "protein": float(recipe.get("protein", 0)),
