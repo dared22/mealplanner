@@ -353,6 +353,53 @@ const MacroPanel = memo(function MacroPanel({ macros, targets, t }) {
   );
 });
 
+const RatingProgress = memo(function RatingProgress({ progress, t }) {
+  const translate = t || ((v) => v);
+  const remaining = Math.max(progress.threshold - progress.total, 0);
+
+  if (progress.is_unlocked) {
+    return (
+      <div className="p-4 rounded-xl bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900">
+        <div className="flex items-center gap-2">
+          <CheckCircle className="w-5 h-5 text-green-600" />
+          <span className="text-sm font-medium text-green-800 dark:text-green-200">
+            {translate('Personalized plans unlocked!')}
+          </span>
+        </div>
+        <p className="mt-1 text-xs text-green-600 dark:text-green-400">
+          {translate('Your next plan will be tailored to your preferences.')}
+        </p>
+      </div>
+    );
+  }
+
+  const percentage = Math.min((progress.total / progress.threshold) * 100, 100);
+
+  return (
+    <div className="p-4 rounded-xl bg-accent border border-border">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm font-medium text-foreground">
+          {translate('Unlock Personalized Plans')}
+        </span>
+        <span className="text-xs text-muted-foreground">
+          {progress.total}/{progress.threshold}
+        </span>
+      </div>
+      <div className="h-2 bg-secondary rounded-full overflow-hidden">
+        <div
+          className="h-full bg-primary transition-all duration-300"
+          style={{ width: `${percentage}%` }}
+        />
+      </div>
+      <p className="mt-2 text-xs text-muted-foreground">
+        {remaining > 0
+          ? translate('{count} more ratings to unlock', { count: remaining })
+          : translate('Almost there!')}
+      </p>
+    </div>
+  );
+});
+
 
 // Day Carousel
 const DayCarousel = memo(function DayCarousel({ days, targetCalories, selectedIndex, onSelect, t }) {
@@ -432,7 +479,7 @@ export default function ResultsStep({
   onRestart
 }) {
   const { t } = useLanguage();
-  const { submitRating, getRating, loading: ratingLoading } = useRatings();
+  const { progress, submitRating, getRating, loading: ratingLoading } = useRatings();
   const activePlan = useMemo(() => normalizeServerPlan(plan, t), [plan, t]);
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
   const [planOverrides, setPlanOverrides] = useState({});
@@ -648,6 +695,7 @@ export default function ResultsStep({
                     </div>
                   </div>
                 </div>
+                <RatingProgress progress={progress} t={t} />
               </div>
             </div>
           )}
