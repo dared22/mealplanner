@@ -2,40 +2,43 @@
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-01-26)
+See: .planning/PROJECT.md (updated 2026-01-31)
 
-**Core value:** Enable administrators to manage users and recipes efficiently while maintaining complete visibility into system activity and health.
-**Current focus:** Phase 5 - Activity Logging (complete)
+**Core value:** Deliver personalized meal plans that users actually want to cook and eat, while hitting their nutritional targets.
+**Current focus:** v1.1 Personalized Recommendations - Phase 6: Rating Infrastructure
 
 ## Current Position
 
-Phase: 5 of 5 (Activity Logging)
-Plan: 3 of 3 in current phase
-Status: Phase complete
-Last activity: 2026-01-27 — Completed 05-03-PLAN.md (Activity Logs admin UI)
+Phase: 6 of 8 (Rating Infrastructure)
+Plan: 1 of 2
+Status: In progress
+Last activity: 2026-02-01 — Completed 06-01-PLAN.md
 
-Progress: [██████████] 100%
+Progress: [████████████████░░░░] 65% (15/23 total plans across all phases)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 16
+- Total plans completed: 15
 - Average duration: 2 min
-- Total execution time: 0.48 hours
+- Total execution time: 0.53 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 1 - Foundation | 3 | 6 min | 2 min |
-| 2 - Dashboard | 2 | 4 min | 2 min |
-| 3 - User Management | 3 | 6 min | 2 min |
-| 4 - Recipe Management | 5 | 10 min | 2 min |
-| 5 - Activity Logging | 3 | 6 min | 2 min |
+| 1. Foundation | 3 | 6 min | 2 min |
+| 2. Dashboard | 2 | 4 min | 2 min |
+| 3. User Management | 3 | 6 min | 2 min |
+| 4. Recipe Management | 5 | 10 min | 2 min |
+| 5. Activity Logging | 3 | 6 min | 2 min |
+| 6. Rating Infrastructure | 1/2 | 3 min | 3 min |
+| 7. Constraint Solver Engine | 0/3 | - | - |
+| 8. Personalization UI | 0/2 | - | - |
 
 **Recent Trend:**
-- Last 5 plans: 05-01 (2 min), 05-02 (2 min), 05-03 (2 min), 04-04 (0 min), 04-05 (0 min)
-- Trend: Consistent velocity
+- v1.1 Phase 6 started: 3 min for backend infrastructure plan
+- Consistent velocity maintained at ~2-3 min/plan
 
 *Updated after each plan completion*
 
@@ -46,18 +49,13 @@ Progress: [██████████] 100%
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
-| Decision | Phase-Plan | Rationale |
-|----------|-----------|-----------|
-| Database field (is_admin) over Clerk roles | 01-01 | Simpler implementation, no external dependency for role checks |
-| server_default='false' for safe migration | 01-01 | Existing rows automatically get FALSE without data migration |
-| Reusable admin_user_dependency function | 01-01 | DRY principle - single source of truth for admin checks |
-| Use useLocation for active navigation detection | 01-02 | Eliminates manual state management, keeps nav synced with routing |
-| Sidebar width fixed at w-64 (16rem) | 01-02 | Consistent layout, matches common admin panel patterns |
-| Placeholder search bar in header | 01-02 | Establishes UI pattern, functionality added in later phases |
-| Admin components in dedicated directory | 01-02 | Clear separation from user-facing components |
-| User growth uses created_at week windows | 02-01 | Only available timestamp for weekly growth until more telemetry exists |
-| Recipe weekly deltas fixed at zero | 02-01 | Recipes lack timestamps; avoids misleading counts |
-| Health status derived from DB query success | 02-01 | DB is the most critical dependency for admin operations |
+- [v1.0]: Database field only for auth - Simpler than Clerk roles, sufficient for single admin level
+- [v1.0]: Separate /admin route - Isolates admin UI from user-facing app, clearer access control
+- [v1.0]: User growth uses created_at week windows - Only timestamp available for weekly metrics
+- [v1.1]: Hybrid generation approach (<10 ratings: OpenAI, 10+ ratings: Solver) - Solves cold start problem
+- [06-01]: Rating upsert pattern - Check-then-update SQLAlchemy pattern instead of ON CONFLICT SQL
+- [06-01]: Personalization threshold at 10 ratings - Balances cold-start with meaningful data
+- [06-01]: Automatic plan-recipe tracking - Parse plan structure in _persist_plan_result
 
 ### Pending Todos
 
@@ -65,18 +63,17 @@ None yet.
 
 ### Blockers/Concerns
 
-**First Admin User Creation (01-01):**
+**First Admin User Creation (carried from v1.0):**
 - Database field exists but no UI to set is_admin=TRUE
 - Initial admin must be created manually via database query
 - Mitigation: `UPDATE users SET is_admin = TRUE WHERE email = 'admin@example.com'`
-- Consider adding CLI command or environment variable for initial admin setup in future phase
 
-**Recipe timestamp gap (02-01):**
-- Recipes table lacks created_at, so weekly recipe growth is 0 until schema is expanded
-- Mitigation: add created_at to Recipe in a future phase or derive from ingest metadata
+**Recipe timestamp gap (carried from v1.0):**
+- Recipes table lacks created_at, so weekly recipe growth is 0
+- Mitigation: add created_at to Recipe in future phase or derive from ingest metadata
 
 ## Session Continuity
 
-Last session: 2026-01-27T13:00:59Z
-Stopped at: Completed 05-03-PLAN.md (Activity Logs admin UI)
+Last session: 2026-02-01
+Stopped at: Completed 06-01-PLAN.md (Rating Infrastructure backend)
 Resume file: None
