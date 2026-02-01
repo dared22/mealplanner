@@ -2,10 +2,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState, memo } from '
 import { motion as Motion } from 'framer-motion';
 import {
   CheckCircle, RefreshCw, ChevronLeft, ChevronRight,
-  Shuffle, MoreHorizontal, Sun, Coffee, Utensils, Moon,
+  Shuffle, ThumbsUp, ThumbsDown, MoreHorizontal, Sun, Coffee, Utensils, Moon,
   Info, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { useLanguage } from '@/i18n/LanguageContext';
+import { useRatings } from '@/hooks/useRatings';
 
 // Profile Summary Component
 const ProfileSummary = memo(function ProfileSummary({ data, calorieTarget, t, onRestart }) {
@@ -206,7 +207,15 @@ const DayCard = memo(function DayCard({ day, targetCalories, isActive, onSelect,
 });
 
 // Meal Item for the list
-const MealItem = memo(function MealItem({ meal, mealType, onSwap, t }) {
+const MealItem = memo(function MealItem({
+  meal,
+  mealType,
+  onSwap,
+  t,
+  recipeRating,
+  onRate,
+  ratingDisabled
+}) {
   const translate = t || ((v) => v);
   const [showMore, setShowMore] = useState(false);
 
@@ -234,6 +243,7 @@ const MealItem = memo(function MealItem({ meal, mealType, onSwap, t }) {
         <div className="meal-actions">
           {hasDetails && (
             <button
+              type="button"
               onClick={() => setShowMore(!showMore)}
               className="meal-action"
               title={showMore ? translate('Show less') : translate('Show more')}
@@ -241,9 +251,31 @@ const MealItem = memo(function MealItem({ meal, mealType, onSwap, t }) {
               {showMore ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
             </button>
           )}
-          <button onClick={onSwap} className="meal-action" title={translate('Swap meal')}>
+          <button type="button" onClick={onSwap} className="meal-action" title={translate('Swap meal')}>
             <Shuffle className="w-5 h-5" />
           </button>
+          {meal.id && onRate && (
+            <div className="flex gap-1 ml-2">
+              <button
+                type="button"
+                onClick={() => onRate(meal.id, true)}
+                disabled={ratingDisabled}
+                className={`meal-action ${recipeRating?.is_liked === true ? 'text-green-500' : ''}`}
+                title={translate('Like this meal')}
+              >
+                <ThumbsUp className={`w-4 h-4 ${recipeRating?.is_liked === true ? 'fill-current' : ''}`} />
+              </button>
+              <button
+                type="button"
+                onClick={() => onRate(meal.id, false)}
+                disabled={ratingDisabled}
+                className={`meal-action ${recipeRating?.is_liked === false ? 'text-red-500' : ''}`}
+                title={translate('Dislike this meal')}
+              >
+                <ThumbsDown className={`w-4 h-4 ${recipeRating?.is_liked === false ? 'fill-current' : ''}`} />
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -320,6 +352,7 @@ const MacroPanel = memo(function MacroPanel({ macros, targets, t }) {
     </div>
   );
 });
+
 
 // Day Carousel
 const DayCarousel = memo(function DayCarousel({ days, targetCalories, selectedIndex, onSelect, t }) {
@@ -399,6 +432,7 @@ export default function ResultsStep({
   onRestart
 }) {
   const { t } = useLanguage();
+  const { submitRating, getRating, loading: ratingLoading } = useRatings();
   const activePlan = useMemo(() => normalizeServerPlan(plan, t), [plan, t]);
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
   const [planOverrides, setPlanOverrides] = useState({});
@@ -578,6 +612,9 @@ export default function ResultsStep({
                       mealType={mealType}
                       onSwap={() => handleSwap(selectedDayIndex, mealType)}
                       t={t}
+                      recipeRating={getRating(selectedDay.meals[mealType]?.id)}
+                      onRate={submitRating}
+                      ratingDisabled={ratingLoading}
                     />
                   ))}
                 </div>
