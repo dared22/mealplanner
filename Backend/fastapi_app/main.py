@@ -24,7 +24,7 @@ from clerk_auth import (
     verify_session_token,
 )
 from database import Base, SessionLocal, engine, get_session
-from models import ActivityLog, Preference, Recipe, User
+from models import ActivityLog, Preference, Rating, Recipe, User, PlanRecipe
 from planner import generate_daily_plan_for_preference, _format_list_values
 from recipe_translator import PlanTranslator
 
@@ -250,6 +250,31 @@ class AdminUserDetailResponse(BaseModel):
 
 class AdminUserStatusUpdate(BaseModel):
     is_active: bool
+
+
+class RatingCreate(BaseModel):
+    recipe_id: UUID
+    is_liked: bool
+
+
+class RatingResponse(BaseModel):
+    id: UUID
+    user_id: UUID
+    recipe_id: UUID
+    is_liked: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class RatingProgressResponse(BaseModel):
+    total_ratings: int
+    threshold: int
+    is_unlocked: bool
+
+
+class RatingListResponse(BaseModel):
+    items: list[RatingResponse]
+    pagination: AdminPagination
 
 
 def optional_current_user(
@@ -2083,6 +2108,142 @@ def list_user_preferences(
             for entry in entries
         ],
     }
+
+
+@app.post("/ratings", response_model=RatingResponse)
+def create_or_update_rating(
+    payload: RatingCreate,
+    db: Session = Depends(get_session),
+    current_user: User = Depends(current_user_dependency),
+) -> RatingResponse:
+    """Create or update a recipe rating (like/dislike)."""
+    recipe = db.get(Recipe, payload.recipe_id)
+    if recipe is None:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    if not recipe.is_active:
+        raise HTTPException(status_code=400, detail="Cannot rate inactive recipe")
+
+    # Check if rating already exists
+    existing_rating = db.scalar(
+        select(Rating).where(
+            Rating.user_id == current_user.id,
+            Rating.recipe_id == payload.recipe_id
+        )
+    )
+
+    if existing_rating:
+        # Update existing rating
+        existing_rating.is_liked = payload.is_liked
+        existing_rating.updated_at = datetime.now(timezone.utc)
+        db.add(existing_rating)
+        db.commit()
+        db.refresh(existing_rating)
+
+        log_activity(
+            db,
+            actor_type="user",
+            actor_id=current_user.id,
+            actor_label=current_user.email or current_user.username,
+            action_type="rating_updated",
+            action_detail=f"Updated rating for recipe {recipe.title}",
+            status="success",
+            metadata={"recipe_id": str(payload.recipe_id), "is_liked": payload.is_liked},
+        )
+
+        return RatingResponse(
+            id=existing_rating.id,
+            user_id=existing_rating.user_id,
+            recipe_id=existing_rating.recipe_id,
+            is_liked=existing_rating.is_liked,
+            created_at=existing_rating.created_at,
+            updated_at=existing_rating.updated_at,
+        )
+    else:
+        # Create new rating
+        new_rating = Rating(
+            user_id=current_user.id,
+            recipe_id=payload.recipe_id,
+            is_liked=payload.is_liked,
+        )
+        db.add(new_rating)
+        db.commit()
+        db.refresh(new_rating)
+
+        log_activity(
+            db,
+            actor_type="user",
+            actor_id=current_user.id,
+            actor_label=current_user.email or current_user.username,
+            action_type="rating_created",
+            action_detail=f"Rated recipe {recipe.title}",
+            status="success",
+            metadata={"recipe_id": str(payload.recipe_id), "is_liked": payload.is_liked},
+        )
+
+        return RatingResponse(
+            id=new_rating.id,
+            user_id=new_rating.user_id,
+            recipe_id=new_rating.recipe_id,
+            is_liked=new_rating.is_liked,
+            created_at=new_rating.created_at,
+            updated_at=new_rating.updated_at,
+        )
+
+
+@app.get("/ratings/me", response_model=RatingListResponse)
+def get_my_ratings(
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_session),
+    current_user: User = Depends(current_user_dependency),
+) -> RatingListResponse:
+    """Get current user's recipe ratings."""
+    total = db.scalar(
+        select(func.count(Rating.id)).where(Rating.user_id == current_user.id)
+    ) or 0
+
+    ratings = db.scalars(
+        select(Rating)
+        .where(Rating.user_id == current_user.id)
+        .order_by(Rating.updated_at.desc())
+        .offset(offset)
+        .limit(limit)
+    ).all()
+
+    return RatingListResponse(
+        items=[
+            RatingResponse(
+                id=rating.id,
+                user_id=rating.user_id,
+                recipe_id=rating.recipe_id,
+                is_liked=rating.is_liked,
+                created_at=rating.created_at,
+                updated_at=rating.updated_at,
+            )
+            for rating in ratings
+        ],
+        pagination=AdminPagination(total=total, limit=limit, offset=offset),
+    )
+
+
+@app.get("/ratings/progress", response_model=RatingProgressResponse)
+def get_rating_progress(
+    db: Session = Depends(get_session),
+    current_user: User = Depends(current_user_dependency),
+) -> RatingProgressResponse:
+    """Get user's progress toward personalization threshold."""
+    total_ratings = db.scalar(
+        select(func.count(Rating.id)).where(Rating.user_id == current_user.id)
+    ) or 0
+
+    threshold = 10
+    is_unlocked = total_ratings >= threshold
+
+    return RatingProgressResponse(
+        total_ratings=total_ratings,
+        threshold=threshold,
+        is_unlocked=is_unlocked,
+    )
 
 
 @app.get("/recipes")
