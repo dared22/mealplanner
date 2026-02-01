@@ -690,6 +690,41 @@ def _persist_plan_result(db: Session, preference: Preference, plan_result: Dict[
     db.commit()
     db.refresh(preference)
 
+    # Track recipes in PlanRecipe table
+    plan = plan_result.get("plan") if isinstance(plan_result, dict) else None
+    if plan and isinstance(plan, dict):
+        days = plan.get("days") if isinstance(plan.get("days"), list) else []
+        for day in days:
+            if not isinstance(day, dict):
+                continue
+            day_name = day.get("name")
+            meals = day.get("meals") if isinstance(day.get("meals"), dict) else {}
+            for meal_key, meal_data in meals.items():
+                if not isinstance(meal_data, dict):
+                    continue
+                recipe_id_str = meal_data.get("id")
+                if not recipe_id_str:
+                    continue
+                try:
+                    recipe_id = UUID(str(recipe_id_str))
+                except (ValueError, TypeError):
+                    continue
+
+                # Create PlanRecipe entry
+                plan_recipe = PlanRecipe(
+                    preference_id=preference.id,
+                    recipe_id=recipe_id,
+                    day_name=str(day_name) if day_name else None,
+                    meal_type=meal_key.lower() if meal_key else None,
+                )
+                db.add(plan_recipe)
+
+        try:
+            db.commit()
+        except Exception:
+            logger.exception("Failed to track recipes in PlanRecipe table")
+            db.rollback()
+
 
 def _flatten_ingredients(value: Any) -> list[str]:
     items: list[str] = []
@@ -2107,6 +2142,63 @@ def list_user_preferences(
             }
             for entry in entries
         ],
+    }
+
+
+@app.get("/plans/history")
+def get_plan_history(
+    limit: int = Query(10, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_session),
+    current_user: User = Depends(current_user_dependency),
+) -> Dict[str, Any]:
+    """Get user's meal plan history with recipe tracking."""
+    # Get total count
+    total = db.scalar(
+        select(func.count(Preference.id)).where(Preference.user_id == current_user.id)
+    ) or 0
+
+    # Get preferences with plan recipes
+    preferences = db.scalars(
+        select(Preference)
+        .where(Preference.user_id == current_user.id)
+        .order_by(Preference.id.desc())
+        .offset(offset)
+        .limit(limit)
+    ).all()
+
+    plans = []
+    for pref in preferences:
+        # Get PlanRecipe entries for this preference
+        plan_recipes = db.scalars(
+            select(PlanRecipe)
+            .where(PlanRecipe.preference_id == pref.id)
+            .order_by(PlanRecipe.created_at)
+        ).all()
+
+        plan_status = _plan_status_from_raw_data(pref.raw_data)
+
+        plans.append({
+            "preference_id": pref.id,
+            "submitted_at": pref.submitted_at,
+            "plan_status": plan_status,
+            "recipes": [
+                {
+                    "recipe_id": str(pr.recipe_id),
+                    "day_name": pr.day_name,
+                    "meal_type": pr.meal_type,
+                }
+                for pr in plan_recipes
+            ],
+        })
+
+    return {
+        "items": plans,
+        "pagination": {
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+        },
     }
 
 
