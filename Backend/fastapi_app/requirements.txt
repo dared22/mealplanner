@@ -8,3 +8,4 @@ openai>=1.37.0,<2.0.0
 pandas==2.2.2
 pyarrow==16.1.0
 googletrans==4.0.2
+pulp>=2.7.0
