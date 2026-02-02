@@ -122,12 +122,12 @@ Plans:
   5. No duplicate meals appear in same weekly plan
   6. Plan generation completes in under 15 seconds (including fallback if needed)
   7. If solver cannot find solution, system automatically falls back to OpenAI
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 07-01: TBD
-- [ ] 07-02: TBD
-- [ ] 07-03: TBD
+- [x] 07-01-PLAN.md — Constraint solver core (PuLP-based optimization module)
+- [x] 07-02-PLAN.md — Solver integration (hybrid routing, fallback logic, activity logging)
+- [x] 07-03-PLAN.md — Frontend progress feedback (stage-based UI during generation)
 
 #### Phase 8: Personalization UI
 **Goal**: Users can understand and control their personalized recommendations
@@ -159,5 +159,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 4. Recipe Management | v1.0 | 5/5 | Complete | 2026-01-27 |
 | 5. Activity Logging | v1.0 | 3/3 | Complete | 2026-01-27 |
 | 6. Rating Infrastructure | v1.1 | 0/2 | Not started | - |
-| 7. Constraint Solver Engine | v1.1 | 0/3 | Not started | - |
+| 7. Constraint Solver Engine | v1.1 | 3/3 | Complete | 2026-02-02 |
 | 8. Personalization UI | v1.1 | 0/2 | Not started | - |

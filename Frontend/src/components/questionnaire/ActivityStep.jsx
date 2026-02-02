@@ -1,7 +1,7 @@
 import React, { memo, useCallback, useMemo } from 'react';
 import { motion as Motion } from 'framer-motion';
 import { Check } from 'lucide-react';
-import { useLanguage } from '@/i18n/LanguageContext';
+import { useLanguage } from '@/i18n/useLanguage';
 
 const ActivityStep = memo(function ActivityStep({ data, onChange }) {
   const { t } = useLanguage();

@@ -13,7 +13,7 @@ import {
 import DashboardLayout from '@/components/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { RecipesApi } from '@/Entities/Recipes';
-import { useLanguage } from '@/i18n/LanguageContext';
+import { useLanguage } from '@/i18n/useLanguage';
 
 const formatNumber = (value) => {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return '–';

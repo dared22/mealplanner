@@ -65,17 +65,18 @@ function getGrowthPresentation(wowPercent) {
   };
 }
 
-function StatCard({ icon: Icon, label, value, wowPercent, helper }) {
+function StatCard({ icon, label, value, wowPercent, helper }) {
   const growth = getGrowthPresentation(wowPercent);
   const GrowthIcon = growth.icon;
   const growthText = `${growth.value > 0 ? '+' : ''}${growth.value}%`;
+  const iconElement = React.createElement(icon, { className: 'h-5 w-5 text-foreground' });
 
   return (
     <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-            <Icon className="h-5 w-5 text-foreground" />
+            {iconElement}
           </div>
           <div className="text-sm font-medium text-muted-foreground">{label}</div>
         </div>

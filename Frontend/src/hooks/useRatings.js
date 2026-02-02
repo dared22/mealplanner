@@ -71,7 +71,6 @@ export function useRatings() {
         }));
         // Increment progress if this is a new rating
         setProgress(prev => {
-          const wasRated = prev.total === Object.keys(ratings).length;
           const newTotal = Object.keys({ ...ratings, [recipeId]: true }).length;
           return {
             ...prev,

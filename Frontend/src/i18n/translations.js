@@ -163,8 +163,6 @@ export const translations = {
       'Disse tallene ser uvanlige ut. Sjekk at enhetene er riktige.',
     'Please select a sex.': 'Vennligst velg kj\u00f8nn.',
     "What's your activity level?": 'Hva er aktivitetsniv\u00e5et ditt?',
-    'Helps us set your daily energy needs.':
-      'Hjelper oss \u00e5 beregne daglig energibehov.',
     Sedentary: 'Stillesittende',
     'Minimal movement, desk-based work': 'Minimalt med bevegelse, kontorarbeid',
     'Lightly Active': 'Lett aktiv',
@@ -259,7 +257,6 @@ export const translations = {
     'Your customized weekly meal plan is prepared.':
       'Din tilpassede ukentlige m\u00e5ltidsplan er klar.',
     'Preparing your plan': 'Forbereder planen din',
-    "We couldn't finalize your plan": 'Vi kunne ikke ferdigstille planen din',
     'Balanced menus aligned with your goals, schedule, and preferences.':
       'Balanserte menyer tilpasset m\u00e5l, timeplan og preferanser.',
     "We're assembling your plan. This usually takes less than a minute.":
@@ -367,18 +364,12 @@ export const translations = {
     'Advanced filters': 'Avanserte filtre',
     'Refine your selection': 'Finjuster valget ditt',
     Calories: 'Kalorier',
-    Protein: 'Protein',
-    kcal: 'kcal',
     'Exclude ingredients': 'Utelat ingredienser',
     'Apply filters': 'Bruk filtre',
     'Reset all filters': 'Tilbakestill alle filtre',
     'All Meals': 'Alle måltider',
     'Load more recipes': 'Last inn flere oppskrifter',
     'High Protein': 'Høyt protein',
-    Vegan: 'Vegan',
-    Breakfast: 'Frokost',
-    Lunch: 'Lunsj',
-    Dinner: 'Middag',
     'N/A': 'Ukjent',
 
     // Under construction pages

@@ -1,7 +1,7 @@
 import React, { memo, useCallback, useMemo } from 'react';
 import { motion as Motion } from 'framer-motion';
 import { Check } from 'lucide-react';
-import { useLanguage } from '@/i18n/LanguageContext';
+import { useLanguage } from '@/i18n/useLanguage';
 
 const DietaryStep = memo(function DietaryStep({ data, onChange }) {
   const { t } = useLanguage();
@@ -20,7 +20,10 @@ const DietaryStep = memo(function DietaryStep({ data, onChange }) {
     [t]
   );
 
-  const currentRestrictions = data.dietary_restrictions || [];
+  const currentRestrictions = useMemo(
+    () => data.dietary_restrictions || [],
+    [data.dietary_restrictions]
+  );
 
   const toggleRestriction = useCallback(
     (value) => {

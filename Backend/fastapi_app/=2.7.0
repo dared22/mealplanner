@@ -1,0 +1,5 @@
+Collecting pulp
+  Using cached pulp-3.3.0-py3-none-any.whl.metadata (8.4 kB)
+Using cached pulp-3.3.0-py3-none-any.whl (16.4 MB)
+Installing collected packages: pulp
+Successfully installed pulp-3.3.0

@@ -2,7 +2,7 @@ import React, { useState, useEffect, memo } from 'react';
 import { Link } from 'react-router-dom';
 import { SignedIn, SignedOut, UserButton } from '@clerk/clerk-react';
 import { BookOpen, Calendar, Moon, ShoppingCart, Sun, User, Utensils } from 'lucide-react';
-import { useLanguage } from '@/i18n/LanguageContext';
+import { useLanguage } from '@/i18n/useLanguage';
 
 const DashboardHeader = memo(function DashboardHeader({ lang, setLang, isDarkMode, setIsDarkMode, t }) {
   return (

@@ -1,6 +1,6 @@
 import React from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
-import { useLanguage } from '@/i18n/LanguageContext';
+import { useLanguage } from '@/i18n/useLanguage';
 import { MoreHorizontal } from 'lucide-react';
 
 export default function More() {
