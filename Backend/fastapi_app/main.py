@@ -774,6 +774,7 @@ def _generate_solver_plan(db: Session, user_id: UUID, preference: Preference) ->
                     },
                 )
             else:
+                _update_generation_stage(db, preference.id, "finalizing")
                 _persist_plan_result(db, preference, solver_result, generation_source="solver")
                 return solver_result
 
@@ -799,6 +800,7 @@ def _generate_solver_plan(db: Session, user_id: UUID, preference: Preference) ->
         )
 
     openai_result = generate_daily_plan(preference, translate=False, db=db)
+    _update_generation_stage(db, preference.id, "finalizing")
     _persist_plan_result(db, preference, openai_result, generation_source="openai_fallback")
     return openai_result
 
@@ -811,6 +813,11 @@ def _persist_plan_result(
 ) -> None:
     existing_raw = preference.raw_data if isinstance(preference.raw_data, dict) else {}
     updated_raw = dict(existing_raw)
+
+    if "generation_stage" in updated_raw:
+        del updated_raw["generation_stage"]
+    if "generation_stage_updated_at" in updated_raw:
+        del updated_raw["generation_stage_updated_at"]
 
     # Add generation metadata
     plan_result_with_meta = dict(plan_result)
@@ -857,6 +864,20 @@ def _persist_plan_result(
         except Exception:
             logger.exception("Failed to track recipes in PlanRecipe table")
             db.rollback()
+
+
+def _update_generation_stage(db: Session, pref_id: int, stage: str) -> None:
+    """Update the generation stage for frontend progress display."""
+    preference = db.get(Preference, pref_id)
+    if preference is None:
+        return
+
+    raw_data = dict(preference.raw_data) if isinstance(preference.raw_data, dict) else {}
+    raw_data["generation_stage"] = stage
+    raw_data["generation_stage_updated_at"] = datetime.now(timezone.utc).isoformat()
+    preference.raw_data = raw_data
+    db.add(preference)
+    db.commit()
 
 
 def _flatten_ingredients(value: Any) -> list[str]:
@@ -1427,6 +1448,7 @@ def _generate_plan_in_background(pref_id: int) -> None:
 
     db = SessionLocal()
     try:
+        _update_generation_stage(db, pref_id, "finding_recipes")
         preference = db.get(Preference, pref_id)
         if preference is None:
             logger.warning("Preference %s missing when storing generated plan", pref_id)
@@ -1438,10 +1460,13 @@ def _generate_plan_in_background(pref_id: int) -> None:
         macro_response = generate_daily_macro_goal(preference)
         macro_goal = macro_response.get("goal")
 
+        _update_generation_stage(db, pref_id, "optimizing_nutrition")
+
         impossible_error = _is_impossible_constraint(preference, macro_goal)
         if impossible_error:
             plan_result = {"plan": None, "raw_text": None, "error": impossible_error}
             source = "solver" if use_solver else "openai"
+            _update_generation_stage(db, pref_id, "finalizing")
             _persist_plan_result(db, preference, plan_result, generation_source=source)
             log_activity(
                 db,
@@ -1467,6 +1492,7 @@ def _generate_plan_in_background(pref_id: int) -> None:
                     pref_id,
                     plan_result.get("error"),
                 )
+            _update_generation_stage(db, pref_id, "finalizing")
             _persist_plan_result(db, preference, plan_result, generation_source="openai")
 
         status_value = "success" if plan_result.get("plan") else "error"
@@ -1614,6 +1640,12 @@ def get_preferences(
         if not plan_error:
             plan_error = "Plan generation completed without a usable plan."
 
+    generation_stage = None
+    generation_stage_updated_at = None
+    if plan_status == "pending":
+        generation_stage = raw_data.get("generation_stage", "finding_recipes")
+        generation_stage_updated_at = raw_data.get("generation_stage_updated_at")
+
     translation_status = None
     translation_error = None
     normalized_lang = _normalize_language(lang)
@@ -1684,6 +1716,8 @@ def get_preferences(
         "raw_data": entry.raw_data,
         "user_id": entry.user_id,
         "plan_status": plan_status,
+        "generation_stage": generation_stage,
+        "generation_stage_updated_at": generation_stage_updated_at,
         "plan": plan_payload,
         "raw_plan": raw_plan_text,
         "error": plan_error,
