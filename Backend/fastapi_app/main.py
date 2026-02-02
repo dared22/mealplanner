@@ -774,7 +774,7 @@ def _generate_solver_plan(db: Session, user_id: UUID, preference: Preference) ->
                     },
                 )
             else:
-                _persist_plan_result(db, preference, solver_result)
+                _persist_plan_result(db, preference, solver_result, generation_source="solver")
                 return solver_result
 
         fallback_reason = solver_result.get("fallback_reason") or solver_result.get("error") or "unknown"
@@ -799,7 +799,7 @@ def _generate_solver_plan(db: Session, user_id: UUID, preference: Preference) ->
         )
 
     openai_result = generate_daily_plan(preference, translate=False, db=db)
-    _persist_plan_result(db, preference, openai_result)
+    _persist_plan_result(db, preference, openai_result, generation_source="openai_fallback")
     return openai_result
 
 
@@ -1441,7 +1441,8 @@ def _generate_plan_in_background(pref_id: int) -> None:
         impossible_error = _is_impossible_constraint(preference, macro_goal)
         if impossible_error:
             plan_result = {"plan": None, "raw_text": None, "error": impossible_error}
-            _persist_plan_result(db, preference, plan_result)
+            source = "solver" if use_solver else "openai"
+            _persist_plan_result(db, preference, plan_result, generation_source=source)
             log_activity(
                 db,
                 actor_type="user",
@@ -1466,7 +1467,7 @@ def _generate_plan_in_background(pref_id: int) -> None:
                     pref_id,
                     plan_result.get("error"),
                 )
-            _persist_plan_result(db, preference, plan_result)
+            _persist_plan_result(db, preference, plan_result, generation_source="openai")
 
         status_value = "success" if plan_result.get("plan") else "error"
         detail = "Meal plan generated" if status_value == "success" else plan_result.get("error")
@@ -1573,6 +1574,10 @@ def save_preferences(
     db.commit()
     db.refresh(preference)
     background_tasks.add_task(_generate_plan_in_background, preference.id)
+
+    generation_source = None
+    if isinstance(generated_plan, dict):
+        generation_source = generated_plan.get("generation_source")
 
     return {
         "id": preference.id,
@@ -1682,6 +1687,7 @@ def get_preferences(
         "plan": plan_payload,
         "raw_plan": raw_plan_text,
         "error": plan_error,
+        "generation_source": generation_source,
         "translation_status": translation_status,
         "translation_error": translation_error,
     }
