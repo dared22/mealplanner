@@ -25,7 +25,7 @@ from clerk_auth import (
 )
 from database import Base, SessionLocal, engine, get_session
 from models import ActivityLog, Preference, Rating, Recipe, User, PlanRecipe
-from planner import generate_daily_plan_for_preference, _format_list_values
+from planner import generate_daily_plan, generate_daily_plan_for_preference, generate_daily_macro_goal, _format_list_values
 from recipe_translator import PlanTranslator
 
 ENSURE_SCHEMA_ON_STARTUP = os.getenv("ENSURE_SCHEMA_ON_STARTUP", "").lower() in {"1", "true", "yes"}
@@ -681,10 +681,143 @@ def log_activity(
             session.close()
 
 
-def _persist_plan_result(db: Session, preference: Preference, plan_result: Dict[str, Any]) -> None:
+def _should_use_solver(db: Session, user_id: UUID) -> bool:
+    """Check if user has enough ratings for solver-based generation."""
+    rating_count = db.scalar(
+        select(func.count(Rating.id)).where(Rating.user_id == user_id)
+    ) or 0
+    return rating_count >= 10  # Personalization threshold
+
+
+def _is_impossible_constraint(preference: Preference, macro_goal: Dict[str, Any]) -> Optional[str]:
+    """
+    Check if user's constraints are mathematically impossible.
+    Returns error message if impossible, None otherwise.
+
+    Checks:
+    - Vegan + high protein (>30% of calories from protein)
+    - Very low calorie (<1000 cal/day)
+    - Multiple severe restrictions (vegan + nut-free + soy-free)
+    - High protein + low calorie combination
+    """
+    # Get macro targets
+    targets = macro_goal.get("macroTargets", {}) if macro_goal else {}
+    calories = macro_goal.get("calorieTarget", 2000) if macro_goal else 2000
+    protein = targets.get("protein", 0)
+    dietary = preference.dietary_restrictions or []
+
+    # Check 1: Very low calorie (unrealistic for any diet)
+    if calories < 1000:
+        return (
+            "Your calorie target is too low for healthy meal planning. "
+            "Please set a target of at least 1000 calories per day."
+        )
+
+    # Check 2: Vegan high protein (max realistic ~30% from protein)
+    # Protein has 4 cal/g, so max protein_g = (calories * 0.30) / 4
+    if "vegan" in dietary:
+        max_vegan_protein = (calories * 0.30) / 4
+        if protein > max_vegan_protein * 1.2:  # 20% tolerance
+            return (
+                f"Your goals may be incompatible: {protein}g protein on a vegan diet "
+                f"with {calories} calories is very difficult to achieve. "
+                "Please adjust your protein target or dietary restrictions."
+            )
+
+    # Check 3: High protein + low calorie (any diet)
+    # Max sustainable is ~35% of calories from protein
+    max_protein_any_diet = (calories * 0.35) / 4
+    if protein > max_protein_any_diet * 1.2:
+        return (
+            f"Your protein target ({protein}g) is very high for {calories} calories. "
+            "Please increase calories or reduce protein target."
+        )
+
+    # Check 4: Multiple severe restrictions (limited recipe pool)
+    severe_restrictions = {"vegan", "gluten_free", "nut_free", "soy_free"}
+    active_severe = [r for r in dietary if r in severe_restrictions]
+    if len(active_severe) >= 3:
+        return (
+            f"You have multiple dietary restrictions ({', '.join(active_severe)}) "
+            "that significantly limit available recipes. Please consider relaxing "
+            "one restriction to get better meal variety."
+        )
+
+    return None
+
+
+def _generate_solver_plan(db: Session, user_id: UUID, preference: Preference) -> Dict[str, Any]:
+    """Generate plan using solver with automatic OpenAI fallback."""
+    from solver import generate_personalized_plan
+
+    try:
+        solver_result = generate_personalized_plan(
+            db=db,
+            user_id=user_id,
+            preference=preference,
+            timeout_seconds=10,
+        )
+
+        if solver_result.get("plan") is not None:
+            fallback_reason = solver_result.get("fallback_reason")
+            if fallback_reason:
+                log_activity(
+                    db,
+                    actor_type="system",
+                    action_type="solver_fallback",
+                    action_detail=f"Solver fallback: {fallback_reason}",
+                    status="warning",
+                    metadata={
+                        "user_id": str(user_id),
+                        "reason": fallback_reason,
+                        "quality_metrics": solver_result.get("quality_metrics"),
+                    },
+                )
+            else:
+                _persist_plan_result(db, preference, solver_result)
+                return solver_result
+
+        fallback_reason = solver_result.get("fallback_reason") or solver_result.get("error") or "unknown"
+        log_activity(
+            db,
+            actor_type="system",
+            action_type="solver_fallback",
+            action_detail=f"Using OpenAI fallback: {fallback_reason}",
+            status="warning",
+            metadata={"user_id": str(user_id), "reason": fallback_reason},
+        )
+
+    except Exception as exc:
+        logger.exception("Solver failed with exception, falling back to OpenAI")
+        log_activity(
+            db,
+            actor_type="system",
+            action_type="solver_fallback",
+            action_detail=f"Solver exception: {exc}",
+            status="error",
+            metadata={"user_id": str(user_id), "exception": str(exc)},
+        )
+
+    openai_result = generate_daily_plan(preference, translate=False, db=db)
+    _persist_plan_result(db, preference, openai_result)
+    return openai_result
+
+
+def _persist_plan_result(
+    db: Session,
+    preference: Preference,
+    plan_result: Dict[str, Any],
+    generation_source: str = "openai",  # "solver" or "openai" or "openai_fallback"
+) -> None:
     existing_raw = preference.raw_data if isinstance(preference.raw_data, dict) else {}
     updated_raw = dict(existing_raw)
-    updated_raw["generated_plan"] = _json_safe(plan_result)
+
+    # Add generation metadata
+    plan_result_with_meta = dict(plan_result)
+    plan_result_with_meta["generation_source"] = generation_source
+    plan_result_with_meta["generated_at"] = datetime.now(timezone.utc).isoformat()
+
+    updated_raw["generated_plan"] = _json_safe(plan_result_with_meta)
     preference.raw_data = updated_raw
     db.add(preference)
     db.commit()
@@ -1277,9 +1410,9 @@ def _generate_plan_in_background(pref_id: int) -> None:
         finally:
             local_db.close()
 
-    def _run_with_timeout(timeout_seconds: int) -> Dict[str, Any]:
+    def _run_with_timeout(fn, timeout_seconds: int) -> Dict[str, Any]:
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(_generate_plan_for_pref, pref_id)
+            future = executor.submit(fn)
             try:
                 return future.result(timeout=timeout_seconds)
             except concurrent.futures.TimeoutError:
@@ -1294,16 +1427,47 @@ def _generate_plan_in_background(pref_id: int) -> None:
 
     db = SessionLocal()
     try:
-        plan_result = _run_with_timeout(PLAN_GENERATION_TIMEOUT)
-        if plan_result.get("plan") is None and plan_result.get("error"):
-            logger.warning("Plan generation for %s failed/timeout: %s", pref_id, plan_result.get("error"))
-
         preference = db.get(Preference, pref_id)
         if preference is None:
             logger.warning("Preference %s missing when storing generated plan", pref_id)
             return
 
-        _persist_plan_result(db, preference, plan_result)
+        user_id = preference.user_id
+        use_solver = bool(user_id and _should_use_solver(db, user_id))
+
+        macro_response = generate_daily_macro_goal(preference)
+        macro_goal = macro_response.get("goal")
+
+        impossible_error = _is_impossible_constraint(preference, macro_goal)
+        if impossible_error:
+            plan_result = {"plan": None, "raw_text": None, "error": impossible_error}
+            _persist_plan_result(db, preference, plan_result)
+            log_activity(
+                db,
+                actor_type="user",
+                actor_id=user_id,
+                action_type="plan_generation",
+                action_detail=impossible_error,
+                status="error",
+                metadata={"preference_id": pref_id, "reason": "impossible_constraints"},
+            )
+            return
+
+        if use_solver and user_id is not None:
+            plan_result = _generate_solver_plan(db, user_id, preference)
+        else:
+            plan_result = _run_with_timeout(
+                lambda: _generate_plan_for_pref(pref_id),
+                PLAN_GENERATION_TIMEOUT,
+            )
+            if plan_result.get("plan") is None and plan_result.get("error"):
+                logger.warning(
+                    "Plan generation for %s failed/timeout: %s",
+                    pref_id,
+                    plan_result.get("error"),
+                )
+            _persist_plan_result(db, preference, plan_result)
+
         status_value = "success" if plan_result.get("plan") else "error"
         detail = "Meal plan generated" if status_value == "success" else plan_result.get("error")
         log_activity(
