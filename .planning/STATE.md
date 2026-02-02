@@ -9,19 +9,19 @@ See: .planning/PROJECT.md (updated 2026-01-31)
 
 ## Current Position
 
-Phase: 6 of 8 (Rating Infrastructure)
-Plan: 1 of 2
+Phase: 7 of 8 (Constraint Solver Engine)
+Plan: 1 of 3
 Status: In progress
-Last activity: 2026-02-01 — Completed 06-01-PLAN.md
+Last activity: 2026-02-02 — Completed 07-01-PLAN.md
 
-Progress: [████████████████░░░░] 65% (15/23 total plans across all phases)
+Progress: [███████████████░░░░░] 74% (17/23 total plans across all phases)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 15
+- Total plans completed: 17
 - Average duration: 2 min
-- Total execution time: 0.53 hours
+- Total execution time: 0.60 hours
 
 **By Phase:**
 
@@ -32,13 +32,13 @@ Progress: [████████████████░░░░] 65% (15
 | 3. User Management | 3 | 6 min | 2 min |
 | 4. Recipe Management | 5 | 10 min | 2 min |
 | 5. Activity Logging | 3 | 6 min | 2 min |
-| 6. Rating Infrastructure | 1/2 | 3 min | 3 min |
-| 7. Constraint Solver Engine | 0/3 | - | - |
+| 6. Rating Infrastructure | 2/2 | 3 min | 2 min |
+| 7. Constraint Solver Engine | 1/3 | 4 min | 4 min |
 | 8. Personalization UI | 0/2 | - | - |
 
 **Recent Trend:**
-- v1.1 Phase 6 started: 3 min for backend infrastructure plan
-- Consistent velocity maintained at ~2-3 min/plan
+- Phase 7 started: 4min for constraint solver foundation
+- Slightly longer for complex optimization algorithm implementation
 
 *Updated after each plan completion*
 
@@ -56,6 +56,9 @@ Recent decisions affecting current work:
 - [06-01]: Rating upsert pattern - Check-then-update SQLAlchemy pattern instead of ON CONFLICT SQL
 - [06-01]: Personalization threshold at 10 ratings - Balances cold-start with meaningful data
 - [06-01]: Automatic plan-recipe tracking - Parse plan structure in _persist_plan_result
+- [07-01]: PuLP for constraint optimization - Simpler API than OR-Tools, sufficient for meal selection
+- [07-01]: Binary recipe scoring (liked=10, neutral=1) - All liked recipes weighted equally
+- [07-01]: 1-week recipe history lookback - Avoids repeating last week's meals
 
 ### Pending Todos
 
@@ -72,8 +75,13 @@ None yet.
 - Recipes table lacks created_at, so weekly recipe growth is 0
 - Mitigation: add created_at to Recipe in future phase or derive from ingest metadata
 
+**Solver performance (new - Phase 7):**
+- Performance with large recipe databases (>1000 recipes) needs benchmarking
+- Quality thresholds (50% liked, 20% macro) may need tuning after user testing
+- Meal type distribution may need adjustment based on real data
+
 ## Session Continuity
 
-Last session: 2026-02-01
-Stopped at: Completed 06-01-PLAN.md (Rating Infrastructure backend)
+Last session: 2026-02-02
+Stopped at: Completed 07-01-PLAN.md (Constraint Solver Foundation)
 Resume file: None
