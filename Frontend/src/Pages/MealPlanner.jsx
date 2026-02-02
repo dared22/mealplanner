@@ -1,13 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState, memo } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { SignedIn, SignedOut, UserButton, useAuth } from '@clerk/clerk-react';
 import { AnimatePresence, motion as Motion } from 'framer-motion';
 import { ArrowLeft, ArrowRight, BookOpen, Calendar, Lock, Moon, Search, ShoppingCart, Sun, TrendingUp, User, Utensils } from 'lucide-react';
 import { UserPreferences } from '@/Entities/UserPreferences';
-import { useLanguage } from '@/i18n/LanguageContext';
+import { useLanguage } from '@/i18n/useLanguage';
 
 import ProgressBar from '@/components/questionnaire/ProgressBar';
-import PersonalInfoStep, { validatePersonalInfo } from '@/components/questionnaire/PersonalInfoStep';
+import PersonalInfoStep from '@/components/questionnaire/PersonalInfoStep';
+import { validatePersonalInfo } from '@/components/questionnaire/validation';
 import ActivityStep from '@/components/questionnaire/ActivityStep';
 import GoalsStep from '@/components/questionnaire/GoalsStep';
 import DietaryStep from '@/components/questionnaire/DietaryStep';
@@ -45,7 +46,9 @@ const persistProgress = (storageKey, payload) => {
       storageKey,
       JSON.stringify({ version: STORAGE_VERSION, ...payload })
     );
-  } catch {}
+  } catch {
+    // ignore storage errors
+  }
 };
 
 // Step metadata for left panel content
@@ -84,9 +87,6 @@ const STEP_META = [
 
 // Header with logo, step dots, and controls
 const Header = memo(function Header({ currentStep, totalSteps, lang, setLang, isDarkMode, setIsDarkMode, t }) {
-  const location = useLocation();
-  const isActive = (path) => location.pathname === path;
-
   if (currentStep === 7) {
     return (
       <header className="header dashboard-header">
@@ -283,6 +283,7 @@ export default function MealPlanner({ user }) {
   const [planPayload, setPlanPayload] = useState(() => initialProgress?.planPayload ?? null);
   const [rawPlanText, setRawPlanText] = useState(() => initialProgress?.rawPlanText ?? '');
   const [planStatus, setPlanStatus] = useState(() => initialProgress?.planStatus ?? 'idle');
+  const [generationStage, setGenerationStage] = useState(() => initialProgress?.generationStage ?? null);
   const [planError, setPlanError] = useState(() => initialProgress?.planError ?? null);
   const [preferenceId, setPreferenceId] = useState(() => initialProgress?.preferenceId ?? null);
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -310,11 +311,14 @@ export default function MealPlanner({ user }) {
     setPlanPayload(null);
     setRawPlanText('');
     setPlanStatus('idle');
+    setGenerationStage(null);
     setPlanError(null);
     setPreferenceId(null);
     setIsSubmitting(false);
     if (storageKey && typeof window !== 'undefined') {
-      try { window.localStorage.removeItem(storageKey); } catch {}
+      try { window.localStorage.removeItem(storageKey); } catch {
+        // ignore storage errors
+      }
     }
   }, [storageKey]);
 
@@ -355,6 +359,7 @@ export default function MealPlanner({ user }) {
       const serverError = response?.error ?? '';
       const translationStatus = response?.translation_status;
       const translationError = response?.translation_error;
+      setGenerationStage(response?.generation_stage ?? null);
 
       if (translationStatus === 'pending') {
         setPlanPayload(null);
@@ -394,8 +399,17 @@ export default function MealPlanner({ user }) {
 
   useEffect(() => {
     if (!storageKey) return;
-    persistProgress(storageKey, { currentStep, formData, planPayload, rawPlanText, planStatus, planError, preferenceId });
-  }, [storageKey, currentStep, formData, planPayload, rawPlanText, planStatus, planError, preferenceId]);
+    persistProgress(storageKey, {
+      currentStep,
+      formData,
+      planPayload,
+      rawPlanText,
+      planStatus,
+      generationStage,
+      planError,
+      preferenceId
+    });
+  }, [storageKey, currentStep, formData, planPayload, rawPlanText, planStatus, generationStage, planError, preferenceId]);
 
   useEffect(() => {
     if (!preferenceId || (planStatus !== 'loading' && planStatus !== 'pending')) return;
@@ -421,9 +435,12 @@ export default function MealPlanner({ user }) {
           setPlanError(response?.translation_error || t('Translation failed.'));
           return;
         }
+        setGenerationStage(response?.generation_stage ?? null);
         setPlanPayload(response?.plan ?? null);
         setRawPlanText(response?.raw_plan ?? '');
-      } catch {}
+      } catch {
+        // ignore refresh errors
+      }
     };
     refreshPlan();
     return () => { isActive = false; };
@@ -435,6 +452,7 @@ export default function MealPlanner({ user }) {
     setPlanPayload(null);
     setRawPlanText('');
     setPlanStatus('loading');
+    setGenerationStage('finding_recipes');
     setPreferenceId(null);
     setIsSubmitting(true);
     setCurrentStep(TOTAL_STEPS);
@@ -484,6 +502,7 @@ export default function MealPlanner({ user }) {
           plan={planPayload}
           rawPlanText={rawPlanText}
           status={planStatus}
+          generationStage={generationStage}
           errorMessage={planError}
           onRegenerate={handleFinish}
           regenerateDisabled={isSubmitting}

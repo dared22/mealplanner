@@ -5,7 +5,7 @@ import {
   Shuffle, ThumbsUp, ThumbsDown, MoreHorizontal, Sun, Coffee, Utensils, Moon,
   Info, ChevronDown, ChevronUp
 } from 'lucide-react';
-import { useLanguage } from '@/i18n/LanguageContext';
+import { useLanguage } from '@/i18n/useLanguage';
 import { useRatings } from '@/hooks/useRatings';
 
 // Profile Summary Component
@@ -77,6 +77,11 @@ const ProfileSummary = memo(function ProfileSummary({ data, calorieTarget, t, on
 const WEEK_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const MEAL_TYPES = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
 const MACRO_COLORS = { protein: '#3D5A3D', carbs: '#22c55e', fat: '#f97316' };
+const GENERATION_STAGE_LABELS = {
+  finding_recipes: 'Finding recipes...',
+  optimizing_nutrition: 'Optimizing nutrition...',
+  finalizing: 'Finalizing plan...'
+};
 
 const MEAL_ICONS = {
   Breakfast: Coffee,
@@ -111,12 +116,6 @@ const formatIngredient = (value) => {
   }
   if (value === null || value === undefined) return '';
   return String(value).trim();
-};
-
-const toTitleCase = (value) => {
-  if (!value) return '';
-  return value.toString().replace(/_/g, ' ').split(' ')
-    .map(w => w ? w[0].toUpperCase() + w.slice(1) : '').join(' ');
 };
 
 const normalizeServerPlan = (plan, t) => {
@@ -166,7 +165,7 @@ const normalizeServerPlan = (plan, t) => {
 };
 
 // Day Card for carousel
-const DayCard = memo(function DayCard({ day, targetCalories, isActive, onSelect, dayNumber, t }) {
+const DayCard = memo(function DayCard({ day, isActive, onSelect, dayNumber, t }) {
   const translate = t || ((v) => v);
   const mealCount = Object.values(day.meals || {}).filter(Boolean).length;
 
@@ -402,7 +401,7 @@ const RatingProgress = memo(function RatingProgress({ progress, t }) {
 
 
 // Day Carousel
-const DayCarousel = memo(function DayCarousel({ days, targetCalories, selectedIndex, onSelect, t }) {
+const DayCarousel = memo(function DayCarousel({ days, selectedIndex, onSelect, t }) {
   const trackRef = useRef(null);
   const [canScroll, setCanScroll] = useState({ prev: false, next: false });
 
@@ -446,7 +445,6 @@ const DayCarousel = memo(function DayCarousel({ days, targetCalories, selectedIn
           <DayCard
             key={day.name}
             day={day}
-            targetCalories={targetCalories}
             isActive={idx === selectedIndex}
             onSelect={() => onSelect(idx)}
             dayNumber={idx + 1}
@@ -473,6 +471,7 @@ export default function ResultsStep({
   plan,
   rawPlanText,
   status = 'idle',
+  generationStage: currentGenerationStage = null,
   errorMessage,
   onRegenerate,
   regenerateDisabled = false,
@@ -483,6 +482,9 @@ export default function ResultsStep({
   const activePlan = useMemo(() => normalizeServerPlan(plan, t), [plan, t]);
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
   const [planOverrides, setPlanOverrides] = useState({});
+  const [generationStage, setGenerationStage] = useState(null);
+  const [generationStartTime, setGenerationStartTime] = useState(null);
+  const [showExtendedMessage, setShowExtendedMessage] = useState(false);
 
   const displayPlan = useMemo(() => {
     if (!activePlan) return null;
@@ -508,9 +510,41 @@ export default function ResultsStep({
 
   useEffect(() => { setSelectedDayIndex(0); setPlanOverrides({}); }, [activePlan]);
 
-  const isLoading = status === 'loading';
+  const isLoading = status === 'loading' || status === 'pending';
   const isReady = status === 'success' && hasPlan;
   const showError = status === 'error' || (status === 'success' && !hasPlan);
+
+  useEffect(() => {
+    setGenerationStage(currentGenerationStage ?? null);
+  }, [currentGenerationStage]);
+
+  useEffect(() => {
+    if (isLoading) {
+      if (!generationStartTime) {
+        setGenerationStartTime(Date.now());
+      }
+      return;
+    }
+    setGenerationStartTime(null);
+    setShowExtendedMessage(false);
+  }, [isLoading, generationStartTime]);
+
+  useEffect(() => {
+    if (!generationStartTime) return undefined;
+    const elapsed = Date.now() - generationStartTime;
+    const remaining = 10000 - elapsed;
+    if (remaining <= 0) {
+      setShowExtendedMessage(true);
+      return undefined;
+    }
+    const timeout = setTimeout(() => setShowExtendedMessage(true), remaining);
+    return () => clearTimeout(timeout);
+  }, [generationStartTime]);
+
+  const generationStageLabel = useMemo(() => {
+    const label = GENERATION_STAGE_LABELS[generationStage];
+    return label ? t(label) : t('Preparing your meal plan...');
+  }, [generationStage, t]);
 
   const handleSwap = useCallback((dayIndex, mealType) => {
     const pool = swapPools[mealType] || [];
@@ -527,14 +561,6 @@ export default function ResultsStep({
     if (!next) return;
     setPlanOverrides((prev) => ({ ...prev, [dayIndex]: { ...(prev[dayIndex] || {}), [mealType]: { ...next } } }));
   }, [displayPlan, swapPools]);
-
-  const getGoalText = (goal) => ({
-    lose_weight: t('Lose Weight'),
-    maintain_weight: t('Maintain Weight'),
-    gain_weight: t('Gain Weight'),
-    build_muscle: t('Build Muscle'),
-    improve_health: t('Improve Health')
-  }[goal] || toTitleCase(goal));
 
   return (
     <div className="space-y-8">
@@ -590,7 +616,12 @@ export default function ResultsStep({
           className="p-12 rounded-2xl bg-card border border-border text-center"
         >
           <div className="w-16 h-16 mx-auto mb-4 border-4 border-border border-t-primary rounded-full animate-spin" />
-          <p className="text-muted-foreground">{t('This usually takes less than a minute.')}</p>
+          <p className="text-lg font-medium text-foreground">{generationStageLabel}</p>
+          {showExtendedMessage && (
+            <p className="text-sm text-muted-foreground mt-2">
+              {t('This is taking longer than usual, almost done...')}
+            </p>
+          )}
         </Motion.div>
       )}
 
@@ -632,7 +663,6 @@ export default function ResultsStep({
 
             <DayCarousel
               days={displayPlan.days}
-              targetCalories={displayPlan.calorieTarget}
               selectedIndex={selectedDayIndex}
               onSelect={setSelectedDayIndex}
               t={t}
