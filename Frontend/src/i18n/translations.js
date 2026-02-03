@@ -55,6 +55,11 @@ export const translations = {
       'Vennligst pr\u00f8v igjen eller juster preferansene dine.',
     'This usually takes less than a minute.':
       'Dette tar vanligvis under ett minutt.',
+    'Personalized plans unlocked!': 'Personlige planer er l\u00e5st opp!',
+    'Your next plan will be tailored to your preferences.': 'Din neste plan blir tilpasset dine preferanser.',
+    'Unlock Personalized Plans': 'L\u00e5s opp personlige planer',
+    '{count} more ratings to unlock': '{count} flere vurderinger for \u00e5 l\u00e5se opp',
+    'Almost there!': 'Snart i m\u00e5l!',
     "We couldn't finalize your plan":
       'Vi kunne ikke ferdigstille planen din',
     'Please adjust your answers or try generating again.':

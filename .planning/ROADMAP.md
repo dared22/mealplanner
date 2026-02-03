@@ -3,7 +3,7 @@
 ## Milestones
 
 - ✅ **v1.0 Admin Panel** - Phases 1-5 (shipped 2026-01-31)
-- 🚧 **v1.1 Personalized Recommendations** - Phases 6-8 (in progress)
+- ✅ **v1.1 Personalized Recommendations** - Phases 6-8 (shipped 2026-02-03)
 
 ## Phases
 
@@ -90,7 +90,7 @@ Plans:
 
 </details>
 
-### 🚧 v1.1 Personalized Recommendations (In Progress)
+### ✅ v1.1 Personalized Recommendations (SHIPPED 2026-02-03)
 
 **Milestone Goal:** Enable users to rate meals and receive personalized meal plan recommendations based on their preferences and feedback.
 
@@ -107,8 +107,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 06-01-PLAN.md — Backend rating infrastructure (Rating + PlanRecipe models, rating API endpoints, plan history)
-- [ ] 06-02-PLAN.md — Frontend rating UI (like/dislike buttons, progress indicator, useRatings hook)
+- [x] 06-01-PLAN.md — Backend rating infrastructure (Rating + PlanRecipe models, rating API endpoints, plan history)
+- [x] 06-02-PLAN.md — Frontend rating UI (like/dislike buttons, progress indicator, useRatings hook)
 
 #### Phase 7: Constraint Solver Engine
 **Goal**: System generates personalized meal plans using constraint optimization
@@ -140,11 +140,11 @@ Plans:
   4. User can see why a meal was recommended (e.g., "You liked 5 Italian pasta dishes")
   5. Plan view indicates whether plan was AI-generated or personalized by solver
   6. Rating changes appear in next plan generation
-**Plans**: TBD
+**Plans**: 2 plans
 
-Plans:
-- [ ] 08-01: TBD
-- [ ] 08-02: TBD
+ Plans:
+ - [x] 08-01-PLAN.md — Meal swap backend + modal UI (alternatives endpoint, swap modal)
+ - [x] 08-02-PLAN.md — Explainability + generation source (recommendation reasons, badges)
 
 ## Progress
 
@@ -158,6 +158,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 3. User Management | v1.0 | 3/3 | Complete | 2026-01-27 |
 | 4. Recipe Management | v1.0 | 5/5 | Complete | 2026-01-27 |
 | 5. Activity Logging | v1.0 | 3/3 | Complete | 2026-01-27 |
-| 6. Rating Infrastructure | v1.1 | 0/2 | Not started | - |
+| 6. Rating Infrastructure | v1.1 | 2/2 | Complete | 2026-02-01 |
 | 7. Constraint Solver Engine | v1.1 | 3/3 | Complete | 2026-02-02 |
-| 8. Personalization UI | v1.1 | 0/2 | Not started | - |
+| 8. Personalization UI | v1.1 | 2/2 | Complete | 2026-02-03 |
