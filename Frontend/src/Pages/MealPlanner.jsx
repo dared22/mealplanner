@@ -284,6 +284,8 @@ export default function MealPlanner({ user }) {
   const [rawPlanText, setRawPlanText] = useState(() => initialProgress?.rawPlanText ?? '');
   const [planStatus, setPlanStatus] = useState(() => initialProgress?.planStatus ?? 'idle');
   const [generationStage, setGenerationStage] = useState(() => initialProgress?.generationStage ?? null);
+  const [generationSource, setGenerationSource] = useState(null);
+  const [recommendationReasons, setRecommendationReasons] = useState(null);
   const [planError, setPlanError] = useState(() => initialProgress?.planError ?? null);
   const [preferenceId, setPreferenceId] = useState(() => initialProgress?.preferenceId ?? null);
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -357,6 +359,8 @@ export default function MealPlanner({ user }) {
       const serverPlan = response?.plan ?? null;
       const rawText = response?.raw_plan ?? '';
       const serverError = response?.error ?? '';
+      const serverGenerationSource = response?.generation_source ?? null;
+      const serverRecommendationReasons = response?.recommendation_reasons ?? null;
       const translationStatus = response?.translation_status;
       const translationError = response?.translation_error;
       setGenerationStage(response?.generation_stage ?? null);
@@ -381,6 +385,8 @@ export default function MealPlanner({ user }) {
         setRawPlanText(rawText);
         setPlanStatus('success');
         setPlanError(null);
+        setGenerationSource(serverGenerationSource);
+        setRecommendationReasons(serverRecommendationReasons);
         return;
       }
 
@@ -438,6 +444,8 @@ export default function MealPlanner({ user }) {
         setGenerationStage(response?.generation_stage ?? null);
         setPlanPayload(response?.plan ?? null);
         setRawPlanText(response?.raw_plan ?? '');
+        setGenerationSource(response?.generation_source ?? null);
+        setRecommendationReasons(response?.recommendation_reasons ?? null);
       } catch {
         // ignore refresh errors
       }
@@ -453,6 +461,8 @@ export default function MealPlanner({ user }) {
     setRawPlanText('');
     setPlanStatus('loading');
     setGenerationStage('finding_recipes');
+    setGenerationSource(null);
+    setRecommendationReasons(null);
     setPreferenceId(null);
     setIsSubmitting(true);
     setCurrentStep(TOTAL_STEPS);
@@ -503,6 +513,8 @@ export default function MealPlanner({ user }) {
           rawPlanText={rawPlanText}
           status={planStatus}
           generationStage={generationStage}
+          generationSource={generationSource}
+          recommendationReasons={recommendationReasons}
           errorMessage={planError}
           onRegenerate={handleFinish}
           regenerateDisabled={isSubmitting}
