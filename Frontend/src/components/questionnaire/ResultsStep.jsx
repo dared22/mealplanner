@@ -3,8 +3,9 @@ import { motion as Motion } from 'framer-motion';
 import {
   CheckCircle, RefreshCw, ChevronLeft, ChevronRight,
   Shuffle, ThumbsUp, ThumbsDown, MoreHorizontal, Sun, Coffee, Utensils, Moon,
-  Info, ChevronDown, ChevronUp
+  Info, ChevronDown, ChevronUp, X
 } from 'lucide-react';
+import { useAuth } from '@clerk/clerk-react';
 import { useLanguage } from '@/i18n/useLanguage';
 import { useRatings } from '@/hooks/useRatings';
 
@@ -465,6 +466,63 @@ const DayCarousel = memo(function DayCarousel({ days, selectedIndex, onSelect, t
   );
 });
 
+// Swap Modal
+const SwapModal = memo(function SwapModal({ isOpen, onClose, alternatives, loading, onSelect, currentMeal, t }) {
+  const translate = t || ((v) => v);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+      <Motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-card rounded-2xl p-6 w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-semibold">{translate('Swap Meal')}</h3>
+          <button onClick={onClose} className="btn-icon">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="flex items-center justify-center py-8">
+            <RefreshCw className="w-6 h-6 animate-spin text-primary" />
+          </div>
+        ) : alternatives.length === 0 ? (
+          <p className="text-center py-8 text-muted-foreground">
+            {translate('No alternatives found matching your preferences')}
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {alternatives.map((alt) => (
+              <button
+                key={alt.id}
+                onClick={() => onSelect(alt)}
+                className="w-full p-4 rounded-xl border border-border hover:border-primary hover:bg-accent transition-colors text-left"
+              >
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h4 className="font-medium">{alt.title}</h4>
+                    <div className="text-sm text-muted-foreground mt-1">
+                      {alt.calories} kcal • P{alt.protein}g • C{alt.carbs}g • F{alt.fat}g
+                    </div>
+                  </div>
+                  {alt.is_liked && (
+                    <ThumbsUp className="w-4 h-4 text-green-500 fill-current" />
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </Motion.div>
+    </div>
+  );
+});
+
 // Main ResultsStep Component
 export default function ResultsStep({
   data,
@@ -478,6 +536,7 @@ export default function ResultsStep({
   onRestart
 }) {
   const { t } = useLanguage();
+  const { getToken } = useAuth();
   const { progress, submitRating, getRating, loading: ratingLoading } = useRatings();
   const activePlan = useMemo(() => normalizeServerPlan(plan, t), [plan, t]);
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
@@ -485,6 +544,9 @@ export default function ResultsStep({
   const [generationStage, setGenerationStage] = useState(null);
   const [generationStartTime, setGenerationStartTime] = useState(null);
   const [showExtendedMessage, setShowExtendedMessage] = useState(false);
+  const [swapModal, setSwapModal] = useState({ open: false, dayIndex: null, mealType: null, recipeId: null });
+  const [alternatives, setAlternatives] = useState([]);
+  const [loadingAlternatives, setLoadingAlternatives] = useState(false);
 
   const displayPlan = useMemo(() => {
     if (!activePlan) return null;
@@ -546,21 +608,74 @@ export default function ResultsStep({
     return label ? t(label) : t('Preparing your meal plan...');
   }, [generationStage, t]);
 
+  const fetchAlternatives = useCallback(async (recipeId, mealType) => {
+    if (!recipeId) return;
+    setLoadingAlternatives(true);
+    try {
+      const token = await getToken();
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const url = `${apiUrl}/recipes/alternatives/${recipeId}?meal_type=${mealType.toLowerCase()}&limit=5`;
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAlternatives(data.alternatives || []);
+      } else {
+        setAlternatives([]);
+      }
+    } catch (err) {
+      console.error('Failed to fetch alternatives:', err);
+      setAlternatives([]);
+    } finally {
+      setLoadingAlternatives(false);
+    }
+  }, [getToken]);
+
+  const handleSelectAlternative = useCallback((alt) => {
+    const { dayIndex, mealType } = swapModal;
+    setPlanOverrides((prev) => ({
+      ...prev,
+      [dayIndex]: {
+        ...(prev[dayIndex] || {}),
+        [mealType]: {
+          id: alt.id,
+          name: alt.title,
+          calories: alt.calories,
+          protein: alt.protein,
+          carbs: alt.carbs,
+          fat: alt.fat,
+          cookTime: alt.cook_time || '20 min',
+          ingredients: [],
+          instructions: ''
+        }
+      }
+    }));
+    setSwapModal({ open: false, dayIndex: null, mealType: null, recipeId: null });
+  }, [swapModal]);
+
   const handleSwap = useCallback((dayIndex, mealType) => {
-    const pool = swapPools[mealType] || [];
-    if (pool.length <= 1) return;
-    const currentMeal = displayPlan?.days?.[dayIndex]?.meals?.[mealType];
-    const filtered = currentMeal
-      ? pool.filter((o) => {
-          if (o?.id && currentMeal?.id) return o.id !== currentMeal.id;
-          return o?.name !== currentMeal?.name;
-        })
-      : pool;
-    const candidates = filtered.length ? filtered : pool;
-    const next = candidates[Math.floor(Math.random() * candidates.length)];
-    if (!next) return;
-    setPlanOverrides((prev) => ({ ...prev, [dayIndex]: { ...(prev[dayIndex] || {}), [mealType]: { ...next } } }));
-  }, [displayPlan, swapPools]);
+    const meal = displayPlan?.days?.[dayIndex]?.meals?.[mealType];
+    if (!meal?.id) {
+      // Fallback to random swap if no recipe ID (old behavior)
+      const pool = swapPools[mealType] || [];
+      if (pool.length <= 1) return;
+      const currentMeal = displayPlan?.days?.[dayIndex]?.meals?.[mealType];
+      const filtered = currentMeal
+        ? pool.filter((o) => {
+            if (o?.id && currentMeal?.id) return o.id !== currentMeal.id;
+            return o?.name !== currentMeal?.name;
+          })
+        : pool;
+      const candidates = filtered.length ? filtered : pool;
+      const next = candidates[Math.floor(Math.random() * candidates.length)];
+      if (!next) return;
+      setPlanOverrides((prev) => ({ ...prev, [dayIndex]: { ...(prev[dayIndex] || {}), [mealType]: { ...next } } }));
+      return;
+    }
+    setSwapModal({ open: true, dayIndex, mealType, recipeId: meal.id });
+    fetchAlternatives(meal.id, mealType);
+  }, [displayPlan, swapPools, fetchAlternatives]);
 
   return (
     <div className="space-y-8">
@@ -739,6 +854,17 @@ export default function ResultsStep({
           )}
         </Motion.div>
       )}
+
+      {/* Swap Modal */}
+      <SwapModal
+        isOpen={swapModal.open}
+        onClose={() => setSwapModal({ open: false, dayIndex: null, mealType: null, recipeId: null })}
+        alternatives={alternatives}
+        loading={loadingAlternatives}
+        onSelect={handleSelectAlternative}
+        currentMeal={swapModal.recipeId}
+        t={t}
+      />
     </div>
   );
 }
