@@ -277,6 +277,23 @@ class RatingListResponse(BaseModel):
     pagination: AdminPagination
 
 
+class AlternativeRecipe(BaseModel):
+    id: UUID
+    title: str
+    calories: int
+    protein: float
+    carbs: float
+    fat: float
+    cook_time: Optional[str] = None
+    is_liked: bool = False
+
+
+class AlternativesResponse(BaseModel):
+    alternatives: list[AlternativeRecipe]
+    source_recipe_id: UUID
+    meal_type: str
+
+
 def optional_current_user(
     request: Request,
     db: Session = Depends(get_session),
@@ -2578,3 +2595,137 @@ def list_recipes(
             "offset": offset,
         },
     }
+
+
+@app.get("/recipes/alternatives/{recipe_id}", response_model=AlternativesResponse)
+def get_recipe_alternatives(
+    recipe_id: UUID,
+    meal_type: Optional[str] = Query(None, description="Override meal type filter"),
+    limit: int = Query(5, ge=1, le=10),
+    db: Session = Depends(get_session),
+    current_user: User = Depends(current_user_dependency),
+) -> AlternativesResponse:
+    """Get alternative recipes for swapping a meal.
+
+    Returns recipes matching the same meal type, respecting user's dietary
+    restrictions and excluding disliked recipes.
+    """
+    # Fetch source recipe
+    source_recipe = db.scalar(
+        select(Recipe).where(Recipe.id == recipe_id)
+    )
+
+    if not source_recipe or not source_recipe.is_active:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+
+    # Determine meal type to filter by
+    effective_meal_type = meal_type or source_recipe.meal_type
+    if not effective_meal_type:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot determine meal type - source recipe has no meal_type and none provided"
+        )
+
+    # Get user's latest dietary restrictions
+    latest_pref = db.scalar(
+        select(Preference)
+        .where(Preference.user_id == current_user.id)
+        .order_by(Preference.submitted_at.desc())
+        .limit(1)
+    )
+    dietary_restrictions = latest_pref.dietary_restrictions if latest_pref else []
+
+    # Get disliked recipe IDs (fetch into Python set to avoid subquery)
+    disliked_ids = set(
+        db.scalars(
+            select(Rating.recipe_id)
+            .where(Rating.user_id == current_user.id, Rating.is_liked == False)
+        ).all()
+    )
+
+    # Get liked recipe IDs for prioritization
+    liked_ids = set(
+        db.scalars(
+            select(Rating.recipe_id)
+            .where(Rating.user_id == current_user.id, Rating.is_liked == True)
+        ).all()
+    )
+
+    # Build alternatives query
+    stmt = select(Recipe).where(
+        Recipe.is_active == True,
+        Recipe.meal_type == effective_meal_type,
+        Recipe.id != recipe_id,  # Exclude source recipe
+    )
+
+    # Exclude disliked recipes using Python filter (not subquery)
+    if disliked_ids:
+        stmt = stmt.where(~Recipe.id.in_(disliked_ids))
+
+    # Apply dietary restrictions (same logic as solver)
+    for restriction in dietary_restrictions:
+        restriction_lower = restriction.lower()
+
+        if restriction_lower == "vegan":
+            stmt = stmt.where(Recipe.dietary_flags["is_vegan"].astext == "true")
+        elif restriction_lower == "vegetarian":
+            stmt = stmt.where(
+                (Recipe.dietary_flags["is_vegetarian"].astext == "true") |
+                (Recipe.dietary_flags["is_vegan"].astext == "true")
+            )
+        elif restriction_lower == "gluten_free" or "gluten" in restriction_lower:
+            stmt = stmt.where(~Recipe.allergens.any("gluten"))
+        elif restriction_lower == "dairy_free" or "dairy" in restriction_lower:
+            stmt = stmt.where(~Recipe.allergens.any("dairy"))
+        elif restriction_lower == "nut_free" or "nut" in restriction_lower:
+            stmt = stmt.where(
+                ~Recipe.allergens.any("nuts") &
+                ~Recipe.allergens.any("tree nuts")
+            )
+
+    # Order by: liked first, then popularity, then random
+    # We'll fetch more than needed and sort in Python for liked priority
+    stmt = stmt.order_by(
+        Recipe.popularity_score.desc().nullslast(),
+        func.random()
+    ).limit(limit * 3)  # Fetch extra to allow for liked sorting
+
+    candidates = db.scalars(stmt).all()
+
+    # Sort: liked recipes first, then rest
+    liked_alternatives = [r for r in candidates if r.id in liked_ids]
+    other_alternatives = [r for r in candidates if r.id not in liked_ids]
+    sorted_alternatives = (liked_alternatives + other_alternatives)[:limit]
+
+    # Build response
+    alternatives = []
+    for recipe in sorted_alternatives:
+        nutrition = recipe.nutrition or {}
+        calories = nutrition.get("calories_kcal") or nutrition.get("calories") or 0
+        protein = nutrition.get("protein_g") or 0
+        carbs = nutrition.get("carbs_g") or 0
+        fat = nutrition.get("fat_g") or 0
+
+        # Format cook time
+        cook_time = None
+        if recipe.total_time_minutes:
+            cook_time = f"{recipe.total_time_minutes} min"
+        elif recipe.cook_time_minutes:
+            cook_time = f"{recipe.cook_time_minutes} min"
+
+        alternatives.append(AlternativeRecipe(
+            id=recipe.id,
+            title=recipe.title,
+            calories=int(calories),
+            protein=float(protein),
+            carbs=float(carbs),
+            fat=float(fat),
+            cook_time=cook_time,
+            is_liked=recipe.id in liked_ids,
+        ))
+
+    return AlternativesResponse(
+        alternatives=alternatives,
+        source_recipe_id=recipe_id,
+        meal_type=effective_meal_type,
+    )
