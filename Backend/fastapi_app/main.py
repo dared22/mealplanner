@@ -600,6 +600,66 @@ def _repair_plan_payload(plan: Any) -> Any:
     return repaired
 
 
+def _generate_recommendation_reasons(
+    db: Session,
+    user_id: UUID,
+    plan: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    Generate simple explanation for why meals were recommended.
+    Returns dict with:
+    - summary: Overall explanation (e.g., "Based on your 15 ratings")
+    - cuisine_preferences: Dict of cuisine -> count of liked recipes
+    - top_liked_tags: List of most common tags in liked recipes
+    """
+    liked_ratings = db.scalars(
+        select(Rating).where(Rating.user_id == user_id, Rating.is_liked.is_(True))
+    ).all()
+
+    if not liked_ratings:
+        return {
+            "summary": "Optimized for your nutritional goals",
+            "cuisine_preferences": {},
+            "top_liked_tags": [],
+        }
+
+    liked_ids = [rating.recipe_id for rating in liked_ratings if rating.recipe_id]
+    if not liked_ids:
+        return {
+            "summary": "Optimized for your nutritional goals",
+            "cuisine_preferences": {},
+            "top_liked_tags": [],
+        }
+
+    liked_recipes = db.scalars(select(Recipe).where(Recipe.id.in_(liked_ids))).all()
+
+    cuisine_counts: Dict[str, int] = {}
+    tag_counts: Dict[str, int] = {}
+    for recipe in liked_recipes:
+        if recipe.cuisine:
+            cuisine_counts[recipe.cuisine] = cuisine_counts.get(recipe.cuisine, 0) + 1
+        if recipe.tags:
+            for tag in recipe.tags:
+                tag_counts[tag] = tag_counts.get(tag, 0) + 1
+
+    top_cuisines = dict(sorted(cuisine_counts.items(), key=lambda x: -x[1])[:3])
+    top_tags = sorted(tag_counts.items(), key=lambda x: -x[1])[:5]
+
+    total_liked = len(liked_ratings)
+    if top_cuisines:
+        top_cuisine = next(iter(top_cuisines.keys()))
+        top_count = top_cuisines[top_cuisine]
+        summary = f"Based on {total_liked} ratings - you liked {top_count} {top_cuisine} dishes"
+    else:
+        summary = f"Based on your {total_liked} ratings"
+
+    return {
+        "summary": summary,
+        "cuisine_preferences": top_cuisines,
+        "top_liked_tags": [tag for tag, _ in top_tags],
+    }
+
+
 def _normalize_text(value: Any) -> str:
     if value is None:
         return ""
@@ -1618,10 +1678,6 @@ def save_preferences(
     db.refresh(preference)
     background_tasks.add_task(_generate_plan_in_background, preference.id)
 
-    generation_source = None
-    if isinstance(generated_plan, dict):
-        generation_source = generated_plan.get("generation_source")
-
     return {
         "id": preference.id,
         "stored": True,
@@ -1648,6 +1704,9 @@ def get_preferences(
     plan_payload = generated_plan.get("plan") if isinstance(generated_plan, dict) else None
     raw_plan_text = generated_plan.get("raw_text") if isinstance(generated_plan, dict) else None
     plan_error = generated_plan.get("error") if isinstance(generated_plan, dict) else None
+    generation_source = None
+    if isinstance(generated_plan, dict):
+        generation_source = generated_plan.get("generation_source")
     if generated_plan is None:
         plan_status = "pending"
     elif plan_payload:
@@ -1716,6 +1775,14 @@ def get_preferences(
     if plan_payload:
         plan_payload = _repair_plan_payload(plan_payload)
 
+    recommendation_reasons = None
+    if plan_status == "success" and generation_source == "solver" and entry.user_id:
+        recommendation_reasons = _generate_recommendation_reasons(
+            db,
+            entry.user_id,
+            plan_payload or {},
+        )
+
     return {
         "id": entry.id,
         "submitted_at": entry.submitted_at,
@@ -1739,6 +1806,7 @@ def get_preferences(
         "raw_plan": raw_plan_text,
         "error": plan_error,
         "generation_source": generation_source,
+        "recommendation_reasons": recommendation_reasons,
         "translation_status": translation_status,
         "translation_error": translation_error,
     }
