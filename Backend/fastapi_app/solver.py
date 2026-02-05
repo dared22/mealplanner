@@ -7,6 +7,7 @@ and respecting dietary restrictions.
 """
 
 import logging
+import re
 from typing import Any, Dict, List, Optional, Set, Tuple
 from uuid import UUID
 
@@ -25,6 +26,103 @@ WEEK_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
 MACRO_TOLERANCE = 0.10  # ±10% tolerance for macro targets
 QUALITY_THRESHOLD_LIKED_RATIO = 0.5  # Minimum 50% liked recipes
 QUALITY_THRESHOLD_MACRO_DEVIATION = 0.2  # Maximum 20% macro deviation
+
+
+def _normalize_token(value: str) -> str:
+    """Normalize text to a comparable token (lowercase, underscores, alnum only)."""
+    normalized = re.sub(r"[^a-z0-9]+", "_", str(value).strip().lower())
+    return normalized.strip("_")
+
+
+def _normalize_cuisine_list(values: Optional[List[str]]) -> Set[str]:
+    if not values:
+        return set()
+    return {token for token in (_normalize_token(v) for v in values) if token}
+
+
+def _recipe_matches_preferred_cuisines(recipe_cuisine: Optional[str], allowed: Set[str]) -> bool:
+    if not allowed:
+        return True
+    if not recipe_cuisine:
+        return False
+    # Split on common separators to support multi-cuisine strings.
+    parts = re.split(r"[,/;|]+", str(recipe_cuisine))
+    for part in parts:
+        if _normalize_token(part) in allowed:
+            return True
+    return False
+
+
+def _normalize_allergens(allergens: Any) -> Set[str]:
+    if not allergens:
+        return set()
+    if isinstance(allergens, (list, tuple, set)):
+        return {str(item).strip().lower() for item in allergens if item}
+    return {str(allergens).strip().lower()}
+
+
+def _dietary_flag_truthy(flags: Any, key: str) -> bool:
+    if not isinstance(flags, dict):
+        return False
+    value = flags.get(key)
+    if value is None:
+        value = flags.get(key.lower())
+    if value is None:
+        return False
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    return text in {"true", "1", "yes", "y"}
+
+
+def _violates_allergen_restriction(allergens: Set[str], restriction: str) -> bool:
+    if not allergens:
+        # If allergens are missing, treat as unsafe for allergen-based restrictions.
+        return True
+    if "gluten" in restriction:
+        return any("gluten" in allergen for allergen in allergens)
+    if "dairy" in restriction:
+        return any("dairy" in allergen for allergen in allergens)
+    if "nut" in restriction:
+        return any("nut" in allergen for allergen in allergens)
+    return False
+
+
+def _cooking_time_bounds(value: Any) -> Tuple[Optional[int], Optional[int]]:
+    if value is None:
+        return None, None
+    normalized = str(value).strip().lower()
+    if normalized in {"under_15_min", "under15", "<15"}:
+        return None, 15
+    if normalized in {"15_30_min", "15-30", "15_30"}:
+        return 15, 30
+    if normalized in {"30_60_min", "30-60", "30_60"}:
+        return 30, 60
+    if normalized in {"over_60_min", "60_plus", ">60"}:
+        return 60, None
+    if "quick" in normalized or "fast" in normalized:
+        return None, 30
+    if "moderate" in normalized or "medium" in normalized:
+        return 30, 60
+    if "slow" in normalized or "long" in normalized:
+        return 60, None
+    return None, None
+
+
+def _apply_cooking_time_filter(df: pd.DataFrame, preference: Preference) -> pd.DataFrame:
+    if df.empty or "total_time_minutes" not in df.columns:
+        return df
+    min_minutes, max_minutes = _cooking_time_bounds(preference.cooking_time_preference)
+    if min_minutes is None and max_minutes is None:
+        return df
+
+    series = pd.to_numeric(df["total_time_minutes"], errors="coerce")
+    mask = series.notna()
+    if min_minutes is not None:
+        mask &= series >= min_minutes
+    if max_minutes is not None:
+        mask &= series <= max_minutes
+    return df[mask]
 
 
 def _get_user_ratings(db: Session, user_id: UUID) -> Tuple[Set[UUID], Set[UUID]]:
@@ -100,7 +198,9 @@ def _filter_recipes_for_solver(
     # Apply dietary restrictions (hard constraint)
     dietary_restrictions = preference.dietary_restrictions or []
     for restriction in dietary_restrictions:
-        restriction_lower = restriction.lower()
+        if not restriction:
+            continue
+        restriction_lower = str(restriction).lower()
 
         if restriction_lower == "vegan":
             stmt = stmt.where(Recipe.dietary_flags["is_vegan"].astext == "true")
@@ -110,25 +210,51 @@ def _filter_recipes_for_solver(
                 (Recipe.dietary_flags["is_vegetarian"].astext == "true") |
                 (Recipe.dietary_flags["is_vegan"].astext == "true")
             )
-        elif restriction_lower == "gluten_free" or "gluten" in restriction_lower:
-            # Exclude recipes with gluten allergen
-            stmt = stmt.where(~Recipe.allergens.any("gluten"))
-        elif restriction_lower == "dairy_free" or "dairy" in restriction_lower:
-            stmt = stmt.where(~Recipe.allergens.any("dairy"))
-        elif restriction_lower == "nut_free" or "nut" in restriction_lower:
-            stmt = stmt.where(
-                ~Recipe.allergens.any("nuts") &
-                ~Recipe.allergens.any("tree nuts")
-            )
 
     result = db.execute(stmt)
     recipes = result.scalars().all()
+
+    allowed_cuisines = _normalize_cuisine_list(preference.preferred_cuisines)
 
     # Convert to DataFrame
     recipe_data = []
     for recipe in recipes:
         # Skip disliked and last week's recipes
         if recipe.id in disliked_ids or recipe.id in last_week_ids:
+            continue
+        if not _recipe_matches_preferred_cuisines(recipe.cuisine, allowed_cuisines):
+            continue
+
+        restriction_blocked = False
+        flags = recipe.dietary_flags or {}
+        allergens = _normalize_allergens(recipe.allergens)
+        for restriction in dietary_restrictions:
+            if not restriction:
+                continue
+            restriction_lower = str(restriction).lower()
+            if restriction_lower == "none":
+                continue
+            if restriction_lower == "vegan":
+                if not _dietary_flag_truthy(flags, "is_vegan"):
+                    restriction_blocked = True
+                    break
+            elif restriction_lower == "vegetarian":
+                if not (_dietary_flag_truthy(flags, "is_vegetarian") or _dietary_flag_truthy(flags, "is_vegan")):
+                    restriction_blocked = True
+                    break
+            elif restriction_lower == "gluten_free" or "gluten" in restriction_lower:
+                if _violates_allergen_restriction(allergens, "gluten"):
+                    restriction_blocked = True
+                    break
+            elif restriction_lower == "dairy_free" or "dairy" in restriction_lower:
+                if _violates_allergen_restriction(allergens, "dairy"):
+                    restriction_blocked = True
+                    break
+            elif restriction_lower == "nut_free" or "nut" in restriction_lower:
+                if _violates_allergen_restriction(allergens, "nut"):
+                    restriction_blocked = True
+                    break
+        if restriction_blocked:
             continue
 
         # Extract nutrition data
@@ -141,7 +267,7 @@ def _filter_recipes_for_solver(
         recipe_data.append({
             "id": recipe.id,
             "title": recipe.title,
-            "meal_type": recipe.meal_type,
+            "meal_type": recipe.meal_type.lower() if recipe.meal_type else None,
             "calories": float(calories),
             "protein": float(protein),
             "carbs": float(carbs),
@@ -158,36 +284,27 @@ def _filter_recipes_for_solver(
     if df.empty:
         return df
 
-    # Soft filters: budget and cooking time
-    # Only apply if we have enough recipes; otherwise relax
+    # Soft filters: budget (relaxed if too few recipes)
+    # Cooking time is enforced but dropped if it eliminates all options.
     initial_count = len(df)
 
     # Budget filter (soft)
     budget_range = preference.budget_range
     if budget_range and budget_range != "no_limit" and "cost_category" in df.columns:
+        df["cost_category"] = df["cost_category"].astype(str).str.lower()
         budget_lower = str(budget_range).lower()
         if "budget" in budget_lower or "cheap" in budget_lower:
             budget_filtered = df[df["cost_category"] == "cheap"]
             if len(budget_filtered) >= 100:  # Keep if we have enough
                 df = budget_filtered
 
-    # Cooking time filter (soft)
-    cooking_time = preference.cooking_time_preference
-    if cooking_time and "total_time_minutes" in df.columns:
-        time_lower = str(cooking_time).lower()
-        if "quick" in time_lower or "fast" in time_lower:
-            # Prefer recipes under 30 minutes
-            quick_filtered = df[df["total_time_minutes"] <= 30]
-            if len(quick_filtered) >= 100:
-                df = quick_filtered
-        elif "moderate" in time_lower:
-            # Prefer recipes 30-60 minutes
-            moderate_filtered = df[
-                (df["total_time_minutes"] > 30) &
-                (df["total_time_minutes"] <= 60)
-            ]
-            if len(moderate_filtered) >= 100:
-                df = moderate_filtered
+    # Cooking time filter (enforced, but dropped if it yields no matches)
+    if preference.cooking_time_preference:
+        time_filtered = _apply_cooking_time_filter(df, preference)
+        if time_filtered.empty and not df.empty:
+            logger.info("Cooking time filter eliminated all recipes; dropping cooking time constraint.")
+        else:
+            df = time_filtered
 
     logger.info(
         f"Filtered recipes: {initial_count} -> {len(df)} "

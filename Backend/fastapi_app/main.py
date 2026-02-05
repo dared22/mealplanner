@@ -25,7 +25,13 @@ from clerk_auth import (
 )
 from database import Base, SessionLocal, engine, get_session
 from models import ActivityLog, Preference, Rating, Recipe, User, PlanRecipe
-from planner import generate_daily_plan, generate_daily_plan_for_preference, generate_daily_macro_goal, _format_list_values
+from planner import (
+    _format_list_values,
+    fill_missing_meals,
+    generate_daily_macro_goal,
+    generate_daily_plan,
+    generate_daily_plan_for_preference,
+)
 from recipe_translator import PlanTranslator
 
 ENSURE_SCHEMA_ON_STARTUP = os.getenv("ENSURE_SCHEMA_ON_STARTUP", "").lower() in {"1", "true", "yes"}
@@ -830,6 +836,35 @@ def _generate_solver_plan(db: Session, user_id: UUID, preference: Preference) ->
     """Generate plan using solver with automatic OpenAI fallback."""
     from solver import generate_personalized_plan
 
+    def _plan_has_missing_meals(plan: Dict[str, Any], meals_per_day: int) -> bool:
+        slots = ["breakfast", "lunch", "dinner"]
+        extra = max((meals_per_day or 3) - 3, 0)
+        slots.extend(["snack"] * extra)
+        slots = slots[: max(meals_per_day or 3, 1)]
+        if "dinner" not in slots:
+            if slots:
+                slots[-1] = "dinner"
+            else:
+                slots = ["dinner"]
+
+        days = plan.get("days") if isinstance(plan, dict) else None
+        if not isinstance(days, list):
+            return True
+        for day in days:
+            meals = day.get("meals") if isinstance(day, dict) else None
+            if not isinstance(meals, dict):
+                return True
+            for slot in slots:
+                if slot == "breakfast" and meals.get("Breakfast") is None:
+                    return True
+                if slot == "lunch" and meals.get("Lunch") is None:
+                    return True
+                if slot == "dinner" and meals.get("Dinner") is None:
+                    return True
+                if slot == "snack" and meals.get("Snacks") is None:
+                    return True
+        return False
+
     try:
         solver_result = generate_personalized_plan(
             db=db,
@@ -839,6 +874,14 @@ def _generate_solver_plan(db: Session, user_id: UUID, preference: Preference) ->
         )
 
         if solver_result.get("plan") is not None:
+            plan = solver_result.get("plan")
+            if _plan_has_missing_meals(plan, preference.meals_per_day or 3):
+                fill_result = fill_missing_meals(plan, preference, db=db)
+                if fill_result.get("plan") is not None and fill_result.get("error") is None:
+                    solver_result["plan"] = fill_result["plan"]
+                else:
+                    logger.warning("Failed to fill missing meals via planner: %s", fill_result.get("error"))
+
             fallback_reason = solver_result.get("fallback_reason")
             if fallback_reason:
                 log_activity(
@@ -854,9 +897,14 @@ def _generate_solver_plan(db: Session, user_id: UUID, preference: Preference) ->
                     },
                 )
             else:
-                _update_generation_stage(db, preference.id, "finalizing")
-                _persist_plan_result(db, preference, solver_result, generation_source="solver")
-                return solver_result
+                plan = solver_result.get("plan")
+                if plan and _plan_has_missing_meals(plan, preference.meals_per_day or 3):
+                    solver_result["fallback_reason"] = "missing_meals"
+                    logger.warning("Solver plan still has missing meals; falling back to OpenAI.")
+                else:
+                    _update_generation_stage(db, preference.id, "finalizing")
+                    _persist_plan_result(db, preference, solver_result, generation_source="solver")
+                    return solver_result
 
         fallback_reason = solver_result.get("fallback_reason") or solver_result.get("error") or "unknown"
         log_activity(
