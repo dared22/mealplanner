@@ -103,6 +103,8 @@ class Recipe(Base):
     author: Mapped[Optional[str]] = mapped_column(Text)
     language: Mapped[Optional[str]] = mapped_column(Text)
     tags: Mapped[Optional[list[str]]] = mapped_column(ARRAY(Text))
+    category: Mapped[Optional[str]] = mapped_column(Text)
+    rating: Mapped[Optional[float]] = mapped_column(Numeric)
     popularity_score: Mapped[Optional[float]] = mapped_column(Numeric)
     health_score: Mapped[Optional[float]] = mapped_column(Numeric)
     created_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), server_default=func.now())

@@ -119,6 +119,7 @@ class AdminRecipeDetail(BaseModel):
     id: UUID
     title: str
     slug: str
+    category: Optional[str] = None
     cost_category: Optional[str] = None
     source_url: Optional[str] = None
     image_url: Optional[str] = None
@@ -143,6 +144,7 @@ class AdminRecipeDetail(BaseModel):
     author: Optional[str] = None
     language: Optional[str] = None
     tags: Optional[list[str]] = None
+    rating: Optional[float] = None
     popularity_score: Optional[float] = None
     health_score: Optional[float] = None
     created_at: Optional[datetime] = None
@@ -164,6 +166,7 @@ class AdminRecipeCreate(BaseModel):
     nutrition: Dict[str, Any]
     tags: list[str]
     meal_type: str
+    category: Optional[str] = None
     cost_category: Optional[str] = None
     source_url: Optional[str] = None
     image_url: Optional[str] = None
@@ -183,6 +186,7 @@ class AdminRecipeCreate(BaseModel):
     spice_level: Optional[int] = None
     author: Optional[str] = None
     language: Optional[str] = None
+    rating: Optional[float] = None
     popularity_score: Optional[float] = None
     health_score: Optional[float] = None
 
@@ -190,6 +194,7 @@ class AdminRecipeCreate(BaseModel):
 class AdminRecipeUpdate(BaseModel):
     title: Optional[str] = None
     slug: Optional[str] = None
+    category: Optional[str] = None
     cost_category: Optional[str] = None
     source_url: Optional[str] = None
     image_url: Optional[str] = None
@@ -213,6 +218,7 @@ class AdminRecipeUpdate(BaseModel):
     spice_level: Optional[int] = None
     author: Optional[str] = None
     language: Optional[str] = None
+    rating: Optional[float] = None
     tags: Optional[list[str]] = None
     popularity_score: Optional[float] = None
     health_score: Optional[float] = None
