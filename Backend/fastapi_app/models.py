@@ -2,11 +2,60 @@ from datetime import datetime, timezone
 from uuid import UUID, uuid4
 from typing import Any, Dict, Optional, List
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, Text, func, Numeric, SmallInteger, UniqueConstraint, Index
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    func,
+    Numeric,
+    SmallInteger,
+    UniqueConstraint,
+    Index,
+)
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.types import TypeDecorator, UserDefinedType
 
 from database import Base
+
+
+class VectorType(UserDefinedType):
+    """Minimal pgvector type without extra dependencies."""
+
+    cache_ok = True
+
+    def __init__(self, dims: int = 1536):
+        self.dims = dims
+
+    def get_col_spec(self, **kw):
+        return f"vector({self.dims})"
+
+    def bind_processor(self, dialect):
+        def process(value):
+            if value is None:
+                return None
+            if isinstance(value, (list, tuple)):
+                return "[" + ",".join(str(float(x)) for x in value) + "]"
+            return str(value)
+
+        return process
+
+    def result_processor(self, dialect, coltype):
+        def process(value):
+            if value is None:
+                return None
+            if isinstance(value, str):
+                stripped = value.strip("[]")
+                if stripped == "":
+                    return []
+                return [float(x) for x in stripped.split(",")]
+            return value
+
+        return process
 
 
 class Preference(Base):
@@ -87,8 +136,7 @@ class Recipe(Base):
     prep_time_minutes: Mapped[Optional[int]] = mapped_column(Integer)
     cook_time_minutes: Mapped[Optional[int]] = mapped_column(Integer)
     total_time_minutes: Mapped[Optional[int]] = mapped_column(Integer)
-    yield_qty: Mapped[Optional[Numeric]] = mapped_column(Numeric)
-    yield_unit: Mapped[Optional[str]] = mapped_column(Text)
+    portions: Mapped[Optional[int]] = mapped_column(Integer)
     cuisine: Mapped[Optional[str]] = mapped_column(Text)
     meal_type: Mapped[Optional[str]] = mapped_column(Text)
     dish_type: Mapped[Optional[str]] = mapped_column(Text)
@@ -103,6 +151,7 @@ class Recipe(Base):
     author: Mapped[Optional[str]] = mapped_column(Text)
     language: Mapped[Optional[str]] = mapped_column(Text)
     tags: Mapped[Optional[list[str]]] = mapped_column(ARRAY(Text))
+    embedding: Mapped[Optional[list[float]]] = mapped_column(VectorType())
     category: Mapped[Optional[str]] = mapped_column(Text)
     rating: Mapped[Optional[float]] = mapped_column(Numeric)
     popularity_score: Mapped[Optional[float]] = mapped_column(Numeric)

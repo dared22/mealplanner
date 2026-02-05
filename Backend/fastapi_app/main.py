@@ -129,8 +129,7 @@ class AdminRecipeDetail(BaseModel):
     prep_time_minutes: Optional[int] = None
     cook_time_minutes: Optional[int] = None
     total_time_minutes: Optional[int] = None
-    yield_qty: Optional[float] = None
-    yield_unit: Optional[str] = None
+    portions: Optional[int] = None
     cuisine: Optional[str] = None
     meal_type: Optional[str] = None
     dish_type: Optional[str] = None
@@ -174,8 +173,7 @@ class AdminRecipeCreate(BaseModel):
     prep_time_minutes: Optional[int] = None
     cook_time_minutes: Optional[int] = None
     total_time_minutes: Optional[int] = None
-    yield_qty: Optional[float] = None
-    yield_unit: Optional[str] = None
+    portions: Optional[int] = None
     cuisine: Optional[str] = None
     dish_type: Optional[str] = None
     dietary_flags: Optional[Dict[str, Any]] = None
@@ -204,8 +202,7 @@ class AdminRecipeUpdate(BaseModel):
     prep_time_minutes: Optional[int] = None
     cook_time_minutes: Optional[int] = None
     total_time_minutes: Optional[int] = None
-    yield_qty: Optional[float] = None
-    yield_unit: Optional[str] = None
+    portions: Optional[int] = None
     cuisine: Optional[str] = None
     meal_type: Optional[str] = None
     dish_type: Optional[str] = None
@@ -1122,11 +1119,11 @@ def _parse_import_ingredients(value: Any) -> list[dict[str, Any]]:
             if isinstance(parsed, list):
                 items = parsed
             elif "\n" in text:
-                items = [segment.strip() for segment in text.splitlines() if segment.strip()]
+                items = [_strip_nulls(segment.strip()) for segment in text.splitlines() if segment.strip()]
             elif "," in text:
-                items = [segment.strip() for segment in text.split(",") if segment.strip()]
+                items = [_strip_nulls(segment.strip()) for segment in text.split(",") if segment.strip()]
             else:
-                items = [text]
+                items = [_strip_nulls(text)]
     else:
         items = [value]
 
@@ -1151,6 +1148,12 @@ def _recipe_to_dict(recipe: Recipe) -> Dict[str, Any]:
     nutrition = recipe.nutrition if isinstance(recipe.nutrition, dict) else {}
     calories = nutrition.get("calories") or nutrition.get("calories_kcal")
 
+    prep_time = recipe.prep_time_minutes
+    cook_time = recipe.cook_time_minutes
+    total_time = recipe.total_time_minutes
+    if total_time is None and prep_time is not None and cook_time is not None:
+        total_time = prep_time + cook_time
+
     primary_image = recipe.image_url
     images = [recipe.image_url] if recipe.image_url else []
 
@@ -1171,6 +1174,9 @@ def _recipe_to_dict(recipe: Recipe) -> Dict[str, Any]:
         "images": images,
         "local_images": [],
         "image": primary_image,
+        "prep_time_minutes": prep_time,
+        "cook_time_minutes": cook_time,
+        "total_time_minutes": total_time,
         "nutrition": {
             "calories": calories,
             "protein_g": nutrition.get("protein_g"),
@@ -1209,8 +1215,7 @@ def _admin_recipe_detail(recipe: Recipe) -> AdminRecipeDetail:
         prep_time_minutes=recipe.prep_time_minutes,
         cook_time_minutes=recipe.cook_time_minutes,
         total_time_minutes=recipe.total_time_minutes,
-        yield_qty=_json_safe(recipe.yield_qty),
-        yield_unit=recipe.yield_unit,
+        portions=recipe.portions,
         cuisine=recipe.cuisine,
         meal_type=recipe.meal_type,
         cost_category=recipe.cost_category,
@@ -1307,11 +1312,12 @@ def _parse_import_list_field(value: Any) -> list[str]:
             if isinstance(parsed, list):
                 return [str(item).strip() for item in parsed if str(item).strip()]
         if "\n" in text:
-            return [segment.strip() for segment in text.splitlines() if segment.strip()]
+            return [_strip_nulls(segment.strip()) for segment in text.splitlines() if segment.strip()]
         if "," in text:
-            return [segment.strip() for segment in text.split(",") if segment.strip()]
-        return [text]
+            return [_strip_nulls(segment.strip()) for segment in text.split(",") if segment.strip()]
+        return [_strip_nulls(text)]
     text = str(value).strip()
+    text = _strip_nulls(text)
     return [text] if text else []
 
 
@@ -1331,6 +1337,154 @@ def _parse_import_nutrition(value: Any) -> Dict[str, Any]:
         if isinstance(parsed, dict):
             return parsed
     return {}
+
+def _strip_nulls(text: str) -> str:
+    return text.replace("\x00", "")
+
+
+def _sanitize_text(value: Any) -> Optional[str]:
+    if _is_blank(value):
+        return None
+    text = _strip_nulls(str(value))
+    text = text.strip()
+    return text or None
+
+
+def _parse_import_int(value: Any) -> Optional[int]:
+    if _is_blank(value):
+        return None
+    if isinstance(value, dict):
+        for key in ("qty", "quantity", "amount", "value", "count", "servings", "portion", "portions"):
+            candidate = value.get(key)
+            if _is_blank(candidate):
+                continue
+            try:
+                return int(float(candidate))
+            except (TypeError, ValueError):
+                continue
+        return None
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        number_match = re.search(r"[-+]?\d*\.?\d+", text)
+        if number_match:
+            try:
+                return int(float(number_match.group()))
+            except (TypeError, ValueError):
+                pass
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_import_float(value: Any) -> Optional[float]:
+    if _is_blank(value):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_import_bool(value: Any) -> Optional[bool]:
+    if _is_blank(value):
+        return None
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "y", "t"}:
+        return True
+    if text in {"0", "false", "no", "n", "f"}:
+        return False
+    return None
+
+
+def _parse_import_datetime(value: Any) -> Optional[datetime]:
+    if _is_blank(value):
+        return None
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    if isinstance(value, (int, float)):
+        try:
+            return datetime.fromtimestamp(float(value), tz=timezone.utc)
+        except Exception:
+            return None
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            dt = datetime.fromisoformat(text)
+        except ValueError:
+            try:
+                import pandas as pd
+
+                parsed = pd.to_datetime(text, utc=True, errors="coerce")
+            except Exception:
+                return None
+            if parsed is None:
+                return None
+            if getattr(parsed, "tzinfo", None) is None and hasattr(parsed, "tz_localize"):
+                parsed = parsed.tz_localize("UTC")
+            if hasattr(parsed, "to_pydatetime"):
+                return parsed.to_pydatetime()
+            return parsed
+        else:
+            return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    return None
+
+
+def _parse_import_object(value: Any) -> Optional[Dict[str, Any]]:
+    if _is_blank(value):
+        return None
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            parsed = json.loads(text)
+            if isinstance(parsed, dict):
+                return parsed
+        except json.JSONDecodeError:
+            return None
+    return None
+
+
+def _parse_import_embedding(value: Any) -> Optional[list[float]]:
+    if _is_blank(value):
+        return None
+    if isinstance(value, str):
+        text = value.strip()
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            parsed = None
+        if isinstance(parsed, (list, tuple)):
+            value = parsed
+        else:
+            return None
+    if isinstance(value, (list, tuple)):
+        floats: list[float] = []
+        for item in value:
+            try:
+                floats.append(float(item))
+            except (TypeError, ValueError):
+                continue
+        return floats or None
+    return None
+
+
+def _parse_import_uuid(value: Any) -> Optional[UUID]:
+    if _is_blank(value):
+        return None
+    try:
+        return UUID(str(value))
+    except Exception:
+        return None
 
 
 def _infer_import_format(request: Request) -> str:
@@ -1388,14 +1542,55 @@ def _resolve_import_columns(columns: Iterable[str]) -> Dict[str, Optional[str]]:
         "instructions": _find_import_column(
             columns, ["instructions", "instruction", "steps", "directions"]
         ),
+        "source_url": _find_import_column(columns, ["source_url", "url", "link"]),
+        "image_url": _find_import_column(columns, ["image_url", "image", "photo", "picture"]),
+        "description": _find_import_column(columns, ["description", "summary", "desc"]),
         "cuisine": _find_import_column(columns, ["cuisine", "cuisine_type", "region"]),
         "nutrition": _find_import_column(columns, ["nutrition", "nutrients", "macros"]),
         "tags": _find_import_column(columns, ["tags", "labels", "categories"]),
-        "meal_type": _find_import_column(columns, ["meal_type", "meal", "course", "category"]),
+        "meal_type": _find_import_column(columns, ["meal_type", "meal", "course"]),
+        "dish_type": _find_import_column(columns, ["dish_type", "dish", "type"]),
+        "category": _find_import_column(columns, ["category", "primary_category", "group"]),
+        "prep_time_minutes": _find_import_column(columns, ["prep_time_minutes", "prep_time", "prep"]),
+        "cook_time_minutes": _find_import_column(columns, ["cook_time_minutes", "cook_time", "cook"]),
+        "total_time_minutes": _find_import_column(columns, ["total_time_minutes", "total_time"]),
+        "portions": _find_import_column(
+            columns,
+            [
+                "portions",
+                "porsjoner",
+                "porsjon",
+                "antall",
+                "servings",
+                "serves",
+                "serving",
+                "yield",
+            ],
+        ),
+        "dietary_flags": _find_import_column(columns, ["dietary_flags", "dietary", "diet_flags", "diet"]),
+        "allergens": _find_import_column(columns, ["allergens", "allergy", "allergies"]),
         "cost_category": _find_import_column(
             columns,
             ["cost_category", "price_tier", "budget_range", "price_level", "cost_level", "price_category"],
         ),
+        "cost_per_serving_cents": _find_import_column(
+            columns,
+            ["cost_per_serving_cents", "cost_per_serving", "price_per_serving", "price_cents", "cost_cents"],
+        ),
+        "equipment": _find_import_column(columns, ["equipment", "tools", "appliances"]),
+        "difficulty": _find_import_column(columns, ["difficulty", "skill_level"]),
+        "spice_level": _find_import_column(columns, ["spice_level", "spiciness", "heat_level", "heat"]),
+        "author": _find_import_column(columns, ["author", "chef", "creator"]),
+        "language": _find_import_column(columns, ["language", "lang"]),
+        "rating": _find_import_column(columns, ["rating", "score"]),
+        "popularity_score": _find_import_column(columns, ["popularity_score", "popularity"]),
+        "health_score": _find_import_column(columns, ["health_score", "health"]),
+        "embedding": _find_import_column(columns, ["embedding", "vector"]),
+        "created_at": _find_import_column(columns, ["created_at", "created", "timestamp"]),
+        "updated_at": _find_import_column(columns, ["updated_at", "updated", "modified"]),
+        "scraped_at": _find_import_column(columns, ["scraped_at", "scraped", "crawl_time"]),
+        "scrape_hash": _find_import_column(columns, ["scrape_hash", "hash"]),
+        "is_active": _find_import_column(columns, ["is_active", "active", "enabled"]),
         "slug": _find_import_column(columns, ["slug"]),
     }
 
@@ -1404,6 +1599,10 @@ def _normalize_import_row(
     row: Dict[str, Any],
     columns: Dict[str, Optional[str]],
 ) -> Dict[str, Any]:
+    def _value(key: str) -> Any:
+        col = columns.get(key)
+        return row.get(col) if col else None
+
     title_col = columns.get("title")
     title_value = row.get(title_col) if title_col else None
     if _is_blank(title_value):
@@ -1440,15 +1639,39 @@ def _normalize_import_row(
     return {
         "title": title,
         "slug": base_slug,
-        "ingredients": _normalize_ingredients_payload(row.get(ingredients_col) if ingredients_col else None),
-        "instructions": _parse_import_list_field(
-            row.get(instructions_col) if instructions_col else None
-        ),
-        "nutrition": _parse_import_nutrition(row.get(nutrition_col) if nutrition_col else None),
-        "tags": _parse_import_list_field(row.get(tags_col) if tags_col else None),
+        "ingredients": _normalize_ingredients_payload(_value("ingredients")),
+        "instructions": _parse_import_list_field(_value("instructions")),
+        "nutrition": _parse_import_nutrition(_value("nutrition")),
+        "tags": _parse_import_list_field(_value("tags")),
         "meal_type": meal_type,
         "cost_category": cost_category,
         "cuisine": cuisine,
+        "source_url": _sanitize_text(_value("source_url")),
+        "image_url": _sanitize_text(_value("image_url")),
+        "description": _sanitize_text(_value("description")),
+        "dish_type": _sanitize_text(_value("dish_type")),
+        "category": _sanitize_text(_value("category")),
+        "prep_time_minutes": _parse_import_int(_value("prep_time_minutes")),
+        "cook_time_minutes": _parse_import_int(_value("cook_time_minutes")),
+        "total_time_minutes": _parse_import_int(_value("total_time_minutes")),
+        "portions": _parse_import_int(_value("portions")),
+        "dietary_flags": _parse_import_object(_value("dietary_flags")) or {},
+        "allergens": _parse_import_list_field(_value("allergens")),
+        "cost_per_serving_cents": _parse_import_int(_value("cost_per_serving_cents")),
+        "equipment": _parse_import_list_field(_value("equipment")),
+        "difficulty": _sanitize_text(_value("difficulty")),
+        "spice_level": _parse_import_int(_value("spice_level")),
+        "author": _sanitize_text(_value("author")),
+        "language": _sanitize_text(_value("language")),
+        "rating": _parse_import_float(_value("rating")),
+        "popularity_score": _parse_import_float(_value("popularity_score")),
+        "health_score": _parse_import_float(_value("health_score")),
+        "embedding": _parse_import_embedding(_value("embedding")),
+        "created_at": _parse_import_datetime(_value("created_at")),
+        "updated_at": _parse_import_datetime(_value("updated_at")),
+        "scraped_at": _parse_import_datetime(_value("scraped_at")),
+        "scrape_hash": _sanitize_text(_value("scrape_hash")),
+        "is_active": _parse_import_bool(_value("is_active")),
     }
 
 
@@ -2143,8 +2366,7 @@ def create_admin_recipe(
         prep_time_minutes=payload.prep_time_minutes,
         cook_time_minutes=payload.cook_time_minutes,
         total_time_minutes=payload.total_time_minutes,
-        yield_qty=payload.yield_qty,
-        yield_unit=payload.yield_unit,
+        portions=payload.portions,
         cuisine=payload.cuisine,
         meal_type=payload.meal_type,
         dish_type=payload.dish_type,
@@ -2283,14 +2505,45 @@ async def import_admin_recipes(
 
             if existing is not None:
                 existing.title = normalized["title"]
+                if normalized["category"] is not None:
+                    existing.category = normalized["category"]
+                existing.source_url = normalized["source_url"]
+                existing.image_url = normalized["image_url"]
+                existing.description = normalized["description"]
                 existing.ingredients = _json_safe(normalized["ingredients"])
                 existing.instructions = _json_safe(normalized["instructions"])
                 existing.nutrition = _json_safe(normalized["nutrition"])
                 existing.tags = _json_safe(normalized["tags"])
                 existing.meal_type = normalized["meal_type"]
+                existing.dish_type = normalized["dish_type"]
                 existing.cost_category = normalized["cost_category"]
+                existing.cost_per_serving_cents = normalized["cost_per_serving_cents"]
+                existing.prep_time_minutes = normalized["prep_time_minutes"]
+                existing.cook_time_minutes = normalized["cook_time_minutes"]
+                existing.total_time_minutes = normalized["total_time_minutes"]
+                existing.portions = normalized["portions"]
                 existing.cuisine = normalized["cuisine"]
-                existing.updated_at = datetime.now(timezone.utc)
+                existing.dietary_flags = _json_safe(normalized["dietary_flags"])
+                existing.allergens = _json_safe(normalized["allergens"])
+                existing.equipment = _json_safe(normalized["equipment"])
+                existing.difficulty = normalized["difficulty"]
+                existing.spice_level = normalized["spice_level"]
+                existing.author = normalized["author"]
+                existing.language = normalized["language"]
+                existing.rating = normalized["rating"]
+                existing.popularity_score = normalized["popularity_score"]
+                existing.health_score = normalized["health_score"]
+                if normalized["embedding"] is not None:
+                    existing.embedding = normalized["embedding"]
+                if normalized["scraped_at"] is not None:
+                    existing.scraped_at = normalized["scraped_at"]
+                if normalized["scrape_hash"] is not None:
+                    existing.scrape_hash = normalized["scrape_hash"]
+                if normalized["is_active"] is not None:
+                    existing.is_active = normalized["is_active"]
+                if normalized["created_at"] is not None:
+                    existing.created_at = normalized["created_at"]
+                existing.updated_at = normalized["updated_at"] or datetime.now(timezone.utc)
                 db.add(existing)
                 db.commit()
                 db.refresh(existing)
@@ -2326,15 +2579,42 @@ async def import_admin_recipes(
                 id=uuid4(),
                 title=normalized["title"],
                 slug=slug,
+                category=normalized["category"],
+                source_url=normalized["source_url"],
+                image_url=normalized["image_url"],
+                description=normalized["description"],
                 ingredients=_json_safe(normalized["ingredients"]),
                 instructions=_json_safe(normalized["instructions"]),
                 nutrition=_json_safe(normalized["nutrition"]),
                 tags=_json_safe(normalized["tags"]),
+                prep_time_minutes=normalized["prep_time_minutes"],
+                cook_time_minutes=normalized["cook_time_minutes"],
+                total_time_minutes=normalized["total_time_minutes"],
+                portions=normalized["portions"],
                 meal_type=normalized["meal_type"],
+                dish_type=normalized["dish_type"],
                 cuisine=normalized["cuisine"],
                 cost_category=normalized["cost_category"],
-                is_active=True,
+                cost_per_serving_cents=normalized["cost_per_serving_cents"],
+                dietary_flags=_json_safe(normalized["dietary_flags"]),
+                allergens=_json_safe(normalized["allergens"]),
+                equipment=_json_safe(normalized["equipment"]),
+                difficulty=normalized["difficulty"],
+                spice_level=normalized["spice_level"],
+                author=normalized["author"],
+                language=normalized["language"],
+                rating=normalized["rating"],
+                popularity_score=normalized["popularity_score"],
+                health_score=normalized["health_score"],
+                embedding=normalized["embedding"],
+                scraped_at=normalized["scraped_at"],
+                scrape_hash=normalized["scrape_hash"],
+                is_active=True if normalized["is_active"] is None else normalized["is_active"],
             )
+            if normalized["created_at"] is not None:
+                recipe.created_at = normalized["created_at"]
+            if normalized["updated_at"] is not None:
+                recipe.updated_at = normalized["updated_at"]
             db.add(recipe)
             db.commit()
             db.refresh(recipe)

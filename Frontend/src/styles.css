@@ -11,7 +11,7 @@
   --font-serif: "Playfair Display", Georgia, "Times New Roman", serif;
 }
 
-/* --- Design tokens (Meal Intelligence palette) --- */
+/* --- Design tokens (Preppr palette) --- */
 @theme inline {
   --radius-sm: 0.375rem;
   --radius-md: 0.5rem;
@@ -408,93 +408,139 @@
 
   /* ===== DASHBOARD ===== */
 
-  /* Nav bar */
-  .dashboard-nav {
-    @apply bg-card border-b border-border/60 shadow-sm;
-  }
+  /* ===== NAVIGATION BAR ===== */
 
+  /* Header container */
   .dashboard-header {
-    @apply bg-card border-b border-border/60 shadow-sm;
+    @apply bg-background/80 backdrop-blur-md border-b border-border/40 shadow-sm;
   }
 
-  .dashboard-nav-inner {
-    @apply max-w-7xl mx-auto px-6 py-4 flex items-center justify-between;
+  /* Main navigation container - uses grid for proper alignment */
+  .dashboard-nav-container {
+    @apply max-w-7xl mx-auto px-8 lg:px-12 h-[72px]
+           grid grid-cols-[auto_1fr_auto] items-center gap-12;
   }
 
-  .nav-left {
-    @apply flex items-center gap-8 shrink-0 ml-8;
+  /* ===== SECTION LAYOUTS ===== */
+
+  /* Left section: Logo and Search */
+  .nav-section-left {
+    @apply flex items-center justify-start gap-6;
   }
+
+  /* Center section: Main navigation */
+  .nav-section-center {
+    @apply flex items-center justify-center gap-1;
+  }
+
+  /* Right section: User controls */
+  .nav-section-right {
+    @apply flex items-center justify-end gap-2;
+  }
+
+  /* ===== LOGO ===== */
 
   .dashboard-logo {
-    @apply flex items-center gap-3 font-semibold text-foreground shrink-0;
+    @apply flex items-center shrink-0 transition-opacity hover:opacity-80;
   }
 
-  .dashboard-logo-icon {
-    @apply w-9 h-9 rounded-full bg-primary flex items-center justify-center;
+  /* ===== NAVIGATION LINKS ===== */
+
+  /* Navigation link item */
+  .nav-link-item {
+    @apply flex items-center gap-2 px-3 py-2 rounded-lg
+           text-sm font-medium text-muted-foreground
+           transition-all duration-200
+           hover:bg-accent hover:text-foreground
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary;
   }
 
-  .dashboard-logo-text {
-    @apply text-base font-semibold;
+  /* Active state for navigation links */
+  .nav-link-item[aria-current="page"],
+  .nav-link-item.active {
+    @apply bg-accent text-primary font-semibold;
   }
 
-  .nav-links {
-    @apply hidden lg:flex items-center gap-6 text-sm;
+  /* Navigation link icon */
+  .nav-link-icon {
+    @apply w-5 h-5 shrink-0;
   }
 
-  .nav-link {
-    @apply text-sm font-medium text-muted-foreground hover:text-foreground transition-colors;
+  /* Navigation link text */
+  .nav-link-text {
+    @apply hidden lg:inline;
   }
 
-  .nav-link.active {
-    @apply text-primary;
+  /* ===== SEARCH BAR ===== */
+
+  /* Search wrapper */
+  .nav-search-wrapper {
+    @apply hidden md:flex items-center;
   }
 
+  /* Search bar container */
   .nav-search {
-    @apply hidden md:flex items-center gap-2 px-4 py-2 rounded-full bg-secondary text-muted-foreground text-sm flex-1 max-w-md min-w-0;
+    @apply flex items-center gap-3 px-4 py-2 rounded-lg
+           bg-accent/50 border border-border/40
+           w-96 transition-all duration-200
+           focus-within:bg-accent focus-within:border-primary/30;
   }
 
-  .nav-search-icon {
-    @apply w-4 h-4 text-muted-foreground;
-  }
-
+  /* Search input */
   .nav-search-input {
-    @apply bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none w-full;
+    @apply bg-transparent text-sm text-foreground placeholder:text-muted-foreground
+           outline-none w-full;
   }
 
-  .nav-icons {
-    @apply flex items-center gap-5 shrink-0 mr-8;
+  /* ===== USER CONTROLS ===== */
+
+  /* User avatar wrapper */
+  .nav-user-wrapper {
+    @apply flex items-center;
   }
 
-  .nav-icon-btn {
-    @apply flex flex-col items-center gap-1 text-muted-foreground hover:text-primary transition-colors;
+  /* Control buttons (theme, login) */
+  .nav-control-btn {
+    @apply w-10 h-10 rounded-lg flex items-center justify-center
+           text-muted-foreground bg-transparent
+           transition-all duration-200
+           hover:bg-accent hover:text-foreground
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary;
   }
 
-  .nav-icon-label {
-    @apply text-[10px] uppercase tracking-wider font-semibold;
+  /* Language toggle button */
+  .nav-lang-toggle {
+    @apply px-3 py-2 rounded-lg
+           text-xs font-bold tracking-wider text-foreground
+           bg-transparent border border-border/60
+           transition-all duration-200
+           hover:bg-accent hover:border-primary/30
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary;
   }
 
-  .nav-user {
-    @apply flex flex-col items-center gap-1 text-muted-foreground;
+  /* Separator/divider */
+  .nav-separator {
+    @apply hidden md:block w-px h-6 bg-border/60 mx-2;
   }
 
-  .nav-avatar-box {
-    @apply w-9 h-9 rounded-full border border-border;
-  }
+  /* ===== RESPONSIVE ADJUSTMENTS ===== */
 
-  .nav-divider {
-    @apply hidden md:block w-px h-8 bg-border;
-  }
+  @media (max-width: 768px) {
+    .dashboard-nav-container {
+      @apply grid-cols-[auto_auto] gap-4 px-4 h-14;
+    }
 
-  .nav-controls {
-    @apply hidden md:flex items-center gap-2;
-  }
+    .nav-section-center {
+      @apply hidden;
+    }
 
-  .nav-lang-btn {
-    @apply px-3 py-1.5 rounded-full border border-border text-xs font-semibold tracking-wide text-foreground bg-card;
-  }
+    .nav-section-right {
+      @apply gap-2;
+    }
 
-  .nav-theme-btn {
-    @apply w-9 h-9 rounded-full border border-border bg-card flex items-center justify-center text-muted-foreground hover:text-primary transition-colors;
+    .nav-lang-toggle {
+      @apply px-2.5;
+    }
   }
 
   /* Profile summary */
@@ -759,6 +805,390 @@
 
   .hide-scrollbar::-webkit-scrollbar {
     display: none;
+  }
+
+  /* ===== RECIPE CARDS - MODERN EDITORIAL DESIGN ===== */
+
+  .recipe-card-modern {
+    @apply bg-card rounded-2xl overflow-hidden border border-border/40 shadow-sm
+           transition-all duration-300 ease-out
+           hover:shadow-xl hover:border-primary/30 hover:-translate-y-1.5;
+  }
+
+  /* Image section with overlay */
+  .recipe-image-wrapper {
+    @apply relative w-full aspect-[4/3] overflow-hidden bg-secondary;
+  }
+
+  .recipe-image {
+    @apply w-full h-full object-cover transition-transform duration-500 ease-out
+           group-hover:scale-105;
+  }
+
+  .recipe-overlay {
+    @apply absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent
+           flex items-end p-5 opacity-0 transition-opacity duration-300
+           group-hover:opacity-100;
+  }
+
+  .recipe-meal-badge {
+    @apply px-4 py-2 rounded-full bg-white/95 backdrop-blur-sm
+           text-[10px] font-bold uppercase tracking-[0.15em] text-primary
+           shadow-lg;
+  }
+
+  /* Content section */
+  .recipe-content {
+    @apply p-5 space-y-4;
+  }
+
+  .recipe-title {
+    @apply text-lg font-semibold text-foreground leading-snug mb-4
+           transition-colors duration-200
+           group-hover:text-primary;
+    font-family: var(--font-serif);
+    min-height: 3.25rem;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* Stats Row - Simplified */
+  .recipe-stats-row {
+    @apply flex items-center gap-4 pb-4 border-b border-border/50;
+  }
+
+  .recipe-stat {
+    @apply flex items-center gap-1.5;
+  }
+
+  .recipe-stat-value {
+    @apply text-sm font-semibold text-foreground;
+  }
+
+  /* Tags */
+  .recipe-tags {
+    @apply flex flex-wrap gap-1.5;
+  }
+
+  .recipe-tag {
+    @apply px-2.5 py-1 rounded-md bg-accent/60 border border-border/40
+           text-[10px] font-medium text-muted-foreground
+           transition-all duration-200
+           hover:border-primary/40 hover:text-primary hover:bg-primary-light/40;
+  }
+
+  .recipe-tag-more {
+    @apply px-2.5 py-1 rounded-md bg-primary-light border border-primary/20
+           text-[10px] font-bold text-primary;
+  }
+
+  /* Recipe skeleton loader */
+  .recipe-skeleton {
+    @apply bg-card rounded-2xl overflow-hidden border border-border/40;
+  }
+
+  .recipe-skeleton::before {
+    content: '';
+    @apply block w-full aspect-[4/3] bg-gradient-to-r from-secondary via-accent/30 to-secondary;
+    background-size: 200% 100%;
+    animation: shimmer 2s infinite ease-in-out;
+  }
+
+  .recipe-skeleton::after {
+    content: '';
+    @apply block h-48 p-6;
+  }
+
+  /* Animations */
+  @keyframes shimmer {
+    0% {
+      background-position: -200% 0;
+    }
+    100% {
+      background-position: 200% 0;
+    }
+  }
+
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* ===== RECIPE FILTERS - REFINED SIDEBAR ===== */
+
+  .filter-group {
+    @apply space-y-3;
+  }
+
+  .filter-header {
+    @apply flex items-center gap-2.5;
+  }
+
+  .filter-label {
+    @apply text-sm font-semibold text-foreground;
+  }
+
+  .filter-value-display {
+    @apply text-sm font-semibold text-foreground bg-accent/60 px-4 py-2.5 rounded-xl
+           border border-border/40;
+  }
+
+  /* ===== IMPROVED RANGE SLIDER SYSTEM ===== */
+
+  /* Dual Range Container with Visual Track */
+  .dual-range {
+    @apply relative w-full;
+    height: 48px;
+    display: flex;
+    align-items: center;
+  }
+
+  /* Visual track background */
+  .dual-range::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    height: 8px;
+    background: var(--accent);
+    border: 1px solid var(--border);
+    border-radius: 9999px;
+    z-index: 0;
+  }
+
+  /* Active range highlight */
+  .dual-range::after {
+    content: '';
+    position: absolute;
+    left: var(--range-min);
+    right: calc(100% - var(--range-max));
+    top: 50%;
+    transform: translateY(-50%);
+    height: 8px;
+    background: linear-gradient(90deg, var(--primary) 0%, #5a7d5a 100%);
+    border-radius: 9999px;
+    z-index: 1;
+    transition: left 0.1s ease-out, right 0.1s ease-out;
+  }
+
+  /* Range inputs */
+  .dual-range .filter-range-input {
+    position: absolute;
+    width: 100%;
+    height: 48px;
+    top: 50%;
+    left: 0;
+    transform: translateY(-50%);
+    appearance: none;
+    background: transparent;
+    pointer-events: none;
+    cursor: pointer;
+  }
+
+  .dual-range .filter-range-input:first-of-type {
+    z-index: 3;
+  }
+
+  .dual-range .filter-range-input:last-of-type {
+    z-index: 4;
+  }
+
+  /* Enable pointer events on thumbs only */
+  .dual-range .filter-range-input::-webkit-slider-thumb {
+    pointer-events: auto;
+  }
+
+  .dual-range .filter-range-input::-moz-range-thumb {
+    pointer-events: auto;
+  }
+
+  /* Single Range Container */
+  .single-range-wrapper {
+    @apply relative w-full;
+    height: 48px;
+    display: flex;
+    align-items: center;
+  }
+
+  /* Single range track background */
+  .single-range-wrapper::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    height: 8px;
+    background: var(--accent);
+    border: 1px solid var(--border);
+    border-radius: 9999px;
+    z-index: 0;
+  }
+
+  /* Single range active fill */
+  .single-range-wrapper::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: calc(100% - var(--range-max));
+    top: 50%;
+    transform: translateY(-50%);
+    height: 8px;
+    background: linear-gradient(90deg, var(--primary) 0%, #5a7d5a 100%);
+    border-radius: 9999px;
+    z-index: 1;
+    transition: right 0.1s ease-out;
+  }
+
+  .single-range-wrapper .filter-range-input {
+    position: absolute;
+    width: 100%;
+    height: 48px;
+    top: 50%;
+    left: 0;
+    transform: translateY(-50%);
+    appearance: none;
+    background: transparent;
+    cursor: pointer;
+    z-index: 2;
+  }
+
+  /* Base range input styles */
+  .filter-range-input {
+    --range-min: 0%;
+    --range-max: 100%;
+  }
+
+  /* WebKit Thumb Styles */
+  .filter-range-input::-webkit-slider-thumb {
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--primary);
+    border: 3px solid white;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.1);
+    cursor: grab;
+    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    z-index: 10;
+  }
+
+  .filter-range-input::-webkit-slider-thumb:hover {
+    background: #5a7d5a;
+    transform: scale(1.15);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2), 0 2px 4px rgba(0, 0, 0, 0.12);
+  }
+
+  .filter-range-input::-webkit-slider-thumb:active {
+    cursor: grabbing;
+    transform: scale(1.05);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2), 0 1px 2px rgba(0, 0, 0, 0.15);
+  }
+
+  /* Firefox Thumb Styles */
+  .filter-range-input::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--primary);
+    border: 3px solid white;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.1);
+    cursor: grab;
+    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .filter-range-input::-moz-range-thumb:hover {
+    background: #5a7d5a;
+    transform: scale(1.15);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2), 0 2px 4px rgba(0, 0, 0, 0.12);
+  }
+
+  .filter-range-input::-moz-range-thumb:active {
+    cursor: grabbing;
+    transform: scale(1.05);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2), 0 1px 2px rgba(0, 0, 0, 0.15);
+  }
+
+  /* WebKit Track Styles - Make invisible as we use ::before/::after */
+  .filter-range-input::-webkit-slider-runnable-track {
+    width: 100%;
+    height: 8px;
+    background: transparent;
+    border: none;
+    border-radius: 9999px;
+  }
+
+  /* Firefox Track Styles - Make invisible as we use ::before/::after */
+  .filter-range-input::-moz-range-track {
+    width: 100%;
+    height: 8px;
+    background: transparent;
+    border: none;
+    border-radius: 9999px;
+  }
+
+  .filter-range-input::-moz-range-progress {
+    background: transparent;
+  }
+
+  /* Focus States */
+  .filter-range-input:focus-visible {
+    outline: none;
+  }
+
+  .filter-range-input:focus-visible::-webkit-slider-thumb {
+    box-shadow: 0 0 0 4px rgba(61, 90, 61, 0.2),
+                0 2px 8px rgba(0, 0, 0, 0.15),
+                0 1px 3px rgba(0, 0, 0, 0.1);
+  }
+
+  .filter-range-input:focus-visible::-moz-range-thumb {
+    box-shadow: 0 0 0 4px rgba(61, 90, 61, 0.2),
+                0 2px 8px rgba(0, 0, 0, 0.15),
+                0 1px 3px rgba(0, 0, 0, 0.1);
+  }
+
+  /* Disabled State */
+  .filter-range-input:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+
+  .filter-range-input:disabled::-webkit-slider-thumb {
+    cursor: not-allowed;
+    background: var(--muted);
+  }
+
+  .filter-range-input:disabled::-moz-range-thumb {
+    cursor: not-allowed;
+    background: var(--muted);
+  }
+
+  .filter-divider {
+    @apply h-px bg-border/50;
+  }
+
+  /* Dark mode adjustments */
+  .dark .filter-range-input::-webkit-slider-thumb,
+  .dark .filter-range-input::-moz-range-thumb {
+    border-color: rgba(255, 255, 255, 0.15);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);
+  }
+
+  .dark .filter-range-input::-webkit-slider-thumb:hover,
+  .dark .filter-range-input::-moz-range-thumb:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5), 0 2px 4px rgba(0, 0, 0, 0.4);
   }
 }
 
