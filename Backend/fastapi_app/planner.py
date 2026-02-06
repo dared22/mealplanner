@@ -24,6 +24,7 @@ OPENAI_REQUEST_TIMEOUT = float(os.getenv("OPENAI_REQUEST_TIMEOUT", "120"))
 OPENAI_MACRO_MAX_TOKENS = int(os.getenv("OPENAI_PLAN_MAX_TOKENS", "1000"))
 OPENAI_MEAL_MODEL = os.getenv("OPENAI_MEAL_MODEL", OPENAI_MACRO_MODEL)
 OPENAI_MEAL_MAX_TOKENS = int(os.getenv("OPENAI_MEAL_MAX_TOKENS", "1400"))
+PLAN_BASE_LANGUAGE = os.getenv("PLAN_BASE_LANGUAGE") or os.getenv("RECIPE_BASE_LANGUAGE") or "no"
 
 if not OPENAI_API_KEY:
     logger.warning("OPENAI_API_KEY is not configured; macro target generation will be disabled.")
@@ -253,6 +254,17 @@ def _is_english(value: Optional[str]) -> bool:
     if normalized in {"en", "eng", "english"}:
         return True
     return normalized.startswith("en-") or normalized.startswith("en_")
+
+
+def _normalize_language(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    normalized = str(value).strip().lower()
+    if normalized.startswith("en"):
+        return "en"
+    if normalized.startswith(("no", "nb", "nn")):
+        return "no"
+    return normalized
 
 
 def _extract_json(raw_text: str) -> Optional[Dict[str, Any]]:
@@ -1067,7 +1079,8 @@ def generate_daily_plan(pref: Any, translate: bool = False, db: Optional[Session
                 used_names.append(str(name))
 
     plan_payload = _build_weekly_plan(macro_goal, days)
-    plan_language = "en" if translate and _is_english(dto.language) else "no"
+    base_language = _normalize_language(PLAN_BASE_LANGUAGE) or "no"
+    plan_language = "en" if translate and _is_english(dto.language) else base_language
     if translate and _is_english(dto.language):
         translation = translate_plan(plan_payload, dto.language)
         return {

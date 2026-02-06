@@ -1,4 +1,4 @@
-# Meal Planner
+# Preppr
 
 A web application that generates personalized weekly meal plans using AI. You
 fill out a questionnaire with your dietary preferences, and the app creates
@@ -73,7 +73,7 @@ Before running the backend, you need to:
 
 1. Create a Neon PostgreSQL database
 2. Set up the database schema (users, preferences, recipes tables)
-3. Load recipe data from `recipes.parquet` into your recipes table
+3. Load recipe data from `recipes.csv` into your recipes table
 4. The recipe data must include nutrition information, tags, and meal type
    classifications for the optimization algorithm to work
 
@@ -321,7 +321,7 @@ The app uses Neon (serverless PostgreSQL) with three main tables:
 
 - **users:** User accounts (synced with Clerk)
 - **preferences:** User preferences and generated meal plans
-- **recipes:** Recipe database loaded from `recipes.parquet`
+- **recipes:** Recipe database loaded from `recipes.csv`
 
 The custom optimization algorithm queries the recipes table to build meal plans
 that match your nutrition targets and preferences. Generated meal plans and

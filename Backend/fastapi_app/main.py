@@ -949,6 +949,11 @@ def _persist_plan_result(
 
     # Add generation metadata
     plan_result_with_meta = dict(plan_result)
+    if not plan_result_with_meta.get("language"):
+        base_language = _normalize_language(
+            os.getenv("PLAN_BASE_LANGUAGE") or os.getenv("RECIPE_BASE_LANGUAGE") or "no"
+        )
+        plan_result_with_meta["language"] = base_language
     plan_result_with_meta["generation_source"] = generation_source
     plan_result_with_meta["generated_at"] = datetime.now(timezone.utc).isoformat()
 

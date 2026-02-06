@@ -24,6 +24,7 @@ class _GoogleTranslateBase:
         self.target_language = target_language
         self._enabled = self._init_client()
         self.client = True if self._enabled else None
+        self._last_error: Optional[str] = None
 
     def _init_client(self) -> bool:
         if Translator is None:
@@ -42,6 +43,7 @@ class _GoogleTranslateBase:
         try:
             result = self._run_coroutine(self._translate_async(texts))
         except Exception as exc:
+            self._last_error = str(exc)
             logger.exception("googletrans request failed: %s", exc)
             return texts
 
@@ -79,11 +81,14 @@ class RecipeTranslator(_GoogleTranslateBase):
         if not self._enabled:
             return TranslationResult(recipe, "Translation disabled: Google Translate not configured.")
 
+        self._last_error = None
         translated = dict(recipe)
         translated["name"] = self._translate_text(recipe.get("name"))
         translated["instructions"] = self._translate_text(recipe.get("instructions"))
         translated["ingredients"] = self._translate_list(recipe.get("ingredients"))
         translated["tags"] = self._translate_list(recipe.get("tags"))
+        if self._last_error:
+            return TranslationResult(translated, f"Translation failed: {self._last_error}")
         return TranslationResult(translated, None)
 
     def translate_recipes(self, recipes: Iterable[Dict[str, Any]]) -> List[TranslationResult]:
@@ -112,6 +117,7 @@ class PlanTranslator(_GoogleTranslateBase):
         if not self._enabled:
             return TranslationResult(plan, "Translation disabled: Google Translate not configured.")
 
+        self._last_error = None
         translated_plan = copy.deepcopy(plan)
         days = translated_plan.get("days", [])
         if isinstance(days, list):
@@ -126,6 +132,8 @@ class PlanTranslator(_GoogleTranslateBase):
                         continue
                     meals[key] = self._translate_meal(meal)
 
+        if self._last_error:
+            return TranslationResult(translated_plan, f"Translation failed: {self._last_error}")
         return TranslationResult(translated_plan, None)
 
     def _translate_meal(self, meal: Dict[str, Any]) -> Dict[str, Any]:
