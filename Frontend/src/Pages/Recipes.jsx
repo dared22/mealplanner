@@ -399,10 +399,11 @@ export default function Recipes() {
                 <div className="flex flex-wrap gap-2 mt-3">
                   {EXCLUDE_INGREDIENTS.map((item) => {
                     const active = excludeDraft.includes(item);
+                    const label = t(item);
                     return (
                       <FilterChip
                         key={item}
-                        label={item}
+                        label={label}
                         active={active}
                         onToggle={() =>
                           setExcludeDraft((prev) =>

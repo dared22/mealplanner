@@ -5,7 +5,7 @@ import logging
 import os
 import re
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 from uuid import UUID
 
 import httpx
@@ -82,6 +82,21 @@ MEAL_TAG_KEYWORDS = {
     "dinner": ["middag", "middagsrett", "dinner", "ovnsretter", "gryter", "panneretter"],
 }
 
+_COOKING_TIME_MAP = {
+    "under_15_min": (None, 15),
+    "under15": (None, 15),
+    "<15": (None, 15),
+    "15_30_min": (15, 30),
+    "15-30": (15, 30),
+    "15_30": (15, 30),
+    "30_60_min": (30, 60),
+    "30-60": (30, 60),
+    "30_60": (30, 60),
+    "over_60_min": (60, None),
+    "60_plus": (60, None),
+    ">60": (60, None),
+}
+
 
 @dataclass(frozen=True)
 class PreferenceDTO:
@@ -115,8 +130,7 @@ def _get_pref_value(pref: Any, key: str) -> Any:
         return value
     raw_data = getattr(pref, "raw_data", None)
     if isinstance(raw_data, dict):
-        if key in raw_data:
-            return raw_data.get(key)
+        return raw_data.get(key)
     return None
 
 
@@ -142,11 +156,11 @@ def _normalize_token(value: str) -> str:
     return normalized.strip("_")
 
 
-def _normalize_cuisine_list(values: List[str]) -> set[str]:
+def _normalize_cuisine_list(values: List[str]) -> Set[str]:
     return {token for token in (_normalize_token(v) for v in values) if token}
 
 
-def _recipe_matches_preferred_cuisines(recipe_cuisine: Any, allowed: set[str]) -> bool:
+def _recipe_matches_preferred_cuisines(recipe_cuisine: Any, allowed: Set[str]) -> bool:
     if not allowed:
         return True
     if not recipe_cuisine:
@@ -158,7 +172,7 @@ def _recipe_matches_preferred_cuisines(recipe_cuisine: Any, allowed: set[str]) -
     return False
 
 
-def _normalize_allergens(value: Any) -> set[str]:
+def _normalize_allergens(value: Any) -> Set[str]:
     if not value:
         return set()
     if isinstance(value, (list, tuple, set)):
@@ -180,30 +194,23 @@ def _dietary_flag_truthy(flags: Any, key: str) -> bool:
     return text in {"true", "1", "yes", "y"}
 
 
-def _violates_allergen_restriction(allergens: set[str], restriction: str) -> bool:
+def _violates_allergen_restriction(allergens: Set[str], keyword: str) -> bool:
+    """Check if allergen data violates a restriction.
+
+    Returns True if allergen info is missing (fail-closed for safety)
+    or if any allergen contains the given keyword.
+    """
     if not allergens:
         return True
-    if "gluten" in restriction:
-        return any("gluten" in allergen for allergen in allergens)
-    if "dairy" in restriction:
-        return any("dairy" in allergen for allergen in allergens)
-    if "nut" in restriction:
-        return any("nut" in allergen for allergen in allergens)
-    return False
+    return any(keyword in allergen for allergen in allergens)
 
 
-def _cooking_time_bounds(value: Any) -> tuple[Optional[int], Optional[int]]:
+def _cooking_time_bounds(value: Any) -> Tuple[Optional[int], Optional[int]]:
     if value is None:
         return None, None
     normalized = str(value).strip().lower()
-    if normalized in {"under_15_min", "under15", "<15"}:
-        return None, 15
-    if normalized in {"15_30_min", "15-30", "15_30"}:
-        return 15, 30
-    if normalized in {"30_60_min", "30-60", "30_60"}:
-        return 30, 60
-    if normalized in {"over_60_min", "60_plus", ">60"}:
-        return 60, None
+    if normalized in _COOKING_TIME_MAP:
+        return _COOKING_TIME_MAP[normalized]
     if "quick" in normalized or "fast" in normalized:
         return None, 30
     if "moderate" in normalized or "medium" in normalized:
@@ -214,7 +221,7 @@ def _cooking_time_bounds(value: Any) -> tuple[Optional[int], Optional[int]]:
 
 
 def _request_with_chat(
-    messages: list[dict[str, str]],
+    messages: List[Dict[str, str]],
     temperature: float = 0.2,
     model: Optional[str] = None,
     max_tokens: Optional[int] = None,
@@ -251,7 +258,7 @@ def _is_english(value: Optional[str]) -> bool:
 def _extract_json(raw_text: str) -> Optional[Dict[str, Any]]:
     if not raw_text:
         return None
-    candidates: list[str] = []
+    candidates: List[str] = []
     trimmed = raw_text.strip()
     if trimmed:
         candidates.append(trimmed)
@@ -289,11 +296,159 @@ def _format_cooking_time_preference(value: Optional[str]) -> str:
     return f"between {min_minutes} and {max_minutes} minutes"
 
 
+def _extract_targets(macro_goal: Dict[str, Any]) -> Dict[str, float]:
+    """Extract macro targets from a macro goal dictionary."""
+    macros = macro_goal.get("macroTargets")
+    if not isinstance(macros, dict):
+        macros = {}
+    return {
+        "calories": float(macro_goal.get("calorieTarget", 0)),
+        "protein": float(macros.get("protein", 0)),
+        "carbs": float(macros.get("carbs", 0)),
+        "fat": float(macros.get("fat", 0)),
+    }
+
+
+MACRO_KEYS = ("calories", "protein", "carbs", "fat")
+
+
+def _sum_meal_macros(meals: Iterable[Dict[str, Any]]) -> Dict[str, float]:
+    """Sum macro totals across a list of meals."""
+    totals = {k: 0.0 for k in MACRO_KEYS}
+    for meal in meals:
+        if not isinstance(meal, dict):
+            continue
+        for k in MACRO_KEYS:
+            totals[k] += float(meal.get(k, 0))
+    return {k: round(v, 2) for k, v in totals.items()}
+
+
+def _validate_meal_entry(meal: Dict[str, Any], dto: PreferenceDTO) -> Optional[str]:
+    """Validate a single meal entry against constraints.
+
+    Returns an error message if validation fails, or None if valid.
+    """
+    allowed_cuisines = _normalize_cuisine_list(dto.preferred_cuisines)
+    dietary_restrictions = [str(r).lower() for r in (dto.dietary_restrictions or []) if r]
+    min_minutes, max_minutes = _cooking_time_bounds(dto.cooking_time_preference)
+
+    # Check cuisine
+    cuisine = meal.get("cuisine")
+    if allowed_cuisines and not _recipe_matches_preferred_cuisines(cuisine, allowed_cuisines):
+        return "Meal cuisine is outside preferred cuisines."
+
+    # Check cooking time
+    cook_time = meal.get("cook_time_minutes")
+    if min_minutes is not None or max_minutes is not None:
+        if cook_time is None:
+            return "Missing cook_time_minutes for cooking time preference."
+        try:
+            cook_time_value = float(cook_time)
+        except (TypeError, ValueError):
+            return "Invalid cook_time_minutes value."
+        if min_minutes is not None and cook_time_value < min_minutes:
+            return "Meal cook_time_minutes is below the preferred range."
+        if max_minutes is not None and cook_time_value > max_minutes:
+            return "Meal cook_time_minutes exceeds the preferred range."
+
+    # Check dietary restrictions
+    flags = meal.get("dietary_flags", {}) if isinstance(meal.get("dietary_flags"), dict) else {}
+    allergens = _normalize_allergens(meal.get("allergens"))
+    for restriction in dietary_restrictions:
+        if restriction == "none":
+            continue
+        if restriction == "vegan":
+            if not _dietary_flag_truthy(flags, "is_vegan"):
+                return "Meal violates vegan restriction."
+        elif restriction == "vegetarian":
+            if not (_dietary_flag_truthy(flags, "is_vegan") or _dietary_flag_truthy(flags, "is_vegetarian")):
+                return "Meal violates vegetarian restriction."
+        elif "gluten" in restriction:
+            if _violates_allergen_restriction(allergens, "gluten"):
+                return "Meal contains gluten."
+        elif "dairy" in restriction:
+            if _violates_allergen_restriction(allergens, "dairy"):
+                return "Meal contains dairy."
+        elif "nut" in restriction:
+            if _violates_allergen_restriction(allergens, "nut"):
+                return "Meal contains nuts."
+
+    return None
+
+
+def _normalize_meal_entry(meal: Dict[str, Any]) -> Dict[str, Any]:
+    """Extract and normalize fields from a meal entry."""
+    try:
+        calories = float(meal.get("calories", 0))
+        protein = float(meal.get("protein", 0))
+        carbs = float(meal.get("carbs", 0))
+        fat = float(meal.get("fat", 0))
+    except (TypeError, ValueError):
+        raise ValueError("Invalid macro values in meal response.")
+
+    ingredients = meal.get("ingredients")
+    if isinstance(ingredients, str):
+        ingredients = [item.strip() for item in ingredients.split(",") if item.strip()]
+    if not isinstance(ingredients, list):
+        ingredients = []
+
+    instructions = meal.get("instructions")
+    if isinstance(instructions, str):
+        instructions = [instructions.strip()] if instructions.strip() else []
+    if not isinstance(instructions, list):
+        instructions = []
+
+    tags = []
+    cuisine = meal.get("cuisine")
+    if cuisine:
+        tags.append(str(cuisine))
+
+    meal_type = str(meal.get("meal_type", "")).strip().lower()
+    return {
+        "id": None,
+        "name": _jsonify_value(meal.get("name") or "Recipe"),
+        "meal_type": meal_type,
+        "calories": calories,
+        "protein": protein,
+        "carbs": carbs,
+        "fat": fat,
+        "url": None,
+        "instructions": _format_instructions(instructions),
+        "ingredients": _jsonify_value(ingredients),
+        "tags": tags,
+    }
+
+
+def _validate_slot_counts(
+    meals: List[Dict[str, Any]],
+    expected_slots: List[str],
+) -> Optional[str]:
+    """Validate that meal counts match expected slots."""
+    type_counts: Dict[str, int] = {key: 0 for key in {"breakfast", "lunch", "dinner", "snack"}}
+    for meal in meals:
+        meal_type = meal.get("meal_type", "")
+        type_counts[meal_type] = type_counts.get(meal_type, 0) + 1
+
+    expected_counts: Dict[str, int] = {}
+    for slot in expected_slots:
+        expected_counts[slot] = expected_counts.get(slot, 0) + 1
+
+    if len(meals) != len(expected_slots):
+        return "Meal count does not match expected slots."
+
+    for meal_type, count in type_counts.items():
+        expected_count = expected_counts.get(meal_type, 0)
+        if count != expected_count:
+            return f"Expected {expected_count} '{meal_type}' meal(s) but got {count}."
+
+    return None
+
+
 def _validate_generated_meals(
     payload: Dict[str, Any],
     meal_slots: List[str],
     dto: PreferenceDTO,
-) -> tuple[Optional[List[Dict[str, Any]]], Optional[str]]:
+) -> Tuple[Optional[List[Dict[str, Any]]], Optional[str]]:
     if not isinstance(payload, dict):
         return None, "OpenAI meal response was not a JSON object."
 
@@ -305,110 +460,32 @@ def _validate_generated_meals(
     if not isinstance(meals, list):
         return None, "OpenAI meal response missing meals list."
 
-    expected_slots = list(meal_slots)
-    allowed_cuisines = _normalize_cuisine_list(dto.preferred_cuisines)
-    dietary_restrictions = [str(r).lower() for r in (dto.dietary_restrictions or []) if r]
-    min_minutes, max_minutes = _cooking_time_bounds(dto.cooking_time_preference)
-
-    type_counts: Dict[str, int] = {key: 0 for key in {"breakfast", "lunch", "dinner", "snack"}}
     normalized_meals: List[Dict[str, Any]] = []
 
     for meal in meals:
         if not isinstance(meal, dict):
             return None, "OpenAI meal entry was not an object."
+
         meal_type = str(meal.get("meal_type", "")).strip().lower()
         if meal_type not in {"breakfast", "lunch", "dinner", "snack"}:
             return None, f"Invalid meal_type '{meal_type}'."
-        type_counts[meal_type] = type_counts.get(meal_type, 0) + 1
 
-        cuisine = meal.get("cuisine")
-        if allowed_cuisines and not _recipe_matches_preferred_cuisines(cuisine, allowed_cuisines):
-            return None, "Meal cuisine is outside preferred cuisines."
+        # Validate meal against constraints
+        validation_error = _validate_meal_entry(meal, dto)
+        if validation_error:
+            return None, validation_error
 
-        cook_time = meal.get("cook_time_minutes")
-        if min_minutes is not None or max_minutes is not None:
-            if cook_time is None:
-                return None, "Missing cook_time_minutes for cooking time preference."
-            try:
-                cook_time_value = float(cook_time)
-            except (TypeError, ValueError):
-                return None, "Invalid cook_time_minutes value."
-            if min_minutes is not None and cook_time_value < min_minutes:
-                return None, "Meal cook_time_minutes is below the preferred range."
-            if max_minutes is not None and cook_time_value > max_minutes:
-                return None, "Meal cook_time_minutes exceeds the preferred range."
-
-        flags = meal.get("dietary_flags", {}) if isinstance(meal.get("dietary_flags"), dict) else {}
-        allergens = _normalize_allergens(meal.get("allergens"))
-        for restriction in dietary_restrictions:
-            if restriction == "none":
-                continue
-            if restriction == "vegan":
-                if not _dietary_flag_truthy(flags, "is_vegan"):
-                    return None, "Meal violates vegan restriction."
-            elif restriction == "vegetarian":
-                if not (_dietary_flag_truthy(flags, "is_vegetarian") or _dietary_flag_truthy(flags, "is_vegan")):
-                    return None, "Meal violates vegetarian restriction."
-            elif restriction == "gluten_free" or "gluten" in restriction:
-                if _violates_allergen_restriction(allergens, "gluten"):
-                    return None, "Meal contains gluten."
-            elif restriction == "dairy_free" or "dairy" in restriction:
-                if _violates_allergen_restriction(allergens, "dairy"):
-                    return None, "Meal contains dairy."
-            elif restriction == "nut_free" or "nut" in restriction:
-                if _violates_allergen_restriction(allergens, "nut"):
-                    return None, "Meal contains nuts."
-
+        # Normalize and extract meal fields
         try:
-            calories = float(meal.get("calories", 0))
-            protein = float(meal.get("protein", 0))
-            carbs = float(meal.get("carbs", 0))
-            fat = float(meal.get("fat", 0))
-        except (TypeError, ValueError):
-            return None, "Invalid macro values in meal response."
+            normalized_meal = _normalize_meal_entry(meal)
+            normalized_meals.append(normalized_meal)
+        except ValueError as exc:
+            return None, str(exc)
 
-        ingredients = meal.get("ingredients")
-        if isinstance(ingredients, str):
-            ingredients = [item.strip() for item in ingredients.split(",") if item.strip()]
-        if not isinstance(ingredients, list):
-            ingredients = []
-
-        instructions = meal.get("instructions")
-        if isinstance(instructions, str):
-            instructions = [instructions.strip()] if instructions.strip() else []
-        if not isinstance(instructions, list):
-            instructions = []
-
-        tags = []
-        cuisine = meal.get("cuisine")
-        if cuisine:
-            tags.append(str(cuisine))
-
-        normalized_meals.append(
-            {
-                "id": None,
-                "name": _jsonify_value(meal.get("name") or "Recipe"),
-                "meal_type": meal_type,
-                "calories": calories,
-                "protein": protein,
-                "carbs": carbs,
-                "fat": fat,
-                "url": None,
-                "instructions": _format_instructions(instructions),
-                "ingredients": _jsonify_value(ingredients),
-                "tags": tags,
-            }
-        )
-
-    expected_counts: Dict[str, int] = {}
-    for slot in expected_slots:
-        expected_counts[slot] = expected_counts.get(slot, 0) + 1
-    if len(meals) != len(expected_slots):
-        return None, "Meal count does not match expected slots."
-    for meal_type, count in type_counts.items():
-        expected_count = expected_counts.get(meal_type, 0)
-        if count != expected_count:
-            return None, f"Expected {expected_count} '{meal_type}' meal(s) but got {count}."
+    # Validate slot counts
+    slot_error = _validate_slot_counts(normalized_meals, list(meal_slots))
+    if slot_error:
+        return None, slot_error
 
     return normalized_meals, None
 
@@ -518,65 +595,18 @@ Return ONLY JSON matching the schema in the system prompt.
     return {"goal": payload, "error": None}
 
 
-def _normalize_column_name(value: str) -> str:
-    return "".join(ch for ch in value.lower() if ch.isalnum())
-
-
-def _find_column(columns: Iterable[str], candidates: Iterable[str]) -> Optional[str]:
-    normalized = { _normalize_column_name(col): col for col in columns }
-    for candidate in candidates:
-        needle = _normalize_column_name(candidate)
-        if needle in normalized:
-            return normalized[needle]
-        for key, original in normalized.items():
-            if needle and needle in key:
-                return original
-    return None
-
-
-def _budget_filter(df, budget_range: Optional[str], cost_col: Optional[str], tier_col: Optional[str]):
-    if df.empty or not budget_range or budget_range == "no_limit":
-        return df
-    normalized = str(budget_range).strip().lower()
-
-    if cost_col is not None:
-        import pandas as pd
-        series = df[cost_col]
-        numeric = pd.to_numeric(series, errors="coerce")
-        if numeric.notna().any():
-            lower = numeric.quantile(0.33)
-            upper = numeric.quantile(0.66)
-            if "budget" in normalized or "cheap" in normalized:
-                return df[numeric <= lower]
-            if "moderate" in normalized or "mid" in normalized or "balanced" in normalized:
-                return df[(numeric > lower) & (numeric <= upper)]
-            if "premium" in normalized or "high" in normalized or "expensive" in normalized:
-                return df[numeric > upper]
-
-    if tier_col is not None:
-        tiers = df[tier_col].astype(str).str.lower()
-        if "budget" in normalized or "cheap" in normalized:
-            return df[tiers.str.contains("budget|cheap|low", regex=True, na=False)]
-        if "moderate" in normalized or "mid" in normalized or "balanced" in normalized:
-            return df[tiers.str.contains("moderate|medium|mid|balanced", regex=True, na=False)]
-        if "premium" in normalized or "high" in normalized or "expensive" in normalized:
-            return df[tiers.str.contains("premium|high|expensive|lux", regex=True, na=False)]
-
-    return df
-
-
 def _get_user_id(pref: Any) -> Optional[UUID]:
     if isinstance(pref, dict):
         return pref.get("user_id") or pref.get("userId")
     return getattr(pref, "user_id", None)
 
 
-def _get_user_ratings(db: Session, user_id: UUID) -> tuple[set[UUID], set[UUID]]:
+def _get_user_ratings(db: Session, user_id: UUID) -> Tuple[Set[UUID], Set[UUID]]:
     stmt = select(Rating.recipe_id, Rating.is_liked).where(Rating.user_id == user_id)
     result = db.execute(stmt)
 
-    liked_ids: set[UUID] = set()
-    disliked_ids: set[UUID] = set()
+    liked_ids: Set[UUID] = set()
+    disliked_ids: Set[UUID] = set()
     for recipe_id, is_liked in result:
         if is_liked:
             liked_ids.add(recipe_id)
@@ -585,7 +615,7 @@ def _get_user_ratings(db: Session, user_id: UUID) -> tuple[set[UUID], set[UUID]]
     return liked_ids, disliked_ids
 
 
-def _get_last_week_recipes(db: Session, user_id: UUID) -> set[UUID]:
+def _get_last_week_recipes(db: Session, user_id: UUID) -> Set[UUID]:
     stmt = (
         select(Preference)
         .where(
@@ -604,282 +634,6 @@ def _get_last_week_recipes(db: Session, user_id: UUID) -> set[UUID]:
     return {recipe_id for (recipe_id,) in result}
 
 
-def _apply_preference_filters(
-    df,
-    dto: PreferenceDTO,
-    meta: Dict[str, Optional[str]],
-    db: Optional[Session],
-    pref: Any,
-):
-    if df.empty:
-        return df
-
-    import pandas as pd
-
-    filtered = df
-
-    # Preferred cuisines (allow-list)
-    allowed_cuisines = _normalize_cuisine_list(dto.preferred_cuisines)
-    cuisine_col = meta.get("cuisine")
-    if allowed_cuisines and cuisine_col in filtered.columns:
-        filtered = filtered[
-            filtered[cuisine_col].apply(
-                lambda value: _recipe_matches_preferred_cuisines(value, allowed_cuisines)
-            )
-        ]
-
-    # Dietary restrictions
-    dietary_restrictions = [str(r).lower() for r in (dto.dietary_restrictions or []) if r]
-    if dietary_restrictions:
-        flags_col = meta.get("dietary_flags")
-        allergens_col = meta.get("allergens")
-
-        def _passes_restrictions(row) -> bool:
-            flags = row.get(flags_col) if flags_col in row else None
-            allergens = _normalize_allergens(row.get(allergens_col)) if allergens_col in row else set()
-            for restriction in dietary_restrictions:
-                if restriction == "none":
-                    continue
-                if restriction == "vegan":
-                    if not _dietary_flag_truthy(flags, "is_vegan"):
-                        return False
-                elif restriction == "vegetarian":
-                    if not (_dietary_flag_truthy(flags, "is_vegetarian") or _dietary_flag_truthy(flags, "is_vegan")):
-                        return False
-                elif restriction == "gluten_free" or "gluten" in restriction:
-                    if _violates_allergen_restriction(allergens, "gluten"):
-                        return False
-                elif restriction == "dairy_free" or "dairy" in restriction:
-                    if _violates_allergen_restriction(allergens, "dairy"):
-                        return False
-                elif restriction == "nut_free" or "nut" in restriction:
-                    if _violates_allergen_restriction(allergens, "nut"):
-                        return False
-            return True
-
-        filtered = filtered[filtered.apply(_passes_restrictions, axis=1)]
-
-    # Exclude disliked and last week's recipes (if available)
-    if db is not None:
-        user_id = _get_user_id(pref)
-        if user_id is not None:
-            _liked_ids, disliked_ids = _get_user_ratings(db, user_id)
-            last_week_ids = _get_last_week_recipes(db, user_id)
-            banned_ids = disliked_ids | last_week_ids
-            if banned_ids and "_id" in filtered.columns:
-                filtered = filtered[~filtered["_id"].isin(banned_ids)]
-
-    # Cooking time filter (enforced, but dropped if it yields no matches)
-    time_col = meta.get("total_time_minutes")
-    if dto.cooking_time_preference and time_col in filtered.columns:
-        min_minutes, max_minutes = _cooking_time_bounds(dto.cooking_time_preference)
-        if min_minutes is not None or max_minutes is not None:
-            series = pd.to_numeric(filtered[time_col], errors="coerce")
-            mask = series.notna()
-            if min_minutes is not None:
-                mask &= series >= min_minutes
-            if max_minutes is not None:
-                mask &= series <= max_minutes
-            time_filtered = filtered[mask]
-            if not time_filtered.empty:
-                filtered = time_filtered
-
-    return filtered
-
-
-def _load_recipes_df(db: Session):
-    try:
-        import pandas as pd
-    except ImportError as exc:
-        raise RuntimeError(
-            "pandas is required to load recipes from the database."
-        ) from exc
-
-    if db is None:
-        raise RuntimeError("Database session is required to load recipes.")
-
-    def _flatten_ingredients(value):
-        if isinstance(value, list):
-            items = []
-            for item in value:
-                if isinstance(item, dict):
-                    text = item.get("original_text") or item.get("name")
-                    if text:
-                        items.append(str(text))
-                elif item is not None:
-                    items.append(str(item))
-            return items
-        if value is None:
-            return []
-        return [str(value)]
-
-    def _normalize_instructions(value):
-        if value is None:
-            return []
-        if isinstance(value, list):
-            return [str(item) for item in value if str(item).strip()]
-        if isinstance(value, str):
-            return [value]
-        return [str(value)]
-
-    stmt = select(
-        Recipe.id,
-        Recipe.slug,
-        Recipe.title,
-        Recipe.source_url,
-        Recipe.image_url,
-        Recipe.description,
-        Recipe.ingredients,
-        Recipe.instructions,
-        Recipe.nutrition,
-        Recipe.tags,
-        Recipe.meal_type,
-        Recipe.dish_type,
-        Recipe.cuisine,
-        Recipe.dietary_flags,
-        Recipe.allergens,
-        Recipe.popularity_score,
-        Recipe.health_score,
-        Recipe.prep_time_minutes,
-        Recipe.cook_time_minutes,
-        Recipe.total_time_minutes,
-        Recipe.cost_per_serving_cents,
-        Recipe.cost_category,
-    ).where(Recipe.is_active.is_(True))
-    result = db.execute(stmt)
-    rows = result.mappings().all()
-    df = pd.DataFrame(rows)
-
-    if df.empty:
-        return df
-
-    # Derived/normalized fields for downstream filters
-    if "meal_type" in df.columns:
-        normalized_meal = df["meal_type"].astype(str).str.lower()
-        df["is_breakfast"] = normalized_meal == "breakfast"
-        df["is_lunch"] = normalized_meal == "lunch"
-
-    if "ingredients" in df.columns:
-        # Preserve original structured ingredients; create a flattened helper for text filters/tokenization.
-        df["ingredients_flat"] = df["ingredients"].apply(_flatten_ingredients)
-
-    if "instructions" in df.columns:
-        df["instructions"] = df["instructions"].apply(_normalize_instructions)
-
-    if "title" in df.columns and "name" not in df.columns:
-        df["name"] = df["title"]
-
-    if "source_url" in df.columns and "url" not in df.columns:
-        df["url"] = df["source_url"]
-
-    return df
-
-
-def _prepare_recipes(df):
-    import pandas as pd
-
-    nutrition_col = _find_column(df.columns, ["nutrition", "nutrients", "macros"])
-    calories_col = _find_column(
-        df.columns, ["calories", "kcal", "energykcal", "energy", "calorie"]
-    )
-    protein_col = _find_column(df.columns, ["protein", "proteing", "protein_grams"])
-    carbs_col = _find_column(df.columns, ["carbs", "carbohydrates", "carbsg"])
-    fat_col = _find_column(df.columns, ["fat", "fatg", "totalfat"])
-    name_col = _find_column(df.columns, ["name", "title", "recipe", "recipe_name"])
-    tags_col = _find_column(df.columns, ["tags", "categories", "labels"])
-    instructions_col = _find_column(df.columns, ["instructions", "instruction", "steps", "directions"])
-    ingredients_col = _find_column(df.columns, ["ingredients", "ingredient_list"])
-    ingredients_flat_col = _find_column(df.columns, ["ingredients_flat"])
-    meal_col = _find_column(df.columns, ["meal_type", "meal", "course", "category", "dish_type"])
-    breakfast_col = _find_column(df.columns, ["is_breakfast", "breakfast"])
-    lunch_col = _find_column(df.columns, ["is_lunch", "lunch"])
-    cost_col = _find_column(df.columns, ["price", "cost", "amount", "price_value", "cost_per_serving", "cost_per_serving_cents"])
-    tier_col = _find_column(
-        df.columns,
-        ["price_tier", "budget_range", "price_level", "cost_level", "price_category", "cost_category"],
-    )
-    cuisine_col = _find_column(df.columns, ["cuisine", "region", "cuisine_type"])
-    dietary_flags_col = _find_column(df.columns, ["dietary_flags", "dietary", "diet_flags", "diet"])
-    allergens_col = _find_column(df.columns, ["allergens", "allergy", "allergies"])
-    total_time_col = _find_column(df.columns, ["total_time_minutes", "total_time", "time_total", "cook_time_total"])
-    id_col = _find_column(df.columns, ["id", "recipe_id", "slug"])
-    url_col = _find_column(df.columns, ["url", "link", "source_url"])
-
-    df = df.copy()
-
-    def _nutrition_value(row, key):
-        if nutrition_col is None:
-            return None
-        payload = row.get(nutrition_col)
-        if isinstance(payload, dict):
-            return payload.get(key)
-        if isinstance(payload, str):
-            try:
-                parsed = json.loads(payload)
-            except json.JSONDecodeError:
-                return None
-            if isinstance(parsed, dict):
-                payload = parsed
-            else:
-                return None
-        if isinstance(payload, dict):
-            if key == "calories_kcal":
-                return payload.get("calories_kcal") or payload.get("calories")
-            return payload.get(key)
-        return None
-
-    if nutrition_col:
-        df["_calories"] = pd.to_numeric(
-            df.apply(lambda row: _nutrition_value(row, "calories_kcal"), axis=1),
-            errors="coerce",
-        )
-        df["_protein"] = pd.to_numeric(
-            df.apply(lambda row: _nutrition_value(row, "protein_g"), axis=1),
-            errors="coerce",
-        )
-        df["_carbs"] = pd.to_numeric(
-            df.apply(lambda row: _nutrition_value(row, "carbs_g"), axis=1),
-            errors="coerce",
-        )
-        df["_fat"] = pd.to_numeric(
-            df.apply(lambda row: _nutrition_value(row, "fat_g"), axis=1),
-            errors="coerce",
-        )
-    else:
-        df["_calories"] = pd.to_numeric(df[calories_col], errors="coerce") if calories_col else 0
-        df["_protein"] = pd.to_numeric(df[protein_col], errors="coerce") if protein_col else 0
-        df["_carbs"] = pd.to_numeric(df[carbs_col], errors="coerce") if carbs_col else 0
-        df["_fat"] = pd.to_numeric(df[fat_col], errors="coerce") if fat_col else 0
-
-    df["_name"] = df[name_col] if name_col else "Recipe"
-    df["_tags"] = df[tags_col] if tags_col else None
-    df["_meal_type"] = df[meal_col] if meal_col else None
-    df["_instructions"] = df[instructions_col] if instructions_col else None
-    df["_ingredients"] = df[ingredients_col] if ingredients_col else None
-    df["_ingredients_flat"] = df[ingredients_flat_col] if ingredients_flat_col else df["_ingredients"]
-    df["_is_breakfast"] = df[breakfast_col] if breakfast_col else None
-    df["_is_lunch"] = df[lunch_col] if lunch_col else None
-    df["_id"] = df[id_col] if id_col else df.index
-    df["_url"] = df[url_col] if url_col else None
-
-    for key in ["_calories", "_protein", "_carbs", "_fat"]:
-        df[key] = df[key].fillna(0)
-
-    return df, {
-        "meal": meal_col,
-        "tags": tags_col,
-        "cost": cost_col,
-        "tier": tier_col,
-        "breakfast": breakfast_col,
-        "lunch": lunch_col,
-        "ingredients": ingredients_col,
-        "cuisine": cuisine_col,
-        "dietary_flags": dietary_flags_col,
-        "allergens": allergens_col,
-        "total_time_minutes": total_time_col,
-    }
-
-
 def _build_meal_slots(meals_per_day: int) -> List[str]:
     slots = ["breakfast", "lunch", "dinner"]
     extra = max(meals_per_day - 3, 0)
@@ -893,12 +647,6 @@ def _build_meal_slots(meals_per_day: int) -> List[str]:
     return slots
 
 
-def _score_recipe(row, targets: Dict[str, float]) -> float:
-    calorie_score = (row["_calories"] - targets["calories"]) ** 2
-    protein_score = (row["_protein"] - targets["protein"]) ** 2
-    carbs_score = (row["_carbs"] - targets["carbs"]) ** 2
-    fat_score = (row["_fat"] - targets["fat"]) ** 2
-    return calorie_score + protein_score + carbs_score + fat_score
 
 
 def _jsonify_value(value: Any) -> Any:
@@ -1027,87 +775,9 @@ def _format_list_values(value: Any) -> List[str]:
     return [extracted] if extracted else []
 
 
-def _tag_matches(meal_type: str, value: Any) -> bool:
-    keywords = MEAL_TAG_KEYWORDS.get(meal_type, [])
-    if not keywords or value is None:
-        return False
-    if isinstance(value, str):
-        tags = [value]
-    elif isinstance(value, (list, tuple, set)):
-        tags = value
-    else:
-        return False
-
-    for tag in tags:
-        normalized = str(tag).lower()
-        for keyword in keywords:
-            if keyword in normalized:
-                return True
-    return False
-
-
-def _pick_recipe(df, meal_type: str, targets: Dict[str, float], used_ids: set) -> Dict[str, Any]:
-    candidates = df
-    if "_id" in df.columns and used_ids:
-        candidates = candidates[~candidates["_id"].isin(used_ids)]
-    base_candidates = candidates
-
-    if meal_type == "breakfast" and "_is_breakfast" in candidates.columns:
-        breakfast_mask = candidates["_is_breakfast"].fillna(False).astype(bool)
-        breakfast_filtered = candidates[breakfast_mask]
-        if not breakfast_filtered.empty:
-            candidates = breakfast_filtered
-
-    if meal_type in {"lunch", "snack"} and "_is_lunch" in candidates.columns:
-        lunch_mask = candidates["_is_lunch"].fillna(False).astype(bool)
-        lunch_filtered = candidates[lunch_mask]
-        if not lunch_filtered.empty:
-            candidates = lunch_filtered
-
-    if "_tags" in candidates.columns and candidates["_tags"].notna().any():
-        tag_filtered = candidates[candidates["_tags"].apply(lambda value: _tag_matches(meal_type, value))]
-        if not tag_filtered.empty:
-            candidates = tag_filtered
-
-    if "_meal_type" in candidates.columns and candidates["_meal_type"].notna().any():
-        filtered = candidates[
-            candidates["_meal_type"]
-            .astype(str)
-            .str.contains(meal_type, case=False, na=False)
-        ]
-        if not filtered.empty:
-            candidates = filtered
-
-    if candidates.empty:
-        candidates = base_candidates if not base_candidates.empty else df
-
-    scored = candidates.copy()
-    scored["_score"] = scored.apply(lambda row: _score_recipe(row, targets), axis=1)
-    # Add a bit of randomness so consecutive days don't always pick the single best.
-    top_k = min(5, len(scored))
-    top = scored.nsmallest(top_k, "_score")
-    best = top.sample(1).iloc[0] if top_k > 1 else top.iloc[0]
-
-    return {
-        "id": _jsonify_value(best.get("_id")),
-        "name": _jsonify_value(best.get("_name") or "Recipe"),
-        "meal_type": meal_type,
-        "calories": float(best.get("_calories", 0)),
-        "protein": float(best.get("_protein", 0)),
-        "carbs": float(best.get("_carbs", 0)),
-        "fat": float(best.get("_fat", 0)),
-        "url": _jsonify_value(best.get("_url")),
-        "instructions": _format_instructions(best.get("_instructions")),
-        # Preserve structured ingredients (list of dicts) so frontend can render qty/unit/name cleanly.
-        "ingredients": _jsonify_value(best.get("_ingredients")),
-        "tags": _format_list_values(best.get("_tags")),
-    }
-
-
 def match_recipes_to_macro_goal(
     pref: Any,
     macro_goal: Dict[str, Any],
-    recipes_df=None,
     used_names: Optional[set] = None,
     db: Optional[Session] = None,
 ) -> Dict[str, Any]:
@@ -1118,13 +788,7 @@ def match_recipes_to_macro_goal(
 
     meal_slots = _build_meal_slots(dto.meals_per_day or 3)
 
-    macro_targets = macro_goal.get("macroTargets") if isinstance(macro_goal, dict) else None
-    targets = {
-        "calories": float(macro_goal.get("calorieTarget", 0)),
-        "protein": float(macro_targets.get("protein", 0)) if isinstance(macro_targets, dict) else 0.0,
-        "carbs": float(macro_targets.get("carbs", 0)) if isinstance(macro_targets, dict) else 0.0,
-        "fat": float(macro_targets.get("fat", 0)) if isinstance(macro_targets, dict) else 0.0,
-    }
+    targets = _extract_targets(macro_goal)
 
     avoid_names = []
     if isinstance(used_names, set) and used_names:
@@ -1141,12 +805,7 @@ def match_recipes_to_macro_goal(
 
     selected = meal_result.get("meals") or []
 
-    totals = {
-        "calories": round(sum(item["calories"] for item in selected), 2),
-        "protein": round(sum(item["protein"] for item in selected), 2),
-        "carbs": round(sum(item["carbs"] for item in selected), 2),
-        "fat": round(sum(item["fat"] for item in selected), 2),
-    }
+    totals = _sum_meal_macros(selected)
 
     return {
         "meals": selected,
@@ -1253,12 +912,7 @@ def fill_missing_meals(
         "calorieTarget": plan.get("calorieTarget", 0),
         "macroTargets": plan.get("macroTargets", {}),
     }
-    targets = {
-        "calories": float(macro_goal.get("calorieTarget", 0)),
-        "protein": float(macro_goal.get("macroTargets", {}).get("protein", 0)),
-        "carbs": float(macro_goal.get("macroTargets", {}).get("carbs", 0)),
-        "fat": float(macro_goal.get("macroTargets", {}).get("fat", 0)),
-    }
+    targets = _extract_targets(macro_goal)
 
     used_names: List[str] = []
     for day in plan.get("days", []):
@@ -1281,19 +935,8 @@ def fill_missing_meals(
             meals = {}
             day["meals"] = meals
 
-        current_totals = {
-            "calories": 0.0,
-            "protein": 0.0,
-            "carbs": 0.0,
-            "fat": 0.0,
-        }
-        for key in ("Breakfast", "Lunch", "Dinner", "Snacks"):
-            meal = meals.get(key)
-            if isinstance(meal, dict):
-                current_totals["calories"] += float(meal.get("calories", 0))
-                current_totals["protein"] += float(meal.get("protein", 0))
-                current_totals["carbs"] += float(meal.get("carbs", 0))
-                current_totals["fat"] += float(meal.get("fat", 0))
+        current_meals = [meals.get(k) for k in ("Breakfast", "Lunch", "Dinner", "Snacks") if meals.get(k)]
+        current_totals = _sum_meal_macros(current_meals)
 
         missing_slots: List[str] = []
         if meals.get("Breakfast") is None and "breakfast" in meal_slots:
@@ -1343,37 +986,34 @@ def fill_missing_meals(
             meals["Snacks"] = _aggregate_snacks(new_snacks)
 
         # Recalculate totals for the day
-        day_totals = {
-            "calories": 0.0,
-            "protein": 0.0,
-            "carbs": 0.0,
-            "fat": 0.0,
-        }
-        for key in ("Breakfast", "Lunch", "Dinner", "Snacks"):
-            meal = meals.get(key)
-            if isinstance(meal, dict):
-                day_totals["calories"] += float(meal.get("calories", 0))
-                day_totals["protein"] += float(meal.get("protein", 0))
-                day_totals["carbs"] += float(meal.get("carbs", 0))
-                day_totals["fat"] += float(meal.get("fat", 0))
+        day_meals = [meals.get(k) for k in ("Breakfast", "Lunch", "Dinner", "Snacks") if meals.get(k)]
+        day_totals = _sum_meal_macros(day_meals)
 
-        day["calories"] = round(day_totals["calories"], 2)
+        day["calories"] = day_totals["calories"]
         day["macros"] = {
-            "protein": round(day_totals["protein"], 2),
-            "carbs": round(day_totals["carbs"], 2),
-            "fat": round(day_totals["fat"], 2),
+            "protein": day_totals["protein"],
+            "carbs": day_totals["carbs"],
+            "fat": day_totals["fat"],
         }
 
     return {"plan": plan, "error": None}
 
 
 def translate_plan(plan: Dict[str, Any], language: Optional[str]) -> Dict[str, Any]:
-    if not plan or not _is_english(language):
+    """Translate a meal plan to the target language.
+
+    Currently only translates Norwegian plans to English when language is 'en'.
+    """
+    if not plan:
+        return {"plan": plan, "error": None}
+
+    # Only translate if English is requested (Norwegian is the base language)
+    if not _is_english(language):
         return {"plan": plan, "error": None}
 
     translator = RecipeTranslator(target_language="English")
     if translator.client is None:
-        return {"plan": plan, "error": "Translation disabled: OPENAI_API_KEY not configured."}
+        return {"plan": plan, "error": "Translation disabled: googletrans not configured."}
 
     translated_plan = copy.deepcopy(plan)
     failures = 0
@@ -1412,7 +1052,6 @@ def generate_daily_plan(pref: Any, translate: bool = False, db: Optional[Session
         recipe_match = match_recipes_to_macro_goal(
             pref,
             macro_goal,
-            recipes_df=None,
             used_names=set(used_names),
             db=db,
         )
