@@ -48,7 +48,7 @@ SYSTEM_PROMPT = (
     "Targets are per day. Use grams for macros."
 )
 
-MEAL_SYSTEM_PROMPT = (
+_MEAL_SYSTEM_PROMPT_TEMPLATE = (
     "You are a professional nutrition coach and chef. Return ONLY valid JSON with this schema:\n"
     "{\n"
     '  "meals": [\n'
@@ -73,8 +73,30 @@ MEAL_SYSTEM_PROMPT = (
     "- Return exactly one meal for each requested slot, matching the slot's meal_type.\n"
     "- Total macros across meals should closely match the provided targets.\n"
     "- Strictly follow dietary restrictions, preferred cuisines allow-list, and cooking time bounds.\n"
-    "- If impossible, return an empty meals array and a short error message."
+    "- If impossible, return an empty meals array and a short error message.\n"
+    "- IMPORTANT: All text content (name, ingredients, instructions) MUST be written in {language}."
 )
+
+_LANGUAGE_LABELS = {
+    "en": "English",
+    "no": "Norwegian",
+    "nb": "Norwegian",
+    "nn": "Norwegian",
+}
+
+
+def _base_language_label() -> str:
+    raw = (PLAN_BASE_LANGUAGE or "no").strip().lower()
+    if raw.startswith("en"):
+        code = "en"
+    elif raw.startswith(("no", "nb", "nn")):
+        code = "no"
+    else:
+        code = raw
+    return _LANGUAGE_LABELS.get(code, "Norwegian")
+
+
+MEAL_SYSTEM_PROMPT = _MEAL_SYSTEM_PROMPT_TEMPLATE.format(language=_base_language_label())
 
 WEEK_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 MEAL_TAG_KEYWORDS = {
@@ -523,6 +545,8 @@ def _generate_meals_with_openai(
         slot_counts[slot] = slot_counts.get(slot, 0) + 1
     slot_summary = ", ".join(f"{slot} x{count}" for slot, count in slot_counts.items())
 
+    language_label = _base_language_label()
+
     prompt = f"""
 Create meals for these slots: {slot_summary}.
 
@@ -537,6 +561,7 @@ Constraints:
 - Preferred cuisines (allow-list, strict): {cuisine_text}
 - Cooking time per meal: {cooking_text}
 - Avoid repeating these meal names: {avoid_text}
+- Language: Write all meal names, ingredients, and instructions in {language_label}.
 
 Return JSON only, matching the system schema.
 """
