@@ -14,7 +14,11 @@ Frontend/.env
 
 #LLMS
 .claude
+.agents
 
 # MCP servers virtual environments
 mcp-servers/**/venv/
 mcp-servers/**/__pycache__/.planning/
+
+#md files
+planner_logic.md

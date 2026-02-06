@@ -1,12 +1,7 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { translations } from './translations';
-
-const LanguageContext = createContext({
-  lang: 'en',
-  setLang: () => {},
-  t: (key, vars) => key,
-});
+import { LanguageContext } from './languageContext';
 
 const STORAGE_KEY = 'mealplanner_lang';
 
@@ -58,6 +53,4 @@ export function LanguageProvider({ children }) {
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
 }
 
-export function useLanguage() {
-  return useContext(LanguageContext);
-}
+export default LanguageProvider;

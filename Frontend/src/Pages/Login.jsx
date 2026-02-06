@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { SignIn, SignUp } from '@clerk/clerk-react'
 import { Button } from '@/components/ui/button'
-import { useLanguage } from '@/i18n/LanguageContext'
+import { useLanguage } from '@/i18n/useLanguage'
 
 export default function Login() {
   const { lang, setLang, t } = useLanguage()

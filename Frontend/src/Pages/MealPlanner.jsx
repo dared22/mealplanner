@@ -1,13 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useState, memo } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { SignedIn, SignedOut, UserButton, useAuth } from '@clerk/clerk-react';
 import { AnimatePresence, motion as Motion } from 'framer-motion';
-import { ArrowLeft, ArrowRight, BookOpen, Calendar, Lock, Moon, Search, ShoppingCart, Sun, TrendingUp, User, Utensils } from 'lucide-react';
+import { ArrowLeft, ArrowRight, BookOpen, Calendar, Lock, Moon, Search, ShoppingCart, Sun, TrendingUp, User } from 'lucide-react';
 import { UserPreferences } from '@/Entities/UserPreferences';
-import { useLanguage } from '@/i18n/LanguageContext';
+import { useLanguage } from '@/i18n/useLanguage';
+import { LogoInline } from '@/components/Logo';
 
 import ProgressBar from '@/components/questionnaire/ProgressBar';
-import PersonalInfoStep, { validatePersonalInfo } from '@/components/questionnaire/PersonalInfoStep';
+import PersonalInfoStep from '@/components/questionnaire/PersonalInfoStep';
+import { validatePersonalInfo } from '@/components/questionnaire/validation';
 import ActivityStep from '@/components/questionnaire/ActivityStep';
 import GoalsStep from '@/components/questionnaire/GoalsStep';
 import DietaryStep from '@/components/questionnaire/DietaryStep';
@@ -45,7 +47,9 @@ const persistProgress = (storageKey, payload) => {
       storageKey,
       JSON.stringify({ version: STORAGE_VERSION, ...payload })
     );
-  } catch {}
+  } catch {
+    // ignore storage errors
+  }
 };
 
 // Step metadata for left panel content
@@ -84,66 +88,89 @@ const STEP_META = [
 
 // Header with logo, step dots, and controls
 const Header = memo(function Header({ currentStep, totalSteps, lang, setLang, isDarkMode, setIsDarkMode, t }) {
-  const location = useLocation();
-  const isActive = (path) => location.pathname === path;
-
   if (currentStep === 7) {
     return (
       <header className="header dashboard-header">
-        <div className="dashboard-nav-inner">
-          <div className="nav-left">
-            <Link to="/planner" className="dashboard-logo">
-              <div className="dashboard-logo-icon">
-                <Utensils className="w-4 h-4 text-white" />
+        <div className="dashboard-nav-container">
+          {/* Left section: Logo and Search */}
+          <div className="nav-section-left">
+            <Link to="/planner" className="dashboard-logo" aria-label="Preppr Home">
+              <LogoInline />
+            </Link>
+
+            {/* Search bar */}
+            <div className="nav-search-wrapper">
+              <div className="nav-search">
+                <Search className="w-4 h-4 text-muted-foreground shrink-0" />
+                <input
+                  className="nav-search-input"
+                  type="text"
+                  placeholder={t('Search for meals or nutrients...')}
+                  aria-label={t('Search for meals or nutrients')}
+                />
               </div>
-              <span className="dashboard-logo-text">Meal Intelligence</span>
-            </Link>
+            </div>
           </div>
 
-          <div className="nav-search">
-            <Search className="nav-search-icon" />
-            <input
-              className="nav-search-input"
-              type="text"
-              placeholder={t('Search for meals or nutrients...')}
-              aria-label={t('Search for meals or nutrients')}
-            />
-          </div>
+          {/* Center section: Main navigation */}
+          <nav className="nav-section-center" aria-label="Main navigation">
+            <Link to="/planner" className="nav-link-item">
+              <Calendar className="nav-link-icon" />
+              <span className="nav-link-text">{t('Planner')}</span>
+            </Link>
+            <Link to="/recipes" className="nav-link-item">
+              <BookOpen className="nav-link-icon" />
+              <span className="nav-link-text">{t('Recipes')}</span>
+            </Link>
+            <Link to="/groceries" className="nav-link-item">
+              <ShoppingCart className="nav-link-icon" />
+              <span className="nav-link-text">{t('Groceries')}</span>
+            </Link>
+          </nav>
 
-          <div className="nav-icons">
-            <Link to="/planner" className="nav-icon-btn">
-              <Calendar className="w-5 h-5" />
-              <span className="nav-icon-label">{t('Planner')}</span>
-            </Link>
-            <Link to="/recipes" className="nav-icon-btn">
-              <BookOpen className="w-5 h-5" />
-              <span className="nav-icon-label">{t('Recipes')}</span>
-            </Link>
-            <Link to="/groceries" className="nav-icon-btn">
-              <ShoppingCart className="w-5 h-5" />
-              <span className="nav-icon-label">{t('Groceries')}</span>
-            </Link>
+          {/* Right section: User controls */}
+          <div className="nav-section-right">
+            {/* User Profile */}
             <SignedIn>
-              <div className="nav-user">
-                <UserButton appearance={{ elements: { userButtonAvatarBox: 'nav-avatar-box' } }} />
-                <span className="nav-icon-label">{t('Profile')}</span>
+              <div className="nav-user-wrapper">
+                <UserButton
+                  appearance={{
+                    elements: {
+                      userButtonAvatarBox: 'w-9 h-9',
+                      userButtonBox: 'hover:opacity-80 transition-opacity'
+                    }
+                  }}
+                />
               </div>
             </SignedIn>
             <SignedOut>
-              <button className="nav-icon-btn" type="button">
+              <Link to="/login" className="nav-control-btn" aria-label={t('Log In')}>
                 <User className="w-5 h-5" />
-                <span className="nav-icon-label">{t('Log In')}</span>
-              </button>
+              </Link>
             </SignedOut>
-            <div className="nav-divider" />
-            <div className="nav-controls">
-              <button onClick={() => setLang(lang === 'en' ? 'no' : 'en')} className="nav-lang-btn" type="button">
-                {lang === 'en' ? 'NO' : 'EN'}
-              </button>
-              <button onClick={() => setIsDarkMode(p => !p)} className="nav-theme-btn" type="button" aria-label={t('Toggle theme')}>
-                {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-              </button>
-            </div>
+
+            {/* Divider */}
+            <div className="nav-separator" role="separator" />
+
+            {/* Language Toggle */}
+            <button
+              onClick={() => setLang(lang === 'en' ? 'no' : 'en')}
+              className="nav-lang-toggle"
+              type="button"
+              aria-label={`Switch to ${lang === 'en' ? 'Norwegian' : 'English'}`}
+            >
+              {lang === 'en' ? 'NO' : 'EN'}
+            </button>
+
+            {/* Theme Toggle */}
+            <button
+              onClick={() => setIsDarkMode(p => !p)}
+              className="nav-control-btn"
+              type="button"
+              aria-label={t('Toggle theme')}
+            >
+              {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+            </button>
           </div>
         </div>
       </header>
@@ -156,9 +183,9 @@ const Header = memo(function Header({ currentStep, totalSteps, lang, setLang, is
         {/* Logo */}
         <div className="logo">
           <div className="logo-icon">
-            <Utensils className="w-5 h-5 text-white" />
+            <img src="/logo.png" alt="Preppr" className="w-8 h-8" />
           </div>
-          <span className="logo-text">Meal Intelligence</span>
+          <span className="logo-text">Preppr</span>
         </div>
 
         {/* Step dots - only show on onboarding */}
@@ -283,6 +310,9 @@ export default function MealPlanner({ user }) {
   const [planPayload, setPlanPayload] = useState(() => initialProgress?.planPayload ?? null);
   const [rawPlanText, setRawPlanText] = useState(() => initialProgress?.rawPlanText ?? '');
   const [planStatus, setPlanStatus] = useState(() => initialProgress?.planStatus ?? 'idle');
+  const [generationStage, setGenerationStage] = useState(() => initialProgress?.generationStage ?? null);
+  const [generationSource, setGenerationSource] = useState(null);
+  const [recommendationReasons, setRecommendationReasons] = useState(null);
   const [planError, setPlanError] = useState(() => initialProgress?.planError ?? null);
   const [preferenceId, setPreferenceId] = useState(() => initialProgress?.preferenceId ?? null);
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -310,11 +340,14 @@ export default function MealPlanner({ user }) {
     setPlanPayload(null);
     setRawPlanText('');
     setPlanStatus('idle');
+    setGenerationStage(null);
     setPlanError(null);
     setPreferenceId(null);
     setIsSubmitting(false);
     if (storageKey && typeof window !== 'undefined') {
-      try { window.localStorage.removeItem(storageKey); } catch {}
+      try { window.localStorage.removeItem(storageKey); } catch {
+        // ignore storage errors
+      }
     }
   }, [storageKey]);
 
@@ -353,8 +386,11 @@ export default function MealPlanner({ user }) {
       const serverPlan = response?.plan ?? null;
       const rawText = response?.raw_plan ?? '';
       const serverError = response?.error ?? '';
+      const serverGenerationSource = response?.generation_source ?? null;
+      const serverRecommendationReasons = response?.recommendation_reasons ?? null;
       const translationStatus = response?.translation_status;
       const translationError = response?.translation_error;
+      setGenerationStage(response?.generation_stage ?? null);
 
       if (translationStatus === 'pending') {
         setPlanPayload(null);
@@ -376,6 +412,8 @@ export default function MealPlanner({ user }) {
         setRawPlanText(rawText);
         setPlanStatus('success');
         setPlanError(null);
+        setGenerationSource(serverGenerationSource);
+        setRecommendationReasons(serverRecommendationReasons);
         return;
       }
 
@@ -394,8 +432,17 @@ export default function MealPlanner({ user }) {
 
   useEffect(() => {
     if (!storageKey) return;
-    persistProgress(storageKey, { currentStep, formData, planPayload, rawPlanText, planStatus, planError, preferenceId });
-  }, [storageKey, currentStep, formData, planPayload, rawPlanText, planStatus, planError, preferenceId]);
+    persistProgress(storageKey, {
+      currentStep,
+      formData,
+      planPayload,
+      rawPlanText,
+      planStatus,
+      generationStage,
+      planError,
+      preferenceId
+    });
+  }, [storageKey, currentStep, formData, planPayload, rawPlanText, planStatus, generationStage, planError, preferenceId]);
 
   useEffect(() => {
     if (!preferenceId || (planStatus !== 'loading' && planStatus !== 'pending')) return;
@@ -421,9 +468,14 @@ export default function MealPlanner({ user }) {
           setPlanError(response?.translation_error || t('Translation failed.'));
           return;
         }
+        setGenerationStage(response?.generation_stage ?? null);
         setPlanPayload(response?.plan ?? null);
         setRawPlanText(response?.raw_plan ?? '');
-      } catch {}
+        setGenerationSource(response?.generation_source ?? null);
+        setRecommendationReasons(response?.recommendation_reasons ?? null);
+      } catch {
+        // ignore refresh errors
+      }
     };
     refreshPlan();
     return () => { isActive = false; };
@@ -435,6 +487,9 @@ export default function MealPlanner({ user }) {
     setPlanPayload(null);
     setRawPlanText('');
     setPlanStatus('loading');
+    setGenerationStage('finding_recipes');
+    setGenerationSource(null);
+    setRecommendationReasons(null);
     setPreferenceId(null);
     setIsSubmitting(true);
     setCurrentStep(TOTAL_STEPS);
@@ -484,6 +539,9 @@ export default function MealPlanner({ user }) {
           plan={planPayload}
           rawPlanText={rawPlanText}
           status={planStatus}
+          generationStage={generationStage}
+          generationSource={generationSource}
+          recommendationReasons={recommendationReasons}
           errorMessage={planError}
           onRegenerate={handleFinish}
           regenerateDisabled={isSubmitting}

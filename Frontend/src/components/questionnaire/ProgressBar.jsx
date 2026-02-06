@@ -1,6 +1,6 @@
 import React, { memo } from 'react';
 import { motion as Motion } from 'framer-motion';
-import { useLanguage } from '@/i18n/LanguageContext';
+import { useLanguage } from '@/i18n/useLanguage';
 
 const ProgressBar = memo(function ProgressBar({ currentStep = 1, totalSteps = 6 }) {
   const { t } = useLanguage();

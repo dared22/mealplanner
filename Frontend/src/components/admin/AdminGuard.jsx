@@ -42,7 +42,7 @@ export default function AdminGuard() {
         }
 
         setStatus('error');
-      } catch (error) {
+      } catch {
         if (isMounted) {
           setStatus('error');
         }

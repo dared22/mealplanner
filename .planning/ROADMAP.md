@@ -1,28 +1,17 @@
-# Roadmap: Meal Planner Admin Panel
+# Roadmap: Meal Planner
 
-## Overview
+## Milestones
 
-This roadmap delivers a comprehensive admin panel for the meal planner application. Starting with authentication and UI foundation, we build dashboard analytics, user management capabilities, recipe database operations, and finally complete observability through activity logging. Each phase delivers a coherent admin capability that can be independently verified and used.
+- ✅ **v1.0 Admin Panel** - Phases 1-5 (shipped 2026-01-31)
+- ✅ **v1.1 Personalized Recommendations** - Phases 6-8 (shipped 2026-02-03)
 
 ## Phases
 
-**Phase Numbering:**
-- Integer phases (1, 2, 3): Planned milestone work
-- Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
-
-Decimal phases appear between their surrounding integers in numeric order.
-
-- [ ] **Phase 1: Foundation** - Admin access control and UI structure
-- [ ] **Phase 2: Dashboard** - Analytics and system health monitoring
-- [x] **Phase 3: User Management** - User administration capabilities
-- [ ] **Phase 4: Recipe Management** - Recipe database operations
-- [ ] **Phase 5: Activity Logging** - System observability and audit trail
-
-## Phase Details
+<details>
+<summary>✅ v1.0 Admin Panel (Phases 1-5) - SHIPPED 2026-01-31</summary>
 
 ### Phase 1: Foundation
 **Goal**: Administrators can securely access a dedicated admin panel with navigation structure
-**Depends on**: Nothing (first phase)
 **Requirements**: AUTH-01, AUTH-02, AUTH-03, AUTH-04, UI-01, UI-02, UI-03, UI-04, UI-05, UI-06
 **Success Criteria** (what must be TRUE):
   1. Admin user with is_admin=TRUE can access /admin route and see admin panel
@@ -39,7 +28,6 @@ Plans:
 
 ### Phase 2: Dashboard
 **Goal**: Administrators can view key system metrics and health status at a glance
-**Depends on**: Phase 1
 **Requirements**: DASH-01, DASH-02, DASH-03, DASH-04
 **Success Criteria** (what must be TRUE):
   1. Dashboard displays total active users count with week-over-week growth percentage
@@ -54,7 +42,6 @@ Plans:
 
 ### Phase 3: User Management
 **Goal**: Administrators can view, search, and manage user accounts
-**Depends on**: Phase 2
 **Requirements**: USER-01, USER-02, USER-03, USER-04, USER-05, USER-06
 **Success Criteria** (what must be TRUE):
   1. Admin can view paginated list of all users with search and date range filters
@@ -70,7 +57,6 @@ Plans:
 
 ### Phase 4: Recipe Management
 **Goal**: Administrators can manage the recipe database through CRUD operations
-**Depends on**: Phase 3
 **Requirements**: RECIPE-01, RECIPE-02, RECIPE-03, RECIPE-04, RECIPE-05, RECIPE-06, RECIPE-07
 **Success Criteria** (what must be TRUE):
   1. Admin can view paginated list of all recipes with search by name or tags
@@ -89,7 +75,6 @@ Plans:
 
 ### Phase 5: Activity Logging
 **Goal**: Administrators can monitor and audit all system activity
-**Depends on**: Phase 4
 **Requirements**: LOG-01, LOG-02, LOG-03, LOG-04, LOG-05, LOG-06, LOG-07, LOG-08
 **Success Criteria** (what must be TRUE):
   1. System automatically logs admin actions (user suspensions, recipe changes) with timestamp and administrator name
@@ -103,15 +88,76 @@ Plans:
 - [x] 05-02-PLAN.md — Admin activity logs API with filters
 - [x] 05-03-PLAN.md — Activity Logs admin UI
 
+</details>
+
+### ✅ v1.1 Personalized Recommendations (SHIPPED 2026-02-03)
+
+**Milestone Goal:** Enable users to rate meals and receive personalized meal plan recommendations based on their preferences and feedback.
+
+#### Phase 6: Rating Infrastructure
+**Goal**: Users can rate meals and system tracks their preferences
+**Depends on**: Phase 5
+**Requirements**: RATE-01, RATE-02, RATE-03, RATE-04, RATE-05, RATE-06, HIST-01, HIST-02, HIST-03, HIST-04, DATA-01, DATA-04, PERF-01
+**Success Criteria** (what must be TRUE):
+  1. User can like or dislike any meal in their weekly plan
+  2. User can change their rating (like to dislike or vice versa)
+  3. User can see how many ratings they've made toward unlocking personalized plans
+  4. System tracks which recipes appeared in which plans and when
+  5. Ratings persist across sessions and devices
+**Plans**: 2 plans
+
+Plans:
+- [x] 06-01-PLAN.md — Backend rating infrastructure (Rating + PlanRecipe models, rating API endpoints, plan history)
+- [x] 06-02-PLAN.md — Frontend rating UI (like/dislike buttons, progress indicator, useRatings hook)
+
+#### Phase 7: Constraint Solver Engine
+**Goal**: System generates personalized meal plans using constraint optimization
+**Depends on**: Phase 6
+**Requirements**: SOLVER-01, SOLVER-02, SOLVER-03, SOLVER-04, SOLVER-05, SOLVER-06, SOLVER-07, SOLVER-08, SOLVER-09, SOLVER-10, PERF-03, PERF-04
+**Success Criteria** (what must be TRUE):
+  1. Users with 10+ ratings receive solver-generated plans instead of OpenAI plans
+  2. Generated plans respect user ratings (prefer liked recipes, avoid disliked ones)
+  3. Generated plans meet macro targets within acceptable tolerance
+  4. Generated plans respect dietary restrictions (vegan, gluten-free, etc.)
+  5. No duplicate meals appear in same weekly plan
+  6. Plan generation completes in under 15 seconds (including fallback if needed)
+  7. If solver cannot find solution, system automatically falls back to OpenAI
+**Plans**: 3 plans
+
+Plans:
+- [x] 07-01-PLAN.md — Constraint solver core (PuLP-based optimization module)
+- [x] 07-02-PLAN.md — Solver integration (hybrid routing, fallback logic, activity logging)
+- [x] 07-03-PLAN.md — Frontend progress feedback (stage-based UI during generation)
+
+#### Phase 8: Personalization UI
+**Goal**: Users can understand and control their personalized recommendations
+**Depends on**: Phase 7
+**Requirements**: UI-01, UI-02, UI-03, UI-04, UI-05, UI-06, DATA-02, DATA-03, PERF-02
+**Success Criteria** (what must be TRUE):
+  1. User can swap individual meals with alternatives matching same meal type and restrictions
+  2. Swap interface loads 3-5 alternatives in under 2 seconds
+  3. User can view their past meal plans
+  4. User can see why a meal was recommended (e.g., "You liked 5 Italian pasta dishes")
+  5. Plan view indicates whether plan was AI-generated or personalized by solver
+  6. Rating changes appear in next plan generation
+**Plans**: 2 plans
+
+ Plans:
+ - [x] 08-01-PLAN.md — Meal swap backend + modal UI (alternatives endpoint, swap modal)
+ - [x] 08-02-PLAN.md — Explainability + generation source (recommendation reasons, badges)
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 
-| Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
-| 1. Foundation | 3/3 | Done | 2026-01-26 |
-| 2. Dashboard | 2/2 | Done | 2026-01-26 |
-| 3. User Management | 3/3 | Done | 2026-01-27 |
-| 4. Recipe Management | 5/5 | Done | 2026-01-27 |
-| 5. Activity Logging | 3/3 | Done | 2026-01-27 |
+| Phase | Milestone | Plans Complete | Status | Completed |
+|-------|-----------|----------------|--------|-----------|
+| 1. Foundation | v1.0 | 3/3 | Complete | 2026-01-26 |
+| 2. Dashboard | v1.0 | 2/2 | Complete | 2026-01-26 |
+| 3. User Management | v1.0 | 3/3 | Complete | 2026-01-27 |
+| 4. Recipe Management | v1.0 | 5/5 | Complete | 2026-01-27 |
+| 5. Activity Logging | v1.0 | 3/3 | Complete | 2026-01-27 |
+| 6. Rating Infrastructure | v1.1 | 2/2 | Complete | 2026-02-01 |
+| 7. Constraint Solver Engine | v1.1 | 3/3 | Complete | 2026-02-02 |
+| 8. Personalization UI | v1.1 | 2/2 | Complete | 2026-02-03 |

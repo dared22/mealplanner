@@ -2,10 +2,12 @@ import React, { useCallback, useEffect, useMemo, useRef, useState, memo } from '
 import { motion as Motion } from 'framer-motion';
 import {
   CheckCircle, RefreshCw, ChevronLeft, ChevronRight,
-  Shuffle, MoreHorizontal, Sun, Coffee, Utensils, Moon,
-  Info, ChevronDown, ChevronUp
+  Shuffle, ThumbsUp, ThumbsDown, MoreHorizontal, Sun, Coffee, Utensils, Moon,
+  Info, ChevronDown, ChevronUp, X, Sparkles, Wand2
 } from 'lucide-react';
-import { useLanguage } from '@/i18n/LanguageContext';
+import { useAuth } from '@clerk/clerk-react';
+import { useLanguage } from '@/i18n/useLanguage';
+import { useRatings } from '@/hooks/useRatings';
 
 // Profile Summary Component
 const ProfileSummary = memo(function ProfileSummary({ data, calorieTarget, t, onRestart }) {
@@ -76,6 +78,11 @@ const ProfileSummary = memo(function ProfileSummary({ data, calorieTarget, t, on
 const WEEK_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const MEAL_TYPES = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
 const MACRO_COLORS = { protein: '#3D5A3D', carbs: '#22c55e', fat: '#f97316' };
+const GENERATION_STAGE_LABELS = {
+  finding_recipes: 'Finding recipes...',
+  optimizing_nutrition: 'Optimizing nutrition...',
+  finalizing: 'Finalizing plan...'
+};
 
 const MEAL_ICONS = {
   Breakfast: Coffee,
@@ -83,6 +90,76 @@ const MEAL_ICONS = {
   Dinner: Utensils,
   Snacks: Moon
 };
+
+const GenerationBadge = memo(function GenerationBadge({ source, t }) {
+  const translate = t || ((v) => v);
+
+  if (!source) return null;
+
+  // Only show a badge when a personalized (solver-based) plan is available.
+  const isPersonalized = source === 'solver';
+  if (!isPersonalized) return null;
+
+  const label = translate('Personalized Plan');
+  const description = translate('Optimized based on your ratings');
+
+  return (
+    <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-200">
+      <Sparkles className="w-3.5 h-3.5" />
+      <span>{label}</span>
+      <span className="hidden sm:inline text-muted-foreground">
+        — {description}
+      </span>
+    </div>
+  );
+});
+
+const ExplainabilityTooltip = memo(function ExplainabilityTooltip({ reasons, t }) {
+  const translate = t || ((v) => v);
+  const [isOpen, setIsOpen] = useState(false);
+
+  if (!reasons) return null;
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="meal-action text-muted-foreground hover:text-primary"
+        title={translate('Why this meal?')}
+      >
+        <Info className="w-4 h-4" />
+      </button>
+
+      {isOpen && (
+        <Motion.div
+          initial={{ opacity: 0, y: -5 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="absolute right-0 top-full mt-2 w-64 p-3 rounded-lg bg-popover border border-border shadow-lg z-20"
+        >
+          <p className="text-sm font-medium mb-2">{translate('Why this recommendation?')}</p>
+          <p className="text-xs text-muted-foreground mb-2">{reasons.summary}</p>
+
+          {reasons.cuisine_preferences && Object.keys(reasons.cuisine_preferences).length > 0 && (
+            <div className="text-xs text-muted-foreground">
+              <span className="font-medium">{translate('Your favorites')}: </span>
+              {Object.entries(reasons.cuisine_preferences)
+                .map(([cuisine, count]) => `${cuisine} (${count})`)
+                .join(', ')}
+            </div>
+          )}
+
+          <button
+            onClick={() => setIsOpen(false)}
+            className="absolute top-2 right-2 text-muted-foreground hover:text-foreground"
+          >
+            <X className="w-3 h-3" />
+          </button>
+        </Motion.div>
+      )}
+    </div>
+  );
+});
 
 const formatIngredient = (value) => {
   // Prefer structured objects from the backend (name, quantity, unit, notes).
@@ -110,12 +187,6 @@ const formatIngredient = (value) => {
   }
   if (value === null || value === undefined) return '';
   return String(value).trim();
-};
-
-const toTitleCase = (value) => {
-  if (!value) return '';
-  return value.toString().replace(/_/g, ' ').split(' ')
-    .map(w => w ? w[0].toUpperCase() + w.slice(1) : '').join(' ');
 };
 
 const normalizeServerPlan = (plan, t) => {
@@ -165,7 +236,7 @@ const normalizeServerPlan = (plan, t) => {
 };
 
 // Day Card for carousel
-const DayCard = memo(function DayCard({ day, targetCalories, isActive, onSelect, dayNumber, t }) {
+const DayCard = memo(function DayCard({ day, isActive, onSelect, dayNumber, t }) {
   const translate = t || ((v) => v);
   const mealCount = Object.values(day.meals || {}).filter(Boolean).length;
 
@@ -206,7 +277,16 @@ const DayCard = memo(function DayCard({ day, targetCalories, isActive, onSelect,
 });
 
 // Meal Item for the list
-const MealItem = memo(function MealItem({ meal, mealType, onSwap, t }) {
+const MealItem = memo(function MealItem({
+  meal,
+  mealType,
+  onSwap,
+  t,
+  recipeRating,
+  onRate,
+  ratingDisabled,
+  recommendationReasons
+}) {
   const translate = t || ((v) => v);
   const [showMore, setShowMore] = useState(false);
 
@@ -234,6 +314,7 @@ const MealItem = memo(function MealItem({ meal, mealType, onSwap, t }) {
         <div className="meal-actions">
           {hasDetails && (
             <button
+              type="button"
               onClick={() => setShowMore(!showMore)}
               className="meal-action"
               title={showMore ? translate('Show less') : translate('Show more')}
@@ -241,9 +322,34 @@ const MealItem = memo(function MealItem({ meal, mealType, onSwap, t }) {
               {showMore ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
             </button>
           )}
-          <button onClick={onSwap} className="meal-action" title={translate('Swap meal')}>
+          <button type="button" onClick={onSwap} className="meal-action" title={translate('Swap meal')}>
             <Shuffle className="w-5 h-5" />
           </button>
+          {recommendationReasons && (
+            <ExplainabilityTooltip reasons={recommendationReasons} t={t} />
+          )}
+          {meal.id && onRate && (
+            <div className="flex gap-1 ml-2">
+              <button
+                type="button"
+                onClick={() => onRate(meal.id, true)}
+                disabled={ratingDisabled}
+                className={`meal-action ${recipeRating?.is_liked === true ? 'text-green-500' : ''}`}
+                title={translate('Like this meal')}
+              >
+                <ThumbsUp className={`w-4 h-4 ${recipeRating?.is_liked === true ? 'fill-current' : ''}`} />
+              </button>
+              <button
+                type="button"
+                onClick={() => onRate(meal.id, false)}
+                disabled={ratingDisabled}
+                className={`meal-action ${recipeRating?.is_liked === false ? 'text-red-500' : ''}`}
+                title={translate('Dislike this meal')}
+              >
+                <ThumbsDown className={`w-4 h-4 ${recipeRating?.is_liked === false ? 'fill-current' : ''}`} />
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -321,8 +427,56 @@ const MacroPanel = memo(function MacroPanel({ macros, targets, t }) {
   );
 });
 
+const RatingProgress = memo(function RatingProgress({ progress, t }) {
+  const translate = t || ((v) => v);
+  const remaining = Math.max(progress.threshold - progress.total, 0);
+
+  if (progress.is_unlocked) {
+    return (
+      <div className="p-4 rounded-xl bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900">
+        <div className="flex items-center gap-2">
+          <CheckCircle className="w-5 h-5 text-green-600" />
+          <span className="text-sm font-medium text-green-800 dark:text-green-200">
+            {translate('Personalized plans unlocked!')}
+          </span>
+        </div>
+        <p className="mt-1 text-xs text-green-600 dark:text-green-400">
+          {translate('Your next plan will be tailored to your preferences.')}
+        </p>
+      </div>
+    );
+  }
+
+  const percentage = Math.min((progress.total / progress.threshold) * 100, 100);
+
+  return (
+    <div className="p-4 rounded-xl bg-accent border border-border">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm font-medium text-foreground">
+          {translate('Unlock Personalized Plans')}
+        </span>
+        <span className="text-xs text-muted-foreground">
+          {progress.total}/{progress.threshold}
+        </span>
+      </div>
+      <div className="h-2 bg-secondary rounded-full overflow-hidden">
+        <div
+          className="h-full bg-primary transition-all duration-300"
+          style={{ width: `${percentage}%` }}
+        />
+      </div>
+      <p className="mt-2 text-xs text-muted-foreground">
+        {remaining > 0
+          ? translate('{count} more ratings to unlock', { count: remaining })
+          : translate('Almost there!')}
+      </p>
+    </div>
+  );
+});
+
+
 // Day Carousel
-const DayCarousel = memo(function DayCarousel({ days, targetCalories, selectedIndex, onSelect, t }) {
+const DayCarousel = memo(function DayCarousel({ days, selectedIndex, onSelect, t }) {
   const trackRef = useRef(null);
   const [canScroll, setCanScroll] = useState({ prev: false, next: false });
 
@@ -366,7 +520,6 @@ const DayCarousel = memo(function DayCarousel({ days, targetCalories, selectedIn
           <DayCard
             key={day.name}
             day={day}
-            targetCalories={targetCalories}
             isActive={idx === selectedIndex}
             onSelect={() => onSelect(idx)}
             dayNumber={idx + 1}
@@ -387,21 +540,89 @@ const DayCarousel = memo(function DayCarousel({ days, targetCalories, selectedIn
   );
 });
 
+// Swap Modal
+const SwapModal = memo(function SwapModal({ isOpen, onClose, alternatives, loading, onSelect, currentMeal, t }) {
+  const translate = t || ((v) => v);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+      <Motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-card rounded-2xl p-6 w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-semibold">{translate('Swap Meal')}</h3>
+          <button onClick={onClose} className="btn-icon">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="flex items-center justify-center py-8">
+            <RefreshCw className="w-6 h-6 animate-spin text-primary" />
+          </div>
+        ) : alternatives.length === 0 ? (
+          <p className="text-center py-8 text-muted-foreground">
+            {translate('No alternatives found matching your preferences')}
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {alternatives.map((alt) => (
+              <button
+                key={alt.id}
+                onClick={() => onSelect(alt)}
+                className="w-full p-4 rounded-xl border border-border hover:border-primary hover:bg-accent transition-colors text-left"
+              >
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h4 className="font-medium">{alt.title}</h4>
+                    <div className="text-sm text-muted-foreground mt-1">
+                      {alt.calories} kcal • P{alt.protein}g • C{alt.carbs}g • F{alt.fat}g
+                    </div>
+                  </div>
+                  {alt.is_liked && (
+                    <ThumbsUp className="w-4 h-4 text-green-500 fill-current" />
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </Motion.div>
+    </div>
+  );
+});
+
 // Main ResultsStep Component
 export default function ResultsStep({
   data,
   plan,
   rawPlanText,
   status = 'idle',
+  generationStage: currentGenerationStage = null,
+  generationSource = null,
+  recommendationReasons = null,
   errorMessage,
   onRegenerate,
   regenerateDisabled = false,
   onRestart
 }) {
   const { t } = useLanguage();
+  const { getToken } = useAuth();
+  const { progress, submitRating, getRating, loading: ratingLoading } = useRatings();
   const activePlan = useMemo(() => normalizeServerPlan(plan, t), [plan, t]);
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
   const [planOverrides, setPlanOverrides] = useState({});
+  const [generationStage, setGenerationStage] = useState(null);
+  const [generationStartTime, setGenerationStartTime] = useState(null);
+  const [showExtendedMessage, setShowExtendedMessage] = useState(false);
+  const [swapModal, setSwapModal] = useState({ open: false, dayIndex: null, mealType: null, recipeId: null });
+  const [alternatives, setAlternatives] = useState([]);
+  const [loadingAlternatives, setLoadingAlternatives] = useState(false);
 
   const displayPlan = useMemo(() => {
     if (!activePlan) return null;
@@ -427,33 +648,110 @@ export default function ResultsStep({
 
   useEffect(() => { setSelectedDayIndex(0); setPlanOverrides({}); }, [activePlan]);
 
-  const isLoading = status === 'loading';
+  const isLoading = status === 'loading' || status === 'pending';
   const isReady = status === 'success' && hasPlan;
   const showError = status === 'error' || (status === 'success' && !hasPlan);
 
-  const handleSwap = useCallback((dayIndex, mealType) => {
-    const pool = swapPools[mealType] || [];
-    if (pool.length <= 1) return;
-    const currentMeal = displayPlan?.days?.[dayIndex]?.meals?.[mealType];
-    const filtered = currentMeal
-      ? pool.filter((o) => {
-          if (o?.id && currentMeal?.id) return o.id !== currentMeal.id;
-          return o?.name !== currentMeal?.name;
-        })
-      : pool;
-    const candidates = filtered.length ? filtered : pool;
-    const next = candidates[Math.floor(Math.random() * candidates.length)];
-    if (!next) return;
-    setPlanOverrides((prev) => ({ ...prev, [dayIndex]: { ...(prev[dayIndex] || {}), [mealType]: { ...next } } }));
-  }, [displayPlan, swapPools]);
+  useEffect(() => {
+    setGenerationStage(currentGenerationStage ?? null);
+  }, [currentGenerationStage]);
 
-  const getGoalText = (goal) => ({
-    lose_weight: t('Lose Weight'),
-    maintain_weight: t('Maintain Weight'),
-    gain_weight: t('Gain Weight'),
-    build_muscle: t('Build Muscle'),
-    improve_health: t('Improve Health')
-  }[goal] || toTitleCase(goal));
+  useEffect(() => {
+    if (isLoading) {
+      if (!generationStartTime) {
+        setGenerationStartTime(Date.now());
+      }
+      return;
+    }
+    setGenerationStartTime(null);
+    setShowExtendedMessage(false);
+  }, [isLoading, generationStartTime]);
+
+  useEffect(() => {
+    if (!generationStartTime) return undefined;
+    const elapsed = Date.now() - generationStartTime;
+    const remaining = 10000 - elapsed;
+    if (remaining <= 0) {
+      setShowExtendedMessage(true);
+      return undefined;
+    }
+    const timeout = setTimeout(() => setShowExtendedMessage(true), remaining);
+    return () => clearTimeout(timeout);
+  }, [generationStartTime]);
+
+  const generationStageLabel = useMemo(() => {
+    const label = GENERATION_STAGE_LABELS[generationStage];
+    return label ? t(label) : t('Preparing your meal plan...');
+  }, [generationStage, t]);
+
+  const fetchAlternatives = useCallback(async (recipeId, mealType) => {
+    if (!recipeId) return;
+    setLoadingAlternatives(true);
+    try {
+      const token = await getToken();
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const url = `${apiUrl}/recipes/alternatives/${recipeId}?meal_type=${mealType.toLowerCase()}&limit=5`;
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAlternatives(data.alternatives || []);
+      } else {
+        setAlternatives([]);
+      }
+    } catch (err) {
+      console.error('Failed to fetch alternatives:', err);
+      setAlternatives([]);
+    } finally {
+      setLoadingAlternatives(false);
+    }
+  }, [getToken]);
+
+  const handleSelectAlternative = useCallback((alt) => {
+    const { dayIndex, mealType } = swapModal;
+    setPlanOverrides((prev) => ({
+      ...prev,
+      [dayIndex]: {
+        ...(prev[dayIndex] || {}),
+        [mealType]: {
+          id: alt.id,
+          name: alt.title,
+          calories: alt.calories,
+          protein: alt.protein,
+          carbs: alt.carbs,
+          fat: alt.fat,
+          cookTime: alt.cook_time || '20 min',
+          ingredients: [],
+          instructions: ''
+        }
+      }
+    }));
+    setSwapModal({ open: false, dayIndex: null, mealType: null, recipeId: null });
+  }, [swapModal]);
+
+  const handleSwap = useCallback((dayIndex, mealType) => {
+    const meal = displayPlan?.days?.[dayIndex]?.meals?.[mealType];
+    if (!meal?.id) {
+      // Fallback to random swap if no recipe ID (old behavior)
+      const pool = swapPools[mealType] || [];
+      if (pool.length <= 1) return;
+      const currentMeal = displayPlan?.days?.[dayIndex]?.meals?.[mealType];
+      const filtered = currentMeal
+        ? pool.filter((o) => {
+            if (o?.id && currentMeal?.id) return o.id !== currentMeal.id;
+            return o?.name !== currentMeal?.name;
+          })
+        : pool;
+      const candidates = filtered.length ? filtered : pool;
+      const next = candidates[Math.floor(Math.random() * candidates.length)];
+      if (!next) return;
+      setPlanOverrides((prev) => ({ ...prev, [dayIndex]: { ...(prev[dayIndex] || {}), [mealType]: { ...next } } }));
+      return;
+    }
+    setSwapModal({ open: true, dayIndex, mealType, recipeId: meal.id });
+    fetchAlternatives(meal.id, mealType);
+  }, [displayPlan, swapPools, fetchAlternatives]);
 
   return (
     <div className="space-y-8">
@@ -480,6 +778,12 @@ export default function ResultsStep({
             <>{t('Something went')} <span className="accent">{t('wrong')}</span></>
           )}
         </h1>
+
+        {isReady && generationSource && (
+          <div className="mt-4 flex justify-center">
+            <GenerationBadge source={generationSource} t={t} />
+          </div>
+        )}
 
         <p className="text-muted-foreground text-lg max-w-lg mx-auto">
           {isReady
@@ -509,7 +813,12 @@ export default function ResultsStep({
           className="p-12 rounded-2xl bg-card border border-border text-center"
         >
           <div className="w-16 h-16 mx-auto mb-4 border-4 border-border border-t-primary rounded-full animate-spin" />
-          <p className="text-muted-foreground">{t('This usually takes less than a minute.')}</p>
+          <p className="text-lg font-medium text-foreground">{generationStageLabel}</p>
+          {showExtendedMessage && (
+            <p className="text-sm text-muted-foreground mt-2">
+              {t('This is taking longer than usual, almost done...')}
+            </p>
+          )}
         </Motion.div>
       )}
 
@@ -551,7 +860,6 @@ export default function ResultsStep({
 
             <DayCarousel
               days={displayPlan.days}
-              targetCalories={displayPlan.calorieTarget}
               selectedIndex={selectedDayIndex}
               onSelect={setSelectedDayIndex}
               t={t}
@@ -578,6 +886,10 @@ export default function ResultsStep({
                       mealType={mealType}
                       onSwap={() => handleSwap(selectedDayIndex, mealType)}
                       t={t}
+                      recipeRating={getRating(selectedDay.meals[mealType]?.id)}
+                      onRate={submitRating}
+                      ratingDisabled={ratingLoading}
+                      recommendationReasons={recommendationReasons}
                     />
                   ))}
                 </div>
@@ -611,6 +923,7 @@ export default function ResultsStep({
                     </div>
                   </div>
                 </div>
+                <RatingProgress progress={progress} t={t} />
               </div>
             </div>
           )}
@@ -624,6 +937,17 @@ export default function ResultsStep({
           )}
         </Motion.div>
       )}
+
+      {/* Swap Modal */}
+      <SwapModal
+        isOpen={swapModal.open}
+        onClose={() => setSwapModal({ open: false, dayIndex: null, mealType: null, recipeId: null })}
+        alternatives={alternatives}
+        loading={loadingAlternatives}
+        onSelect={handleSelectAlternative}
+        currentMeal={swapModal.recipeId}
+        t={t}
+      />
     </div>
   );
 }

@@ -3,7 +3,8 @@ import { useAuth } from '@clerk/clerk-react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { API_URL } from '@/Entities/api';
-import { Button, buttonVariants } from '@/components/ui/button';
+import { Button } from '@/components/ui/button';
+import { buttonVariants } from '@/components/ui/buttonVariants';
 import { Input } from '@/components/ui/input';
 
 const DEFAULT_LIMIT = 20;

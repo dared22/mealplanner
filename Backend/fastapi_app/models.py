@@ -2,11 +2,60 @@ from datetime import datetime, timezone
 from uuid import UUID, uuid4
 from typing import Any, Dict, Optional, List
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, Text, func, Numeric, SmallInteger
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    func,
+    Numeric,
+    SmallInteger,
+    UniqueConstraint,
+    Index,
+)
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.types import TypeDecorator, UserDefinedType
 
 from database import Base
+
+
+class VectorType(UserDefinedType):
+    """Minimal pgvector type without extra dependencies."""
+
+    cache_ok = True
+
+    def __init__(self, dims: int = 1536):
+        self.dims = dims
+
+    def get_col_spec(self, **kw):
+        return f"vector({self.dims})"
+
+    def bind_processor(self, dialect):
+        def process(value):
+            if value is None:
+                return None
+            if isinstance(value, (list, tuple)):
+                return "[" + ",".join(str(float(x)) for x in value) + "]"
+            return str(value)
+
+        return process
+
+    def result_processor(self, dialect, coltype):
+        def process(value):
+            if value is None:
+                return None
+            if isinstance(value, str):
+                stripped = value.strip("[]")
+                if stripped == "":
+                    return []
+                return [float(x) for x in stripped.split(",")]
+            return value
+
+        return process
 
 
 class Preference(Base):
@@ -87,8 +136,7 @@ class Recipe(Base):
     prep_time_minutes: Mapped[Optional[int]] = mapped_column(Integer)
     cook_time_minutes: Mapped[Optional[int]] = mapped_column(Integer)
     total_time_minutes: Mapped[Optional[int]] = mapped_column(Integer)
-    yield_qty: Mapped[Optional[Numeric]] = mapped_column(Numeric)
-    yield_unit: Mapped[Optional[str]] = mapped_column(Text)
+    portions: Mapped[Optional[int]] = mapped_column(Integer)
     cuisine: Mapped[Optional[str]] = mapped_column(Text)
     meal_type: Mapped[Optional[str]] = mapped_column(Text)
     dish_type: Mapped[Optional[str]] = mapped_column(Text)
@@ -103,6 +151,9 @@ class Recipe(Base):
     author: Mapped[Optional[str]] = mapped_column(Text)
     language: Mapped[Optional[str]] = mapped_column(Text)
     tags: Mapped[Optional[list[str]]] = mapped_column(ARRAY(Text))
+    embedding: Mapped[Optional[list[float]]] = mapped_column(VectorType())
+    category: Mapped[Optional[str]] = mapped_column(Text)
+    rating: Mapped[Optional[float]] = mapped_column(Numeric)
     popularity_score: Mapped[Optional[float]] = mapped_column(Numeric)
     health_score: Mapped[Optional[float]] = mapped_column(Numeric)
     created_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -132,3 +183,74 @@ class ActivityLog(Base):
     action_detail: Mapped[Optional[str]] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     metadata_: Mapped[Optional[Dict[str, Any]]] = mapped_column("metadata", JSONB)
+
+
+class Rating(Base):
+    __tablename__ = "ratings"
+    __table_args__ = (
+        UniqueConstraint("user_id", "recipe_id", name="uq_user_recipe_rating"),
+    )
+
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.id"),
+        nullable=False,
+    )
+    recipe_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("recipes.id"),
+        nullable=False,
+    )
+    is_liked: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    user: Mapped["User"] = relationship("User")
+    recipe: Mapped["Recipe"] = relationship("Recipe")
+
+
+class PlanRecipe(Base):
+    __tablename__ = "plan_recipes"
+    __table_args__ = (
+        Index("ix_plan_recipes_preference_id", "preference_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
+    )
+    preference_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("preferences.id"),
+        nullable=False,
+    )
+    recipe_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("recipes.id"),
+        nullable=False,
+    )
+    day_name: Mapped[Optional[str]] = mapped_column(String(16))
+    meal_type: Mapped[Optional[str]] = mapped_column(String(16))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    preference: Mapped["Preference"] = relationship("Preference")
+    recipe: Mapped["Recipe"] = relationship("Recipe")

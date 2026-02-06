@@ -1,6 +1,6 @@
 import React, { memo, useMemo } from 'react';
 import { motion as Motion } from 'framer-motion';
-import { useLanguage } from '@/i18n/LanguageContext';
+import { useLanguage } from '@/i18n/useLanguage';
 
 const PreferencesStep = memo(function PreferencesStep({ data, onChange }) {
   const { t } = useLanguage();

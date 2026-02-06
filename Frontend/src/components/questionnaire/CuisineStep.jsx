@@ -1,7 +1,7 @@
 import React, { memo, useCallback, useMemo } from 'react';
 import { motion as Motion } from 'framer-motion';
 import { Check } from 'lucide-react';
-import { useLanguage } from '@/i18n/LanguageContext';
+import { useLanguage } from '@/i18n/useLanguage';
 
 const CuisineStep = memo(function CuisineStep({ data, onChange }) {
   const { t } = useLanguage();
@@ -22,7 +22,7 @@ const CuisineStep = memo(function CuisineStep({ data, onChange }) {
     [t]
   );
 
-  const currentCuisines = data.preferred_cuisines || [];
+  const currentCuisines = useMemo(() => data.preferred_cuisines || [], [data.preferred_cuisines]);
 
   const toggleCuisine = useCallback(
     (value) => {
