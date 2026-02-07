@@ -831,11 +831,14 @@ def generate_personalized_plan(
         logger.info(f"Quality metrics: {metrics}")
 
         # Step 9: Quality threshold check
-        if (metrics["liked_ratio"] < QUALITY_THRESHOLD_LIKED_RATIO or
+        total_meals = len(WEEK_DAYS) * len(meal_slots)
+        liked_threshold = _adaptive_liked_threshold(len(liked_ids), total_meals)
+
+        if (metrics["liked_ratio"] < liked_threshold or
             metrics["macro_deviation"] > QUALITY_THRESHOLD_MACRO_DEVIATION):
             logger.warning(
                 f"Solution below quality threshold: "
-                f"liked={metrics['liked_ratio']:.2f}, "
+                f"liked={metrics['liked_ratio']:.2f} (threshold={liked_threshold:.2f}), "
                 f"macro_dev={metrics['macro_deviation']:.2f}"
             )
             return {
