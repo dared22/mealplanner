@@ -1196,6 +1196,7 @@ def _format_meal(recipe: Dict[str, Any], fallback_name: str) -> Dict[str, Any]:
 def _aggregate_snacks(recipes: List[Dict[str, Any]]) -> Dict[str, Any]:
     names = [meal.get("name") or "Snack" for meal in recipes]
     urls = [meal.get("url") for meal in recipes if meal.get("url")]
+    recipe_ids = [meal.get("id") for meal in recipes if meal.get("id")]
     instructions = " ".join(
         step for step in (meal.get("instructions") for meal in recipes) if step
     ).strip()
@@ -1211,6 +1212,7 @@ def _aggregate_snacks(recipes: List[Dict[str, Any]]) -> Dict[str, Any]:
         "tags": [],
         "ingredients": [],
         "instructions": instructions,
+        "recipe_ids": recipe_ids,
     }
 
 
