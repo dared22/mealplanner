@@ -15,6 +15,7 @@ Frontend/.env
 #LLMS
 .claude
 .agents
+.planning
 
 # MCP servers virtual environments
 mcp-servers/**/venv/
