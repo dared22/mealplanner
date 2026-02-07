@@ -7,7 +7,7 @@ const PreferencesStep = memo(function PreferencesStep({ data, onChange }) {
 
   const cookingTimeOptions = useMemo(
     () => [
-      { value: 'under_15_min', label: t('Under 15 minutes') },
+      { value: 'under_20_min', label: t('Under 20 minutes') },
       { value: '15_30_min', label: t('15-30 minutes') },
       { value: '30_60_min', label: t('30-60 minutes') },
       { value: 'over_60_min', label: t('Over 60 minutes') },
