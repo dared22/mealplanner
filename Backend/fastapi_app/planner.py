@@ -345,6 +345,7 @@ def _extract_targets(macro_goal: Dict[str, Any]) -> Dict[str, float]:
 
 
 MACRO_KEYS = ("calories", "protein", "carbs", "fat")
+HYBRID_MACRO_TOLERANCE = 0.15
 
 
 def _sum_meal_macros(meals: Iterable[Dict[str, Any]]) -> Dict[str, float]:
@@ -487,6 +488,29 @@ def _validate_slot_counts(
     return None
 
 
+def _validate_macro_totals(
+    meals: List[Dict[str, Any]],
+    targets: Dict[str, float],
+    tolerance: float = HYBRID_MACRO_TOLERANCE,
+) -> Optional[str]:
+    totals = _sum_meal_macros(meals)
+
+    for key in MACRO_KEYS:
+        target = targets.get(key, 0)
+        if target <= 0:
+            continue
+        actual = totals.get(key, 0)
+        deviation = abs(actual - target) / target
+        if deviation > tolerance:
+            return (
+                f"Macro mismatch for {key}: got {actual:.0f}, "
+                f"expected {target:.0f} (deviation: {deviation:.0%}, "
+                f"tolerance: {tolerance:.0%})"
+            )
+
+    return None
+
+
 def _validate_generated_meals(
     payload: Dict[str, Any],
     meal_slots: List[str],
@@ -592,6 +616,11 @@ Return JSON only, matching the system schema.
     meals, error = _validate_generated_meals(payload, meal_slots, dto)
     if error:
         return {"meals": [], "error": error}
+
+    macro_error = _validate_macro_totals(meals, total_targets)
+    if macro_error:
+        return {"meals": [], "error": macro_error}
+
     return {"meals": meals, "error": None}
 
 
