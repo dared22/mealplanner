@@ -28,6 +28,22 @@ QUALITY_THRESHOLD_LIKED_RATIO = 0.5  # Minimum 50% liked recipes
 QUALITY_THRESHOLD_MACRO_DEVIATION = 0.2  # Maximum 20% macro deviation
 
 
+def _adaptive_liked_threshold(liked_count: int, total_meals: int) -> float:
+    """Compute an adaptive liked-ratio threshold based on available liked recipes.
+
+    The standard quality gate requires 50% of meals to be from liked recipes.
+    For users with very few likes relative to required meals, that ratio is
+    impossible. Scale the target to 80% of the maximum achievable liked ratio
+    (liked_count / total_meals) with a floor of 0.15 and ceiling of 0.50.
+    """
+    if total_meals <= 0:
+        return QUALITY_THRESHOLD_LIKED_RATIO
+
+    max_achievable = liked_count / total_meals
+    threshold = max_achievable * 0.8
+    return max(0.15, min(threshold, QUALITY_THRESHOLD_LIKED_RATIO))
+
+
 def _normalize_token(value: str) -> str:
     """Normalize text to a comparable token (lowercase, underscores, alnum only)."""
     normalized = re.sub(r"[^a-z0-9]+", "_", str(value).strip().lower())
