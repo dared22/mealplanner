@@ -92,8 +92,8 @@ def _cooking_time_bounds(value: Any) -> Tuple[Optional[int], Optional[int]]:
     if value is None:
         return None, None
     normalized = str(value).strip().lower()
-    if normalized in {"under_15_min", "under15", "<15"}:
-        return None, 15
+    if normalized in {"under_20_min", "under20", "<20"}:
+        return None, 20
     if normalized in {"15_30_min", "15-30", "15_30"}:
         return 15, 30
     if normalized in {"30_60_min", "30-60", "30_60"}:

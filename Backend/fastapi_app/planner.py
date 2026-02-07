@@ -107,9 +107,9 @@ MEAL_TAG_KEYWORDS = {
 }
 
 _COOKING_TIME_MAP = {
-    "under_15_min": (None, 15),
-    "under15": (None, 15),
-    "<15": (None, 15),
+    "under_20_min": (None, 20),
+    "under20": (None, 20),
+    "<20": (None, 20),
     "15_30_min": (15, 30),
     "15-30": (15, 30),
     "15_30": (15, 30),
@@ -892,9 +892,9 @@ def query_candidate_recipes(
         # Extract nutrition data
         nutrition = recipe.nutrition or {}
         calories = float(nutrition.get("calories", 0))
-        protein = float(nutrition.get("protein", 0))
-        carbs = float(nutrition.get("carbs", 0) or nutrition.get("carbohydrates", 0))
-        fat = float(nutrition.get("fat", 0))
+        protein = float(nutrition.get("protein_g", 0) or nutrition.get("protein", 0))
+        carbs = float(nutrition.get("carbs_g", 0) or nutrition.get("carbs", 0) or nutrition.get("carbohydrates", 0))
+        fat = float(nutrition.get("fat_g", 0) or nutrition.get("fat", 0))
 
         # Skip recipes with missing nutrition data
         if calories == 0:

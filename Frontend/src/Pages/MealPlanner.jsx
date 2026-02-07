@@ -181,12 +181,7 @@ const Header = memo(function Header({ currentStep, totalSteps, lang, setLang, is
     <header className="header">
       <div className="header-inner">
         {/* Logo */}
-        <div className="logo">
-          <div className="logo-icon">
-            <img src="/logo.png" alt="Preppr" className="w-8 h-8" />
-          </div>
-          <span className="logo-text">Preppr</span>
-        </div>
+        <LogoInline />
 
         {/* Step dots - only show on onboarding */}
         {currentStep < 7 && (
