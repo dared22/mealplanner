@@ -25,6 +25,8 @@ OPENAI_REQUEST_TIMEOUT = float(os.getenv("OPENAI_REQUEST_TIMEOUT", "120"))
 OPENAI_MACRO_MAX_TOKENS = int(os.getenv("OPENAI_PLAN_MAX_TOKENS", "1000"))
 OPENAI_MEAL_MODEL = os.getenv("OPENAI_MEAL_MODEL", OPENAI_MACRO_MODEL)
 OPENAI_MEAL_MAX_TOKENS = int(os.getenv("OPENAI_MEAL_MAX_TOKENS", "1400"))
+AI_MEAL_MAX_RETRIES = int(os.getenv("AI_MEAL_MAX_RETRIES", "2"))
+AI_RETRY_TEMPERATURES = [0.3, 0.5, 0.7]
 PLAN_BASE_LANGUAGE = os.getenv("PLAN_BASE_LANGUAGE") or os.getenv("RECIPE_BASE_LANGUAGE") or "no"
 
 if not OPENAI_API_KEY:
@@ -603,25 +605,49 @@ Return JSON only, matching the system schema.
         {"role": "system", "content": MEAL_SYSTEM_PROMPT},
         {"role": "user", "content": prompt},
     ]
-    raw_text = _request_with_chat(
-        messages,
-        temperature=0.3,
-        model=OPENAI_MEAL_MODEL,
-        max_tokens=OPENAI_MEAL_MAX_TOKENS,
-    )
-    payload = _extract_json(raw_text)
-    if not payload:
-        return {"meals": [], "error": "Failed to parse meal generation response."}
+    last_error: Optional[str] = None
+    max_attempts = AI_MEAL_MAX_RETRIES + 1
 
-    meals, error = _validate_generated_meals(payload, meal_slots, dto)
-    if error:
-        return {"meals": [], "error": error}
+    for attempt in range(max_attempts):
+        temperature = AI_RETRY_TEMPERATURES[min(attempt, len(AI_RETRY_TEMPERATURES) - 1)]
+        attempt_messages = list(messages)
 
-    macro_error = _validate_macro_totals(meals, total_targets)
-    if macro_error:
-        return {"meals": [], "error": macro_error}
+        if last_error and attempt > 0:
+            attempt_messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        f"Your previous response was rejected: {last_error}. "
+                        "Please try again, strictly following the requirements."
+                    ),
+                }
+            )
+            logger.info("AI meal generation retry %d/%d: %s", attempt, max_attempts - 1, last_error)
 
-    return {"meals": meals, "error": None}
+        raw_text = _request_with_chat(
+            attempt_messages,
+            temperature=temperature,
+            model=OPENAI_MEAL_MODEL,
+            max_tokens=OPENAI_MEAL_MAX_TOKENS,
+        )
+        payload = _extract_json(raw_text)
+        if not payload:
+            last_error = "Failed to parse meal generation response."
+            continue
+
+        meals, error = _validate_generated_meals(payload, meal_slots, dto)
+        if error:
+            last_error = error
+            continue
+
+        macro_error = _validate_macro_totals(meals, total_targets)
+        if macro_error:
+            last_error = macro_error
+            continue
+
+        return {"meals": meals, "error": None}
+
+    return {"meals": [], "error": last_error or "Meal generation failed after retries."}
 
 
 def generate_daily_macro_goal(pref: Any) -> Dict[str, Any]:
