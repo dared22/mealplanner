@@ -929,7 +929,9 @@ def _generate_solver_plan(db: Session, user_id: UUID, preference: Preference) ->
 
     openai_result = generate_daily_plan(preference, translate=False, db=db)
     _update_generation_stage(db, preference.id, "finalizing")
-    _persist_plan_result(db, preference, openai_result, generation_source="openai_fallback")
+    # Use generation_source from result, append _fallback to indicate solver fallback
+    generation_source = openai_result.get("generation_source", "openai") + "_fallback"
+    _persist_plan_result(db, preference, openai_result, generation_source=generation_source)
     return openai_result
 
 
@@ -1852,7 +1854,9 @@ def _generate_plan_in_background(pref_id: int) -> None:
                     plan_result.get("error"),
                 )
             _update_generation_stage(db, pref_id, "finalizing")
-            _persist_plan_result(db, preference, plan_result, generation_source="openai")
+            # Use generation_source from plan result, default to "openai" for backward compatibility
+            generation_source = plan_result.get("generation_source", "openai")
+            _persist_plan_result(db, preference, plan_result, generation_source=generation_source)
 
         status_value = "success" if plan_result.get("plan") else "error"
         detail = "Meal plan generated" if status_value == "success" else plan_result.get("error")

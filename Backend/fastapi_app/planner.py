@@ -11,7 +11,7 @@ from uuid import UUID
 
 import httpx
 from openai import OpenAI, OpenAIError
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from models import PlanRecipe, Preference, Rating, Recipe
@@ -369,8 +369,15 @@ def _validate_meal_entry(meal: Dict[str, Any], dto: PreferenceDTO) -> Optional[s
 
     # Check cuisine
     cuisine = meal.get("cuisine")
-    if allowed_cuisines and not _recipe_matches_preferred_cuisines(cuisine, allowed_cuisines):
-        return "Meal cuisine is outside preferred cuisines."
+    if allowed_cuisines and cuisine:
+        if not _recipe_matches_preferred_cuisines(cuisine, allowed_cuisines):
+            # Relaxed: keep the meal but drop the mismatched cuisine to avoid hard failures.
+            logger.warning(
+                "Meal cuisine '%s' outside preferred cuisines %s; allowing meal without cuisine.",
+                cuisine,
+                sorted(allowed_cuisines),
+            )
+            meal["cuisine"] = None
 
     # Check cooking time
     cook_time = meal.get("cook_time_minutes")
@@ -451,6 +458,7 @@ def _normalize_meal_entry(meal: Dict[str, Any]) -> Dict[str, Any]:
         "instructions": _format_instructions(instructions),
         "ingredients": _jsonify_value(ingredients),
         "tags": tags,
+        "source": "ai",  # Track that this came from AI generation
     }
 
 
@@ -813,6 +821,222 @@ def _format_list_values(value: Any) -> List[str]:
     return [extracted] if extracted else []
 
 
+def query_candidate_recipes(
+    db: Session,
+    dto: PreferenceDTO,
+    exclude_names: Optional[Set[str]] = None,
+) -> Dict[str, List[Dict[str, Any]]]:
+    """Query DB for recipe candidates matching user preferences.
+
+    Returns dict like:
+    {
+        "breakfast": [{"id": ..., "title": ..., "calories": ..., ...}, ...],
+        "lunch": [...],
+        "dinner": [...],
+        "snack": [...]
+    }
+    """
+    if exclude_names is None:
+        exclude_names = set()
+
+    # Build base query
+    query = select(Recipe).where(Recipe.is_active == True)
+
+    # Apply dietary restrictions
+    dietary_restrictions = [str(r).lower() for r in (dto.dietary_restrictions or []) if r]
+    for restriction in dietary_restrictions:
+        if restriction == "none":
+            continue
+        if restriction == "vegan":
+            query = query.where(Recipe.dietary_flags["is_vegan"].astext == "true")
+        elif restriction == "vegetarian":
+            # Vegetarian means vegan OR vegetarian
+            query = query.where(
+                (Recipe.dietary_flags["is_vegan"].astext == "true") |
+                (Recipe.dietary_flags["is_vegetarian"].astext == "true")
+            )
+
+    # Apply preferred cuisines filter
+    allowed_cuisines = _normalize_cuisine_list(dto.preferred_cuisines)
+    if allowed_cuisines:
+        # Recipe cuisine should match at least one preferred cuisine
+        cuisine_filters = []
+        for cuisine_token in allowed_cuisines:
+            cuisine_filters.append(Recipe.cuisine.ilike(f"%{cuisine_token}%"))
+        if cuisine_filters:
+            query = query.where(or_(*cuisine_filters))
+
+    # Apply cooking time bounds
+    min_minutes, max_minutes = _cooking_time_bounds(dto.cooking_time_preference)
+    if min_minutes is not None:
+        query = query.where(Recipe.total_time_minutes >= min_minutes)
+    if max_minutes is not None:
+        query = query.where(Recipe.total_time_minutes <= max_minutes)
+
+    # Execute query
+    recipes = db.execute(query).scalars().all()
+
+    # Group by meal type
+    candidates: Dict[str, List[Dict[str, Any]]] = {
+        "breakfast": [],
+        "lunch": [],
+        "dinner": [],
+        "snack": [],
+    }
+
+    for recipe in recipes:
+        # Skip excluded recipes
+        if recipe.title in exclude_names:
+            continue
+
+        # Extract nutrition data
+        nutrition = recipe.nutrition or {}
+        calories = float(nutrition.get("calories", 0))
+        protein = float(nutrition.get("protein", 0))
+        carbs = float(nutrition.get("carbs", 0) or nutrition.get("carbohydrates", 0))
+        fat = float(nutrition.get("fat", 0))
+
+        # Skip recipes with missing nutrition data
+        if calories == 0:
+            continue
+
+        # Determine meal type
+        meal_type = (recipe.meal_type or "").lower()
+        if meal_type not in candidates:
+            meal_type = "snack"
+
+        # Build candidate dict
+        candidate = {
+            "id": recipe.id,
+            "title": recipe.title,
+            "meal_type": meal_type,
+            "calories": calories,
+            "protein": protein,
+            "carbs": carbs,
+            "fat": fat,
+            "ingredients": recipe.ingredients or [],
+            "instructions": recipe.instructions or [],
+            "cuisine": recipe.cuisine,
+            "tags": recipe.tags or [],
+            "cost_category": recipe.cost_category,
+            "total_time_minutes": recipe.total_time_minutes,
+            "url": recipe.source_url,
+        }
+
+        candidates[meal_type].append(candidate)
+
+    return candidates
+
+
+def macro_fit_score(
+    recipe: Dict[str, Any],
+    remaining_macros: Dict[str, float],
+    remaining_slots: int,
+) -> float:
+    """Score how well a recipe fits the remaining macro targets.
+
+    Higher score = better fit.
+    """
+    if remaining_slots <= 0:
+        remaining_slots = 1
+
+    # Calculate ideal macros per remaining slot
+    ideal = {k: v / remaining_slots for k, v in remaining_macros.items()}
+
+    # Calculate deviation from ideal for each macro
+    score = 0.0
+    for macro in MACRO_KEYS:
+        recipe_value = recipe.get(macro, 0)
+        ideal_value = ideal.get(macro, 0)
+
+        if ideal_value == 0:
+            # If no target, penalize high values slightly
+            if recipe_value > 0:
+                score -= 0.1
+            continue
+
+        # Calculate percentage deviation
+        deviation = abs(recipe_value - ideal_value) / ideal_value
+        score -= deviation
+
+    # Bonus for recipes with complete data
+    if recipe.get("ingredients"):
+        score += 0.1
+    if recipe.get("instructions"):
+        score += 0.1
+
+    return score
+
+
+def select_db_recipes_for_day(
+    candidates: Dict[str, List[Dict[str, Any]]],
+    meal_slots: List[str],
+    targets: Dict[str, float],
+    used_names: Set[str],
+) -> Tuple[List[Dict[str, Any]], List[str]]:
+    """Greedy selection algorithm to pick best recipes for a day.
+
+    Returns:
+        (selected_recipes, unfilled_slots)
+    """
+    remaining_macros = dict(targets)
+    selected: List[Dict[str, Any]] = []
+    unfilled: List[str] = []
+    remaining_slots = len(meal_slots)
+
+    for slot in meal_slots:
+        # Get candidates for this slot, excluding already used recipes
+        pool = [
+            recipe for recipe in candidates.get(slot, [])
+            if recipe["title"] not in used_names
+        ]
+
+        if not pool:
+            unfilled.append(slot)
+            remaining_slots -= 1
+            continue
+
+        # Score each recipe
+        scored_recipes = []
+        for recipe in pool:
+            score = macro_fit_score(recipe, remaining_macros, remaining_slots)
+            scored_recipes.append((score, recipe))
+
+        # Sort by score (descending) and pick best
+        scored_recipes.sort(key=lambda x: x[0], reverse=True)
+        best_recipe = scored_recipes[0][1]
+
+        # Add to selected
+        selected.append(best_recipe)
+        used_names.add(best_recipe["title"])
+
+        # Update remaining macros
+        for macro in MACRO_KEYS:
+            remaining_macros[macro] -= best_recipe.get(macro, 0)
+
+        remaining_slots -= 1
+
+    return selected, unfilled
+
+
+def _format_db_recipe_as_meal(recipe: Dict[str, Any]) -> Dict[str, Any]:
+    """Format a DB recipe candidate as a meal entry with source tracking."""
+    return {
+        "id": recipe.get("id"),
+        "name": recipe.get("title") or "Recipe",
+        "meal_type": recipe.get("meal_type", "snack"),
+        "calories": recipe.get("calories", 0),
+        "protein": recipe.get("protein", 0),
+        "carbs": recipe.get("carbs", 0),
+        "fat": recipe.get("fat", 0),
+        "url": recipe.get("url"),
+        "instructions": _format_instructions(recipe.get("instructions")),
+        "ingredients": _jsonify_value(recipe.get("ingredients")),
+        "tags": recipe.get("tags") or [],
+        "source": "db",  # Track that this came from database
+    }
+
+
 def match_recipes_to_macro_goal(
     pref: Any,
     macro_goal: Dict[str, Any],
@@ -832,23 +1056,67 @@ def match_recipes_to_macro_goal(
     if isinstance(used_names, set) and used_names:
         avoid_names = [str(item) for item in used_names]
 
-    meal_result = _generate_meals_with_openai(
-        dto=dto,
-        meal_slots=meal_slots,
-        targets=targets,
-        avoid_names=avoid_names,
-    )
-    if meal_result.get("error"):
-        return {"meals": [], "totals": None, "error": meal_result["error"]}
+    # Phase 1: Try DB recipes (hybrid approach)
+    db_meals: List[Dict[str, Any]] = []
+    unfilled_slots = meal_slots  # default: all slots unfilled
 
-    selected = meal_result.get("meals") or []
+    if db is not None:
+        try:
+            candidates = query_candidate_recipes(db, dto, exclude_names=set(avoid_names))
+            db_meals, unfilled_slots = select_db_recipes_for_day(
+                candidates, meal_slots, targets, set(avoid_names)
+            )
+            # Convert DB recipes to meal format
+            db_meals = [_format_db_recipe_as_meal(recipe) for recipe in db_meals]
+        except Exception as exc:
+            logger.warning("DB recipe query failed, falling back to full AI generation: %s", exc)
+            db_meals = []
+            unfilled_slots = meal_slots
 
-    totals = _sum_meal_macros(selected)
+    # Phase 2: AI fills gaps
+    ai_meals: List[Dict[str, Any]] = []
+    if unfilled_slots:
+        # Calculate remaining macro targets after DB recipes
+        already_used = _sum_meal_macros(db_meals)
+        remaining = {k: max(targets[k] - already_used[k], 0) for k in MACRO_KEYS}
+
+        # Build avoid list (original + DB recipe names)
+        ai_avoid_names = avoid_names + [m["name"] for m in db_meals]
+
+        meal_result = _generate_meals_with_openai(
+            dto=dto,
+            meal_slots=unfilled_slots,
+            targets=targets,
+            remaining_targets=remaining,
+            avoid_names=ai_avoid_names,
+        )
+        if meal_result.get("error"):
+            # If AI fails and we have some DB meals, return what we have
+            if db_meals:
+                logger.warning("AI meal generation failed but returning %d DB meals", len(db_meals))
+                totals = _sum_meal_macros(db_meals)
+                return {
+                    "meals": db_meals,
+                    "totals": totals,
+                    "error": None,
+                    "db_recipe_count": len(db_meals),
+                    "ai_recipe_count": 0,
+                }
+            # Otherwise, propagate the error
+            return {"meals": [], "totals": None, "error": meal_result["error"]}
+
+        ai_meals = meal_result.get("meals") or []
+
+    # Combine DB and AI meals
+    all_meals = db_meals + ai_meals
+    totals = _sum_meal_macros(all_meals)
 
     return {
-        "meals": selected,
+        "meals": all_meals,
         "totals": totals,
         "error": None,
+        "db_recipe_count": len(db_meals),
+        "ai_recipe_count": len(ai_meals),
     }
 
 
@@ -1086,6 +1354,9 @@ def generate_daily_plan(pref: Any, translate: bool = False, db: Optional[Session
 
     days: List[Dict[str, Any]] = []
     used_names: List[str] = []
+    total_db_recipes = 0
+    total_ai_recipes = 0
+
     for day in WEEK_DAYS:
         recipe_match = match_recipes_to_macro_goal(
             pref,
@@ -1097,6 +1368,10 @@ def generate_daily_plan(pref: Any, translate: bool = False, db: Optional[Session
             return {"plan": None, "raw_text": None, "error": recipe_match["error"]}
         meals_for_day = recipe_match.get("meals") or []
 
+        # Track recipe source counts
+        total_db_recipes += recipe_match.get("db_recipe_count", 0)
+        total_ai_recipes += recipe_match.get("ai_recipe_count", 0)
+
         day_plan = _build_day_plan(day, meals_for_day, recipe_match.get("totals") or {})
         days.append(day_plan)
         for meal in meals_for_day:
@@ -1107,6 +1382,15 @@ def generate_daily_plan(pref: Any, translate: bool = False, db: Optional[Session
     plan_payload = _build_weekly_plan(macro_goal, days)
     base_language = _normalize_language(PLAN_BASE_LANGUAGE) or "no"
     plan_language = "en" if translate and _is_english(dto.language) else base_language
+
+    # Determine generation source based on recipe counts
+    if total_db_recipes > 0 and total_ai_recipes > 0:
+        generation_source = "hybrid"
+    elif total_db_recipes > 0 and total_ai_recipes == 0:
+        generation_source = "db_only"
+    else:
+        generation_source = "openai"
+
     if translate and _is_english(dto.language):
         translation = translate_plan(plan_payload, dto.language)
         return {
@@ -1114,8 +1398,19 @@ def generate_daily_plan(pref: Any, translate: bool = False, db: Optional[Session
             "raw_text": None,
             "error": translation["error"],
             "language": "en",
+            "generation_source": generation_source,
+            "db_recipe_count": total_db_recipes,
+            "ai_recipe_count": total_ai_recipes,
         }
-    return {"plan": plan_payload, "raw_text": None, "error": None, "language": plan_language}
+    return {
+        "plan": plan_payload,
+        "raw_text": None,
+        "error": None,
+        "language": plan_language,
+        "generation_source": generation_source,
+        "db_recipe_count": total_db_recipes,
+        "ai_recipe_count": total_ai_recipes,
+    }
 
 
 def generate_daily_plan_for_preference(db: Session, pref_id: int) -> Dict[str, Any]:
