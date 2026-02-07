@@ -1191,6 +1191,154 @@
   .dark .filter-range-input::-moz-range-thumb:hover {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5), 0 2px 4px rgba(0, 0, 0, 0.4);
   }
+
+  /* ===== LOGIN PAGE — Nordic Minimalism ===== */
+
+  .login-page {
+    @apply min-h-screen bg-background flex flex-col;
+  }
+
+  /* Top bar */
+  .login-header {
+    @apply flex items-center justify-between px-8 md:px-12 py-5;
+  }
+
+  .login-logo {
+    @apply flex items-center gap-2.5 transition-opacity hover:opacity-70;
+  }
+
+  .login-logo-text {
+    @apply text-lg font-bold tracking-tight text-foreground;
+  }
+
+  /* Centered main area */
+  .login-main {
+    @apply flex-1 flex items-center justify-center px-6 py-8;
+  }
+
+  .login-content {
+    @apply w-full max-w-sm flex flex-col items-center;
+  }
+
+  /* Headline group */
+  .login-headline-group {
+    @apply text-center mb-8;
+  }
+
+  .login-headline {
+    font-family: var(--font-serif);
+    @apply text-3xl md:text-4xl font-medium text-foreground leading-tight mb-3;
+  }
+
+  .login-subtitle {
+    @apply text-sm text-muted-foreground leading-relaxed max-w-xs mx-auto;
+  }
+
+  /* Decorative horizontal rule */
+  .login-rule {
+    @apply w-10 h-px bg-primary/40 mb-8;
+  }
+
+  /* Mode toggle (sign in / create account) */
+  .login-toggle {
+    @apply flex items-center gap-1 p-1 rounded-full bg-secondary mb-8 w-full;
+  }
+
+  .login-toggle-btn {
+    @apply flex-1 py-2.5 px-4 rounded-full text-sm font-medium
+           text-muted-foreground transition-all duration-200
+           hover:text-foreground;
+  }
+
+  .login-toggle-btn.active {
+    @apply bg-card text-foreground shadow-sm;
+  }
+
+  /* Clerk wrapper — override Clerk's default styling to blend in */
+  .login-clerk-wrapper {
+    @apply w-full;
+  }
+
+  /* Minimal footer */
+  .login-footer {
+    @apply px-8 md:px-12 py-5 text-center;
+  }
+
+  .login-footer-text {
+    @apply text-xs text-muted-foreground;
+  }
+
+  /* ===== Clerk component overrides (fallbacks for appearance prop) ===== */
+
+  /* Strip any residual card chrome */
+  .login-clerk-wrapper .cl-card {
+    background: transparent !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  /* Ensure internal wrappers are transparent */
+  .login-clerk-wrapper .cl-internal-b3fm6y,
+  .login-clerk-wrapper .cl-main {
+    background: transparent !important;
+  }
+
+  /* Hide "Secured by Clerk" footer */
+  .login-clerk-wrapper .cl-footer {
+    display: none !important;
+  }
+
+  /* Underline-style inputs: strip border-radius and side borders */
+  .login-clerk-wrapper .cl-formFieldInput {
+    border-radius: 0 !important;
+    border-left: none !important;
+    border-right: none !important;
+    border-top: none !important;
+    box-shadow: none !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
+  .login-clerk-wrapper .cl-formFieldInput:focus {
+    box-shadow: none !important;
+    border-color: var(--primary) !important;
+  }
+
+  /* Dark mode: re-map Clerk's colors to our dark tokens */
+  .dark .login-clerk-wrapper .cl-card,
+  .dark .login-clerk-wrapper .cl-internal-b3fm6y,
+  .dark .login-clerk-wrapper .cl-main {
+    background: transparent !important;
+    color: var(--foreground) !important;
+  }
+
+  .dark .login-clerk-wrapper .cl-formFieldLabel {
+    color: var(--primary) !important;
+  }
+
+  .dark .login-clerk-wrapper .cl-formFieldInput {
+    background: transparent !important;
+    border-color: var(--border) !important;
+    color: var(--foreground) !important;
+  }
+
+  .dark .login-clerk-wrapper .cl-socialButtonsBlockButton {
+    background: var(--card) !important;
+    border-color: var(--border) !important;
+    color: var(--foreground) !important;
+  }
+
+  .dark .login-clerk-wrapper .cl-dividerText {
+    color: var(--muted-foreground) !important;
+  }
+
+  .dark .login-clerk-wrapper .cl-dividerLine {
+    background: var(--border) !important;
+  }
+
+  .dark .login-clerk-wrapper .cl-footerActionText {
+    color: var(--muted-foreground) !important;
+  }
 }
 
 /* Smooth scrolling */
