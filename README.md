@@ -4,7 +4,7 @@ A web application that generates personalized weekly meal plans using AI. You
 fill out a questionnaire with your dietary preferences, and the app creates
 custom meal plans that you can save, translate, and reuse.
 
-**Live demo:** https://mealplanner-frontend-cc0005e5d9b0.herokuapp.com/
+**Live demo:** [https://https://www.preppr.xyz/](https://www.preppr.xyz/)
 
 > **Note:** The live demo is the primary way to use this app. Running your own
 > instance requires setting up your own Neon database and populating it with
