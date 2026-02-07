@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import re
+from string import Template
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 from uuid import UUID
@@ -48,7 +49,7 @@ SYSTEM_PROMPT = (
     "Targets are per day. Use grams for macros."
 )
 
-_MEAL_SYSTEM_PROMPT_TEMPLATE = (
+_MEAL_SYSTEM_PROMPT_TEMPLATE = Template(
     "You are a professional nutrition coach and chef. Return ONLY valid JSON with this schema:\n"
     "{\n"
     '  "meals": [\n'
@@ -74,7 +75,7 @@ _MEAL_SYSTEM_PROMPT_TEMPLATE = (
     "- Total macros across meals should closely match the provided targets.\n"
     "- Strictly follow dietary restrictions, preferred cuisines allow-list, and cooking time bounds.\n"
     "- If impossible, return an empty meals array and a short error message.\n"
-    "- IMPORTANT: All text content (name, ingredients, instructions) MUST be written in {language}."
+    "- IMPORTANT: All text content (name, ingredients, instructions) MUST be written in $language."
 )
 
 _LANGUAGE_LABELS = {
@@ -96,7 +97,7 @@ def _base_language_label() -> str:
     return _LANGUAGE_LABELS.get(code, "Norwegian")
 
 
-MEAL_SYSTEM_PROMPT = _MEAL_SYSTEM_PROMPT_TEMPLATE.format(language=_base_language_label())
+MEAL_SYSTEM_PROMPT = _MEAL_SYSTEM_PROMPT_TEMPLATE.safe_substitute(language=_base_language_label())
 
 WEEK_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 MEAL_TAG_KEYWORDS = {
