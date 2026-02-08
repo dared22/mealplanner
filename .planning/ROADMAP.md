@@ -146,6 +146,25 @@ Plans:
  - [x] 08-01-PLAN.md — Meal swap backend + modal UI (alternatives endpoint, swap modal)
  - [x] 08-02-PLAN.md — Explainability + generation source (recommendation reasons, badges)
 
+### ◻️ v1.1.1 Hybrid Reliability
+
+**Milestone Goal:** Harden the hybrid (OpenAI) generation path and solver fallback so cold-start users get accurate plans and solver fallback stays reliable.
+
+#### Phase 9: Planner Hardening
+**Goal**: Improve reliability and accuracy of the hybrid OpenAI meal generation path, which serves all new users (<10 ratings) and acts as the fallback for solver failures.
+**Depends on**: Phase 7, Phase 8
+**Requirements**: PERF-03, PERF-04, DATA-01 (indirect), SOLVER-10 (robust fallback)
+**Success Criteria** (what must be TRUE):
+  1. Hybrid (OpenAI) generation rejects meals that miss macro targets beyond tolerance and retries automatically before failing
+  2. Solver quality check adapts to users with low liked-count so feasible plans are produced instead of forced fallback
+  3. Snack recipes are persisted with IDs so repeat-avoidance works across weeks for snacks
+**Plans**: 3 plans
+
+Plans:
+- [x] 09-01-PLAN.md — Hybrid macro validation + retry loop
+- [x] 09-02-PLAN.md — Adaptive solver liked threshold
+- [ ] 09-03-PLAN.md — Preserve snack recipe IDs (PlanRecipe tracking)
+
 ## Progress
 
 **Execution Order:**
@@ -161,3 +180,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 6. Rating Infrastructure | v1.1 | 2/2 | Complete | 2026-02-01 |
 | 7. Constraint Solver Engine | v1.1 | 3/3 | Complete | 2026-02-02 |
 | 8. Personalization UI | v1.1 | 2/2 | Complete | 2026-02-03 |
+| 9. Planner Hardening | v1.1.1 | 2/3 | In progress | — |

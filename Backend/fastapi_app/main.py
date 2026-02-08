@@ -977,6 +977,24 @@ def _persist_plan_result(
             for meal_key, meal_data in meals.items():
                 if not isinstance(meal_data, dict):
                     continue
+                recipe_ids_list = meal_data.get("recipe_ids")
+                if isinstance(recipe_ids_list, list):
+                    for rid in recipe_ids_list:
+                        if not rid:
+                            continue
+                        try:
+                            recipe_id = UUID(str(rid))
+                        except (ValueError, TypeError):
+                            continue
+
+                        plan_recipe = PlanRecipe(
+                            preference_id=preference.id,
+                            recipe_id=recipe_id,
+                            day_name=str(day_name) if day_name else None,
+                            meal_type="snack",
+                        )
+                        db.add(plan_recipe)
+                    continue
                 recipe_id_str = meal_data.get("id")
                 if not recipe_id_str:
                     continue

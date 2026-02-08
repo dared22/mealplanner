@@ -25,6 +25,8 @@ OPENAI_REQUEST_TIMEOUT = float(os.getenv("OPENAI_REQUEST_TIMEOUT", "120"))
 OPENAI_MACRO_MAX_TOKENS = int(os.getenv("OPENAI_PLAN_MAX_TOKENS", "1000"))
 OPENAI_MEAL_MODEL = os.getenv("OPENAI_MEAL_MODEL", OPENAI_MACRO_MODEL)
 OPENAI_MEAL_MAX_TOKENS = int(os.getenv("OPENAI_MEAL_MAX_TOKENS", "1400"))
+AI_MEAL_MAX_RETRIES = int(os.getenv("AI_MEAL_MAX_RETRIES", "2"))
+AI_RETRY_TEMPERATURES = [0.3, 0.5, 0.7]
 PLAN_BASE_LANGUAGE = os.getenv("PLAN_BASE_LANGUAGE") or os.getenv("RECIPE_BASE_LANGUAGE") or "no"
 
 if not OPENAI_API_KEY:
@@ -345,6 +347,7 @@ def _extract_targets(macro_goal: Dict[str, Any]) -> Dict[str, float]:
 
 
 MACRO_KEYS = ("calories", "protein", "carbs", "fat")
+HYBRID_MACRO_TOLERANCE = 0.15
 
 
 def _sum_meal_macros(meals: Iterable[Dict[str, Any]]) -> Dict[str, float]:
@@ -487,6 +490,29 @@ def _validate_slot_counts(
     return None
 
 
+def _validate_macro_totals(
+    meals: List[Dict[str, Any]],
+    targets: Dict[str, float],
+    tolerance: float = HYBRID_MACRO_TOLERANCE,
+) -> Optional[str]:
+    totals = _sum_meal_macros(meals)
+
+    for key in MACRO_KEYS:
+        target = targets.get(key, 0)
+        if target <= 0:
+            continue
+        actual = totals.get(key, 0)
+        deviation = abs(actual - target) / target
+        if deviation > tolerance:
+            return (
+                f"Macro mismatch for {key}: got {actual:.0f}, "
+                f"expected {target:.0f} (deviation: {deviation:.0%}, "
+                f"tolerance: {tolerance:.0%})"
+            )
+
+    return None
+
+
 def _validate_generated_meals(
     payload: Dict[str, Any],
     meal_slots: List[str],
@@ -579,20 +605,49 @@ Return JSON only, matching the system schema.
         {"role": "system", "content": MEAL_SYSTEM_PROMPT},
         {"role": "user", "content": prompt},
     ]
-    raw_text = _request_with_chat(
-        messages,
-        temperature=0.3,
-        model=OPENAI_MEAL_MODEL,
-        max_tokens=OPENAI_MEAL_MAX_TOKENS,
-    )
-    payload = _extract_json(raw_text)
-    if not payload:
-        return {"meals": [], "error": "Failed to parse meal generation response."}
+    last_error: Optional[str] = None
+    max_attempts = AI_MEAL_MAX_RETRIES + 1
 
-    meals, error = _validate_generated_meals(payload, meal_slots, dto)
-    if error:
-        return {"meals": [], "error": error}
-    return {"meals": meals, "error": None}
+    for attempt in range(max_attempts):
+        temperature = AI_RETRY_TEMPERATURES[min(attempt, len(AI_RETRY_TEMPERATURES) - 1)]
+        attempt_messages = list(messages)
+
+        if last_error and attempt > 0:
+            attempt_messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        f"Your previous response was rejected: {last_error}. "
+                        "Please try again, strictly following the requirements."
+                    ),
+                }
+            )
+            logger.info("AI meal generation retry %d/%d: %s", attempt, max_attempts - 1, last_error)
+
+        raw_text = _request_with_chat(
+            attempt_messages,
+            temperature=temperature,
+            model=OPENAI_MEAL_MODEL,
+            max_tokens=OPENAI_MEAL_MAX_TOKENS,
+        )
+        payload = _extract_json(raw_text)
+        if not payload:
+            last_error = "Failed to parse meal generation response."
+            continue
+
+        meals, error = _validate_generated_meals(payload, meal_slots, dto)
+        if error:
+            last_error = error
+            continue
+
+        macro_error = _validate_macro_totals(meals, total_targets)
+        if macro_error:
+            last_error = macro_error
+            continue
+
+        return {"meals": meals, "error": None}
+
+    return {"meals": [], "error": last_error or "Meal generation failed after retries."}
 
 
 def generate_daily_macro_goal(pref: Any) -> Dict[str, Any]:
@@ -1141,6 +1196,7 @@ def _format_meal(recipe: Dict[str, Any], fallback_name: str) -> Dict[str, Any]:
 def _aggregate_snacks(recipes: List[Dict[str, Any]]) -> Dict[str, Any]:
     names = [meal.get("name") or "Snack" for meal in recipes]
     urls = [meal.get("url") for meal in recipes if meal.get("url")]
+    recipe_ids = [meal.get("id") for meal in recipes if meal.get("id")]
     instructions = " ".join(
         step for step in (meal.get("instructions") for meal in recipes) if step
     ).strip()
@@ -1156,6 +1212,7 @@ def _aggregate_snacks(recipes: List[Dict[str, Any]]) -> Dict[str, Any]:
         "tags": [],
         "ingredients": [],
         "instructions": instructions,
+        "recipe_ids": recipe_ids,
     }
 
 

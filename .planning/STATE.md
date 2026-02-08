@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-31)
 
 **Core value:** Deliver personalized meal plans that users actually want to cook and eat, while hitting their nutritional targets.
-**Current focus:** v1.1 Personalized Recommendations - Phase 8: Personalization UI
+**Current focus:** v1.1.1 Hybrid Reliability - COMPLETE
 
 ## Current Position
 
-Phase: 8 of 8 (Personalization UI)
-Plan: 2 of 2
-Status: Phase complete
-Last activity: 2026-02-03 — Completed 08-02-PLAN.md
+Phase: 9 of 9 (Planner Hardening) - COMPLETE
+Plan: 3 of 3 (09-01, 09-02, 09-03 all complete)
+Status: Milestone complete
+Last activity: 2026-02-08 — Completed 09-03-PLAN.md (snack recipe ID preservation)
 
-Progress: [████████████████████] 100% (23/23 total plans across all phases)
+Progress: [████████████████████] 100% (26/26 total plans across all phases)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 23
+- Total plans completed: 26
 - Average duration: 2 min
-- Total execution time: 0.72 hours
+- Total execution time: 0.88 hours
 
 **By Phase:**
 
@@ -35,10 +35,11 @@ Progress: [████████████████████] 100% (2
 | 6. Rating Infrastructure | 2/2 | 3 min | 2 min |
 | 7. Constraint Solver Engine | 3/3 | 4 min | 4 min |
 | 8. Personalization UI | 2/2 | 1 min | 1 min |
+| 9. Planner Hardening | 3/3 | 7 min | 2 min |
 
 **Recent Trend:**
-- Phase 7 completed: generation progress feedback added
-- Slightly longer for complex optimization algorithm implementation
+- Phase 9 completed: macro validation, adaptive solver threshold, snack ID preservation
+- All 9 phases delivered for v1.1.1 milestone
 
 *Updated after each plan completion*
 
@@ -59,6 +60,9 @@ Recent decisions affecting current work:
 - [07-01]: PuLP for constraint optimization - Simpler API than OR-Tools, sufficient for meal selection
 - [07-01]: Binary recipe scoring (liked=10, neutral=1) - All liked recipes weighted equally
 - [07-01]: 1-week recipe history lookback - Avoids repeating last week's meals
+- [09-01]: Hybrid macro tolerance set to ±15% to align AI output with targets
+- [09-01]: AI meal generation retries up to 2 times with temperature escalation and error feedback
+- [09-03]: Snack recipe_ids preserved through aggregation for PlanRecipe tracking
 
 ### Pending Todos
 
@@ -77,11 +81,11 @@ None yet.
 
 **Solver performance (new - Phase 7):**
 - Performance with large recipe databases (>1000 recipes) needs benchmarking
-- Quality thresholds (50% liked, 20% macro) may need tuning after user testing
+- Liked threshold now adaptive (15–50%); macro deviation still 20%—monitor with real data
 - Meal type distribution may need adjustment based on real data
 
 ## Session Continuity
 
-Last session: 2026-02-03 12:40 UTC
-Stopped at: Completed 08-02-PLAN.md
+Last session: 2026-02-08
+Stopped at: Completed 09-03-PLAN.md — Phase 9 and v1.1.1 milestone complete
 Resume file: None

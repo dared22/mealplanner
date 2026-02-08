@@ -28,6 +28,22 @@ QUALITY_THRESHOLD_LIKED_RATIO = 0.5  # Minimum 50% liked recipes
 QUALITY_THRESHOLD_MACRO_DEVIATION = 0.2  # Maximum 20% macro deviation
 
 
+def _adaptive_liked_threshold(liked_count: int, total_meals: int) -> float:
+    """Compute an adaptive liked-ratio threshold based on available liked recipes.
+
+    The standard quality gate requires 50% of meals to be from liked recipes.
+    For users with very few likes relative to required meals, that ratio is
+    impossible. Scale the target to 80% of the maximum achievable liked ratio
+    (liked_count / total_meals) with a floor of 0.15 and ceiling of 0.50.
+    """
+    if total_meals <= 0:
+        return QUALITY_THRESHOLD_LIKED_RATIO
+
+    max_achievable = liked_count / total_meals
+    threshold = max_achievable * 0.8
+    return max(0.15, min(threshold, QUALITY_THRESHOLD_LIKED_RATIO))
+
+
 def _normalize_token(value: str) -> str:
     """Normalize text to a comparable token (lowercase, underscores, alnum only)."""
     normalized = re.sub(r"[^a-z0-9]+", "_", str(value).strip().lower())
@@ -665,6 +681,7 @@ def _format_plan_output(
                 "tags": [],
                 "ingredients": [],
                 "instructions": "",
+                "recipe_ids": [s["id"] for s in snacks if s.get("id")],
             }
 
         # Calculate day totals
@@ -815,11 +832,14 @@ def generate_personalized_plan(
         logger.info(f"Quality metrics: {metrics}")
 
         # Step 9: Quality threshold check
-        if (metrics["liked_ratio"] < QUALITY_THRESHOLD_LIKED_RATIO or
+        total_meals = len(WEEK_DAYS) * len(meal_slots)
+        liked_threshold = _adaptive_liked_threshold(len(liked_ids), total_meals)
+
+        if (metrics["liked_ratio"] < liked_threshold or
             metrics["macro_deviation"] > QUALITY_THRESHOLD_MACRO_DEVIATION):
             logger.warning(
                 f"Solution below quality threshold: "
-                f"liked={metrics['liked_ratio']:.2f}, "
+                f"liked={metrics['liked_ratio']:.2f} (threshold={liked_threshold:.2f}), "
                 f"macro_dev={metrics['macro_deviation']:.2f}"
             )
             return {

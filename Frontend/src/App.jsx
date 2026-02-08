@@ -15,6 +15,8 @@ import AdminRecipeEditor from '@/Pages/AdminRecipeEditor'
 import AdminLogs from '@/Pages/AdminLogs'
 import AdminUserDetails from '@/Pages/AdminUserDetails'
 import Forbidden from '@/Pages/Forbidden'
+import PrivacyPolicy from '@/Pages/PrivacyPolicy'
+import DataDeletion from '@/Pages/DataDeletion'
 
 function AppRoutes() {
   const { user } = useUser()
@@ -36,6 +38,8 @@ function AppRoutes() {
             <Route path="logs" element={<AdminLogs />} />
           </Route>
           <Route path="/forbidden" element={<Forbidden />} />
+          <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+          <Route path="/data-deletion" element={<DataDeletion />} />
           <Route path="/" element={<Navigate to="/planner" replace />} />
           <Route path="/planner" element={<MealPlanner user={normalizedUser} />} />
           <Route path="/recipes" element={<Recipes />} />
@@ -44,6 +48,8 @@ function AppRoutes() {
       </SignedIn>
       <SignedOut>
         <Routes>
+          <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+          <Route path="/data-deletion" element={<DataDeletion />} />
           <Route path="*" element={<Login />} />
         </Routes>
       </SignedOut>
