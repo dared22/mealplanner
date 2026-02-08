@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react'
+import { Link } from 'react-router-dom'
 import { SignIn, SignUp } from '@clerk/clerk-react'
 import { motion as Motion, AnimatePresence } from 'framer-motion'
 import { useLanguage } from '@/i18n/useLanguage'
@@ -162,9 +163,19 @@ export default function Login() {
 
       {/* Minimal footer */}
       <footer className="login-footer">
-        <span className="login-footer-text">
-          {t('Your data is encrypted and used solely for nutritional analysis.')}
-        </span>
+        <div className="flex flex-col items-center gap-2">
+          <span className="login-footer-text">
+            {t('Your data is encrypted and used solely for nutritional analysis.')}
+          </span>
+          <div className="flex items-center gap-4">
+            <Link to="/privacy-policy" className="footer-link">
+              {t('View Privacy Policy')}
+            </Link>
+            <Link to="/data-deletion" className="footer-link">
+              {t('Data Deletion')}
+            </Link>
+          </div>
+        </div>
       </footer>
     </div>
   )

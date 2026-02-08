@@ -282,9 +282,14 @@ const Footer = memo(function Footer({ t }) {
             {t('Your data is encrypted and used solely for nutritional analysis.')}
           </span>
         </div>
-        <button className="footer-link font-semibold">
-          {t('View Privacy Policy')}
-        </button>
+        <div className="footer-links">
+          <Link to="/privacy-policy" className="footer-link font-semibold">
+            {t('View Privacy Policy')}
+          </Link>
+          <Link to="/data-deletion" className="footer-link">
+            {t('Data Deletion')}
+          </Link>
+        </div>
       </div>
     </footer>
   );

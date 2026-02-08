@@ -38,6 +38,10 @@ export const translations = {
     'Your data is encrypted and used solely for nutritional analysis.':
       'Dine data er kryptert og brukes kun til ern\u00e6ringsanalyse.',
     'View Privacy Policy': 'Se personvernregler',
+    'Privacy Policy': 'Personvernregler',
+    'Data Deletion': 'Sletting av data',
+    'User Data Deletion': 'Sletting av brukerdata',
+    'Last updated': 'Sist oppdatert',
 
     // Results page
     Your: 'Din',

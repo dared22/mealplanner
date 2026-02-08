@@ -681,6 +681,7 @@ def _format_plan_output(
                 "tags": [],
                 "ingredients": [],
                 "instructions": "",
+                "recipe_ids": [s["id"] for s in snacks if s.get("id")],
             }
 
         # Calculate day totals
