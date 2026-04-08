@@ -313,6 +313,9 @@ export const translations = {
     Budget: 'Budsjett',
     'Select budget': 'Velg budsjett',
     'meals/day': 'm\u00e5ltider/dag',
+    'Carry-forward leftovers': 'Ta vare p\u00e5 rester',
+    'Reuse dinner leftovers for the next day when portions allow.': 'Gjenbruk middagsrester neste dag n\u00e5r porsjonene tillater det.',
+    'Leftovers enabled': 'Rester aktivert',
     'We could not finalize your plan. Please try again.':
       'Vi kunne ikke ferdigstille planen din. Pr\u00f8v igjen.',
     'We were unable to generate your plan. Please try again.':
@@ -371,6 +374,8 @@ export const translations = {
     'Why this meal?': 'Hvorfor dette m\u00e5ltidet?',
     'Why this recommendation?': 'Hvorfor denne anbefalingen?',
     'Your favorites': 'Dine favoritter',
+    Leftovers: 'Rester',
+    'Leftovers from {day} {mealType}': 'Rester fra {day} {mealType}',
     'Finding recipes...': 'Finner oppskrifter...',
     'Optimizing nutrition...': 'Optimaliserer ern\u00e6ring...',
     'Finalizing plan...': 'Ferdigstiller plan...',

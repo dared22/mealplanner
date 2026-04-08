@@ -10,7 +10,16 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 from typing import Any, Dict, Optional, Literal, Iterable
 
-from fastapi import BackgroundTasks, Body, Depends, FastAPI, HTTPException, Query, Request, status
+from fastapi import (
+    BackgroundTasks,
+    Body,
+    Depends,
+    FastAPI,
+    HTTPException,
+    Query,
+    Request,
+    status,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr
@@ -26,6 +35,7 @@ from clerk_auth import (
 from database import Base, SessionLocal, engine, get_session
 from models import ActivityLog, Preference, Rating, Recipe, User, PlanRecipe
 from planner import (
+    apply_carry_forward_leftovers,
     _format_list_values,
     fill_missing_meals,
     generate_daily_macro_goal,
@@ -34,7 +44,11 @@ from planner import (
 )
 from recipe_translator import PlanTranslator
 
-ENSURE_SCHEMA_ON_STARTUP = os.getenv("ENSURE_SCHEMA_ON_STARTUP", "").lower() in {"1", "true", "yes"}
+ENSURE_SCHEMA_ON_STARTUP = os.getenv("ENSURE_SCHEMA_ON_STARTUP", "").lower() in {
+    "1",
+    "true",
+    "yes",
+}
 
 logger = logging.getLogger(__name__)
 PLAN_GENERATION_TIMEOUT = int(os.getenv("PLAN_GENERATION_TIMEOUT", "180"))
@@ -239,6 +253,8 @@ class AdminRecipeImportResponse(BaseModel):
     updated: int
     skipped: int
     errors: list[AdminRecipeImportError]
+
+
 class AdminPreferenceSummary(BaseModel):
     id: int
     submitted_at: str
@@ -314,14 +330,18 @@ def optional_current_user(
     payload = verify_session_token(token)
     clerk_user_id = payload.get("sub")
     if not clerk_user_id:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session token")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session token"
+        )
 
     preferred_username = extract_username(payload)
 
     user = db.scalar(select(User).where(User.clerk_user_id == clerk_user_id))
     if user is not None:
         if not user.username:
-            user.username = _generate_username(db, user.email, clerk_user_id, preferred_username)
+            user.username = _generate_username(
+                db, user.email, clerk_user_id, preferred_username
+            )
             db.add(user)
             db.commit()
             db.refresh(user)
@@ -331,11 +351,15 @@ def optional_current_user(
 
     email = extract_primary_email(payload)
     if email:
-        existing = db.scalar(select(User).where(func.lower(User.email) == email.lower()))
+        existing = db.scalar(
+            select(User).where(func.lower(User.email) == email.lower())
+        )
         if existing is not None:
             existing.clerk_user_id = clerk_user_id
             if not existing.username:
-                existing.username = _generate_username(db, existing.email, clerk_user_id, preferred_username)
+                existing.username = _generate_username(
+                    db, existing.email, clerk_user_id, preferred_username
+                )
             else:
                 _maybe_update_username(db, existing, preferred_username)
             db.add(existing)
@@ -368,9 +392,13 @@ def current_user_dependency(
     user: Optional[User] = Depends(optional_current_user),
 ) -> User:
     if user is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated"
+        )
     if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account suspended")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Account suspended"
+        )
     return user
 
 
@@ -378,7 +406,9 @@ def admin_user_dependency(
     user: User = Depends(current_user_dependency),
 ) -> User:
     if not user.is_admin:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required"
+        )
     return user
 
 
@@ -398,6 +428,7 @@ async def handle_unhandled_exception(request: Request, exc: Exception) -> JSONRe
         metadata={"path": request.url.path, "method": request.method},
     )
     return JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
+
 
 LANGUAGE_LABELS = {
     "en": "English",
@@ -432,7 +463,9 @@ def _slugify_recipe_title(title: str) -> str:
     return cleaned or "recipe"
 
 
-def _recipe_slug_exists(db: Session, slug: str, exclude_id: Optional[UUID] = None) -> bool:
+def _recipe_slug_exists(
+    db: Session, slug: str, exclude_id: Optional[UUID] = None
+) -> bool:
     stmt = select(Recipe.id).where(Recipe.slug == slug)
     if exclude_id is not None:
         stmt = stmt.where(Recipe.id != exclude_id)
@@ -547,6 +580,16 @@ def _json_safe(value: Any) -> Any:
     return str(value)
 
 
+def _coerce_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if value is None:
+        return False
+    return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
 def _repair_plan_payload(plan: Any) -> Any:
     """Ensure calories/macros are populated and ingredients are properly formatted."""
     if not isinstance(plan, dict):
@@ -575,7 +618,9 @@ def _repair_plan_payload(plan: Any) -> Any:
         if not isinstance(day, dict):
             return day
         fixed_day = dict(day)
-        meals = fixed_day.get("meals") if isinstance(fixed_day.get("meals"), dict) else {}
+        meals = (
+            fixed_day.get("meals") if isinstance(fixed_day.get("meals"), dict) else {}
+        )
         repaired_meals = {}
         for key, meal in meals.items():
             repaired_meals[key] = _repair_meal(meal) if meal else meal
@@ -595,11 +640,19 @@ def _repair_plan_payload(plan: Any) -> Any:
 
         if float(fixed_day.get("calories") or 0) == 0:
             fixed_day["calories"] = _sum("calories")
-        macros = fixed_day.get("macros") if isinstance(fixed_day.get("macros"), dict) else {}
+        macros = (
+            fixed_day.get("macros") if isinstance(fixed_day.get("macros"), dict) else {}
+        )
         fixed_day["macros"] = {
-            "protein": macros.get("protein") if macros.get("protein") not in (None, "") else _sum("protein"),
-            "carbs": macros.get("carbs") if macros.get("carbs") not in (None, "") else _sum("carbs"),
-            "fat": macros.get("fat") if macros.get("fat") not in (None, "") else _sum("fat"),
+            "protein": macros.get("protein")
+            if macros.get("protein") not in (None, "")
+            else _sum("protein"),
+            "carbs": macros.get("carbs")
+            if macros.get("carbs") not in (None, "")
+            else _sum("carbs"),
+            "fat": macros.get("fat")
+            if macros.get("fat") not in (None, "")
+            else _sum("fat"),
         }
         return fixed_day
 
@@ -716,7 +769,9 @@ def _is_duplicate_recipe(
         title_score = _jaccard_similarity(title_tokens, entry["title_tokens"])
         if title_score < title_threshold:
             continue
-        ingredient_score = _jaccard_similarity(ingredient_tokens, entry["ingredient_tokens"])
+        ingredient_score = _jaccard_similarity(
+            ingredient_tokens, entry["ingredient_tokens"]
+        )
         if ingredient_score >= ingredient_threshold:
             return {
                 "title_score": title_score,
@@ -769,13 +824,15 @@ def log_activity(
 
 def _should_use_solver(db: Session, user_id: UUID) -> bool:
     """Check if user has enough ratings for solver-based generation."""
-    rating_count = db.scalar(
-        select(func.count(Rating.id)).where(Rating.user_id == user_id)
-    ) or 0
+    rating_count = (
+        db.scalar(select(func.count(Rating.id)).where(Rating.user_id == user_id)) or 0
+    )
     return rating_count >= 10  # Personalization threshold
 
 
-def _is_impossible_constraint(preference: Preference, macro_goal: Dict[str, Any]) -> Optional[str]:
+def _is_impossible_constraint(
+    preference: Preference, macro_goal: Dict[str, Any]
+) -> Optional[str]:
     """
     Check if user's constraints are mathematically impossible.
     Returns error message if impossible, None otherwise.
@@ -832,7 +889,9 @@ def _is_impossible_constraint(preference: Preference, macro_goal: Dict[str, Any]
     return None
 
 
-def _generate_solver_plan(db: Session, user_id: UUID, preference: Preference) -> Dict[str, Any]:
+def _generate_solver_plan(
+    db: Session, user_id: UUID, preference: Preference
+) -> Dict[str, Any]:
     """Generate plan using solver with automatic OpenAI fallback."""
     from solver import generate_personalized_plan
 
@@ -877,10 +936,18 @@ def _generate_solver_plan(db: Session, user_id: UUID, preference: Preference) ->
             plan = solver_result.get("plan")
             if _plan_has_missing_meals(plan, preference.meals_per_day or 3):
                 fill_result = fill_missing_meals(plan, preference, db=db)
-                if fill_result.get("plan") is not None and fill_result.get("error") is None:
-                    solver_result["plan"] = fill_result["plan"]
+                if (
+                    fill_result.get("plan") is not None
+                    and fill_result.get("error") is None
+                ):
+                    solver_result["plan"] = apply_carry_forward_leftovers(
+                        fill_result["plan"], preference, db=db
+                    )
                 else:
-                    logger.warning("Failed to fill missing meals via planner: %s", fill_result.get("error"))
+                    logger.warning(
+                        "Failed to fill missing meals via planner: %s",
+                        fill_result.get("error"),
+                    )
 
             fallback_reason = solver_result.get("fallback_reason")
             if fallback_reason:
@@ -898,15 +965,25 @@ def _generate_solver_plan(db: Session, user_id: UUID, preference: Preference) ->
                 )
             else:
                 plan = solver_result.get("plan")
-                if plan and _plan_has_missing_meals(plan, preference.meals_per_day or 3):
+                if plan and _plan_has_missing_meals(
+                    plan, preference.meals_per_day or 3
+                ):
                     solver_result["fallback_reason"] = "missing_meals"
-                    logger.warning("Solver plan still has missing meals; falling back to OpenAI.")
+                    logger.warning(
+                        "Solver plan still has missing meals; falling back to OpenAI."
+                    )
                 else:
                     _update_generation_stage(db, preference.id, "finalizing")
-                    _persist_plan_result(db, preference, solver_result, generation_source="solver")
+                    _persist_plan_result(
+                        db, preference, solver_result, generation_source="solver"
+                    )
                     return solver_result
 
-        fallback_reason = solver_result.get("fallback_reason") or solver_result.get("error") or "unknown"
+        fallback_reason = (
+            solver_result.get("fallback_reason")
+            or solver_result.get("error")
+            or "unknown"
+        )
         log_activity(
             db,
             actor_type="system",
@@ -931,7 +1008,9 @@ def _generate_solver_plan(db: Session, user_id: UUID, preference: Preference) ->
     _update_generation_stage(db, preference.id, "finalizing")
     # Use generation_source from result, append _fallback to indicate solver fallback
     generation_source = openai_result.get("generation_source", "openai") + "_fallback"
-    _persist_plan_result(db, preference, openai_result, generation_source=generation_source)
+    _persist_plan_result(
+        db, preference, openai_result, generation_source=generation_source
+    )
     return openai_result
 
 
@@ -1025,7 +1104,9 @@ def _update_generation_stage(db: Session, pref_id: int, stage: str) -> None:
     if preference is None:
         return
 
-    raw_data = dict(preference.raw_data) if isinstance(preference.raw_data, dict) else {}
+    raw_data = (
+        dict(preference.raw_data) if isinstance(preference.raw_data, dict) else {}
+    )
     raw_data["generation_stage"] = stage
     raw_data["generation_stage_updated_at"] = datetime.now(timezone.utc).isoformat()
     preference.raw_data = raw_data
@@ -1094,7 +1175,7 @@ def _parse_quantity_unit(text: str) -> tuple[Optional[float], Optional[str], str
         candidate = unit_candidate.lower()
         if lower_rest.startswith(candidate):
             unit = candidate
-            name_part = rest[len(unit_candidate):]
+            name_part = rest[len(unit_candidate) :]
             break
         dotted = f"{candidate}."
         if lower_rest.startswith(dotted):
@@ -1153,7 +1234,9 @@ def _normalize_ingredient_item(item: Any) -> Optional[dict[str, Any]]:
     qty_value = payload.get("quantity")
     unit_value = payload.get("unit")
     notes_value = payload.get("notes") or ""
-    parsed_qty, parsed_unit, parsed_name = _parse_quantity_unit(name_value or original_text)
+    parsed_qty, parsed_unit, parsed_name = _parse_quantity_unit(
+        name_value or original_text
+    )
 
     quantity = qty_value if qty_value not in (None, "") else parsed_qty
     unit = unit_value or parsed_unit
@@ -1192,9 +1275,17 @@ def _parse_import_ingredients(value: Any) -> list[dict[str, Any]]:
             if isinstance(parsed, list):
                 items = parsed
             elif "\n" in text:
-                items = [_strip_nulls(segment.strip()) for segment in text.splitlines() if segment.strip()]
+                items = [
+                    _strip_nulls(segment.strip())
+                    for segment in text.splitlines()
+                    if segment.strip()
+                ]
             elif "," in text:
-                items = [_strip_nulls(segment.strip()) for segment in text.split(",") if segment.strip()]
+                items = [
+                    _strip_nulls(segment.strip())
+                    for segment in text.split(",")
+                    if segment.strip()
+                ]
             else:
                 items = [_strip_nulls(text)]
     else:
@@ -1242,7 +1333,9 @@ def _recipe_to_dict(recipe: Recipe) -> Dict[str, Any]:
         "type": recipe.dish_type,
         "price_tier": recipe.cost_category,
         "tags": recipe.tags or [],
-        "ingredients": _flatten_ingredients(recipe.ingredients) if recipe.ingredients else [],
+        "ingredients": _flatten_ingredients(recipe.ingredients)
+        if recipe.ingredients
+        else [],
         "instructions": recipe.instructions or [],
         "images": images,
         "local_images": [],
@@ -1317,7 +1410,9 @@ def _normalize_import_column_name(value: str) -> str:
     return "".join(ch for ch in str(value).lower() if ch.isalnum())
 
 
-def _find_import_column(columns: Iterable[str], candidates: Iterable[str]) -> Optional[str]:
+def _find_import_column(
+    columns: Iterable[str], candidates: Iterable[str]
+) -> Optional[str]:
     normalized = {_normalize_import_column_name(col): col for col in columns}
     for candidate in candidates:
         needle = _normalize_import_column_name(candidate)
@@ -1385,9 +1480,17 @@ def _parse_import_list_field(value: Any) -> list[str]:
             if isinstance(parsed, list):
                 return [str(item).strip() for item in parsed if str(item).strip()]
         if "\n" in text:
-            return [_strip_nulls(segment.strip()) for segment in text.splitlines() if segment.strip()]
+            return [
+                _strip_nulls(segment.strip())
+                for segment in text.splitlines()
+                if segment.strip()
+            ]
         if "," in text:
-            return [_strip_nulls(segment.strip()) for segment in text.split(",") if segment.strip()]
+            return [
+                _strip_nulls(segment.strip())
+                for segment in text.split(",")
+                if segment.strip()
+            ]
         return [_strip_nulls(text)]
     text = str(value).strip()
     text = _strip_nulls(text)
@@ -1411,6 +1514,7 @@ def _parse_import_nutrition(value: Any) -> Dict[str, Any]:
             return parsed
     return {}
 
+
 def _strip_nulls(text: str) -> str:
     return text.replace("\x00", "")
 
@@ -1427,7 +1531,16 @@ def _parse_import_int(value: Any) -> Optional[int]:
     if _is_blank(value):
         return None
     if isinstance(value, dict):
-        for key in ("qty", "quantity", "amount", "value", "count", "servings", "portion", "portions"):
+        for key in (
+            "qty",
+            "quantity",
+            "amount",
+            "value",
+            "count",
+            "servings",
+            "portion",
+            "portions",
+        ):
             candidate = value.get(key)
             if _is_blank(candidate):
                 continue
@@ -1499,7 +1612,9 @@ def _parse_import_datetime(value: Any) -> Optional[datetime]:
                 return None
             if parsed is None:
                 return None
-            if getattr(parsed, "tzinfo", None) is None and hasattr(parsed, "tz_localize"):
+            if getattr(parsed, "tzinfo", None) is None and hasattr(
+                parsed, "tz_localize"
+            ):
                 parsed = parsed.tz_localize("UTC")
             if hasattr(parsed, "to_pydatetime"):
                 return parsed.to_pydatetime()
@@ -1610,23 +1725,35 @@ def _max_import_errors() -> int:
 
 def _resolve_import_columns(columns: Iterable[str]) -> Dict[str, Optional[str]]:
     return {
-        "title": _find_import_column(columns, ["title", "name", "recipe", "recipe_name"]),
+        "title": _find_import_column(
+            columns, ["title", "name", "recipe", "recipe_name"]
+        ),
         "ingredients": _find_import_column(columns, ["ingredients", "ingredient_list"]),
         "instructions": _find_import_column(
             columns, ["instructions", "instruction", "steps", "directions"]
         ),
         "source_url": _find_import_column(columns, ["source_url", "url", "link"]),
-        "image_url": _find_import_column(columns, ["image_url", "image", "photo", "picture"]),
+        "image_url": _find_import_column(
+            columns, ["image_url", "image", "photo", "picture"]
+        ),
         "description": _find_import_column(columns, ["description", "summary", "desc"]),
         "cuisine": _find_import_column(columns, ["cuisine", "cuisine_type", "region"]),
         "nutrition": _find_import_column(columns, ["nutrition", "nutrients", "macros"]),
         "tags": _find_import_column(columns, ["tags", "labels", "categories"]),
         "meal_type": _find_import_column(columns, ["meal_type", "meal", "course"]),
         "dish_type": _find_import_column(columns, ["dish_type", "dish", "type"]),
-        "category": _find_import_column(columns, ["category", "primary_category", "group"]),
-        "prep_time_minutes": _find_import_column(columns, ["prep_time_minutes", "prep_time", "prep"]),
-        "cook_time_minutes": _find_import_column(columns, ["cook_time_minutes", "cook_time", "cook"]),
-        "total_time_minutes": _find_import_column(columns, ["total_time_minutes", "total_time"]),
+        "category": _find_import_column(
+            columns, ["category", "primary_category", "group"]
+        ),
+        "prep_time_minutes": _find_import_column(
+            columns, ["prep_time_minutes", "prep_time", "prep"]
+        ),
+        "cook_time_minutes": _find_import_column(
+            columns, ["cook_time_minutes", "cook_time", "cook"]
+        ),
+        "total_time_minutes": _find_import_column(
+            columns, ["total_time_minutes", "total_time"]
+        ),
         "portions": _find_import_column(
             columns,
             [
@@ -1640,28 +1767,55 @@ def _resolve_import_columns(columns: Iterable[str]) -> Dict[str, Optional[str]]:
                 "yield",
             ],
         ),
-        "dietary_flags": _find_import_column(columns, ["dietary_flags", "dietary", "diet_flags", "diet"]),
-        "allergens": _find_import_column(columns, ["allergens", "allergy", "allergies"]),
+        "dietary_flags": _find_import_column(
+            columns, ["dietary_flags", "dietary", "diet_flags", "diet"]
+        ),
+        "allergens": _find_import_column(
+            columns, ["allergens", "allergy", "allergies"]
+        ),
         "cost_category": _find_import_column(
             columns,
-            ["cost_category", "price_tier", "budget_range", "price_level", "cost_level", "price_category"],
+            [
+                "cost_category",
+                "price_tier",
+                "budget_range",
+                "price_level",
+                "cost_level",
+                "price_category",
+            ],
         ),
         "cost_per_serving_cents": _find_import_column(
             columns,
-            ["cost_per_serving_cents", "cost_per_serving", "price_per_serving", "price_cents", "cost_cents"],
+            [
+                "cost_per_serving_cents",
+                "cost_per_serving",
+                "price_per_serving",
+                "price_cents",
+                "cost_cents",
+            ],
         ),
         "equipment": _find_import_column(columns, ["equipment", "tools", "appliances"]),
         "difficulty": _find_import_column(columns, ["difficulty", "skill_level"]),
-        "spice_level": _find_import_column(columns, ["spice_level", "spiciness", "heat_level", "heat"]),
+        "spice_level": _find_import_column(
+            columns, ["spice_level", "spiciness", "heat_level", "heat"]
+        ),
         "author": _find_import_column(columns, ["author", "chef", "creator"]),
         "language": _find_import_column(columns, ["language", "lang"]),
         "rating": _find_import_column(columns, ["rating", "score"]),
-        "popularity_score": _find_import_column(columns, ["popularity_score", "popularity"]),
+        "popularity_score": _find_import_column(
+            columns, ["popularity_score", "popularity"]
+        ),
         "health_score": _find_import_column(columns, ["health_score", "health"]),
         "embedding": _find_import_column(columns, ["embedding", "vector"]),
-        "created_at": _find_import_column(columns, ["created_at", "created", "timestamp"]),
-        "updated_at": _find_import_column(columns, ["updated_at", "updated", "modified"]),
-        "scraped_at": _find_import_column(columns, ["scraped_at", "scraped", "crawl_time"]),
+        "created_at": _find_import_column(
+            columns, ["created_at", "created", "timestamp"]
+        ),
+        "updated_at": _find_import_column(
+            columns, ["updated_at", "updated", "modified"]
+        ),
+        "scraped_at": _find_import_column(
+            columns, ["scraped_at", "scraped", "crawl_time"]
+        ),
         "scrape_hash": _find_import_column(columns, ["scrape_hash", "hash"]),
         "is_active": _find_import_column(columns, ["is_active", "active", "enabled"]),
         "slug": _find_import_column(columns, ["slug"]),
@@ -1696,7 +1850,9 @@ def _normalize_import_row(
     cost_category_col = columns.get("cost_category")
 
     meal_type_value = row.get(meal_type_col) if meal_type_col else None
-    meal_type = None if _is_blank(meal_type_value) else str(meal_type_value).strip().lower()
+    meal_type = (
+        None if _is_blank(meal_type_value) else str(meal_type_value).strip().lower()
+    )
 
     cost_value = row.get(cost_category_col) if cost_category_col else None
     cost_category = None
@@ -1757,8 +1913,12 @@ def _translate_plan_in_background(pref_id: int, lang: str) -> None:
             return
 
         raw_data = entry.raw_data if isinstance(entry.raw_data, dict) else {}
-        generated_plan = raw_data.get("generated_plan") if isinstance(raw_data, dict) else None
-        plan_payload = generated_plan.get("plan") if isinstance(generated_plan, dict) else None
+        generated_plan = (
+            raw_data.get("generated_plan") if isinstance(raw_data, dict) else None
+        )
+        plan_payload = (
+            generated_plan.get("plan") if isinstance(generated_plan, dict) else None
+        )
         if not plan_payload:
             logger.warning("No plan available to translate for preference %s", pref_id)
             return
@@ -1874,10 +2034,16 @@ def _generate_plan_in_background(pref_id: int) -> None:
             _update_generation_stage(db, pref_id, "finalizing")
             # Use generation_source from plan result, default to "openai" for backward compatibility
             generation_source = plan_result.get("generation_source", "openai")
-            _persist_plan_result(db, preference, plan_result, generation_source=generation_source)
+            _persist_plan_result(
+                db, preference, plan_result, generation_source=generation_source
+            )
 
         status_value = "success" if plan_result.get("plan") else "error"
-        detail = "Meal plan generated" if status_value == "success" else plan_result.get("error")
+        detail = (
+            "Meal plan generated"
+            if status_value == "success"
+            else plan_result.get("error")
+        )
         log_activity(
             db,
             actor_type="user",
@@ -1886,14 +2052,20 @@ def _generate_plan_in_background(pref_id: int) -> None:
             action_type="plan_generation",
             action_detail=detail,
             status=status_value,
-            metadata={"preference_id": preference.id, "user_id": str(preference.user_id)},
+            metadata={
+                "preference_id": preference.id,
+                "user_id": str(preference.user_id),
+            },
         )
         logger.info("Generated meal plan for preference %s", pref_id)
     except Exception:
-        logger.exception("Failed to update raw_data with generated plan for preference %s", pref_id)
+        logger.exception(
+            "Failed to update raw_data with generated plan for preference %s", pref_id
+        )
         db.rollback()
     finally:
         db.close()
+
 
 default_allowed_origins = {
     "http://localhost:5173",
@@ -1957,23 +2129,32 @@ def save_preferences(
         try:
             provided_id = UUID(str(user_id))
         except ValueError as exc:
-            raise HTTPException(status_code=400, detail="Invalid user_id format") from exc
+            raise HTTPException(
+                status_code=400, detail="Invalid user_id format"
+            ) from exc
         if provided_id != current_user.id:
-            raise HTTPException(status_code=403, detail="Cannot submit preferences for another user")
+            raise HTTPException(
+                status_code=403, detail="Cannot submit preferences for another user"
+            )
+
+    normalized_payload = dict(payload)
+    normalized_payload["carry_forward_enabled"] = _coerce_bool(
+        payload.get("carry_forward_enabled")
+    )
 
     preference = Preference(
-        age=payload.get("age"),
-        gender=payload.get("gender"),
-        height_cm=payload.get("height"),
-        weight_kg=payload.get("weight"),
-        activity_level=payload.get("activity_level"),
-        nutrition_goal=payload.get("nutrition_goal"),
-        meals_per_day=payload.get("meals_per_day"),
-        budget_range=payload.get("budget_range"),
-        cooking_time_preference=payload.get("cooking_time_preference"),
-        dietary_restrictions=payload.get("dietary_restrictions") or [],
-        preferred_cuisines=payload.get("preferred_cuisines") or [],
-        raw_data=payload,
+        age=normalized_payload.get("age"),
+        gender=normalized_payload.get("gender"),
+        height_cm=normalized_payload.get("height"),
+        weight_kg=normalized_payload.get("weight"),
+        activity_level=normalized_payload.get("activity_level"),
+        nutrition_goal=normalized_payload.get("nutrition_goal"),
+        meals_per_day=normalized_payload.get("meals_per_day"),
+        budget_range=normalized_payload.get("budget_range"),
+        cooking_time_preference=normalized_payload.get("cooking_time_preference"),
+        dietary_restrictions=normalized_payload.get("dietary_restrictions") or [],
+        preferred_cuisines=normalized_payload.get("preferred_cuisines") or [],
+        raw_data=normalized_payload,
         user=current_user,
     )
 
@@ -2004,10 +2185,18 @@ def get_preferences(
         raise HTTPException(status_code=404, detail="Preferences not found")
 
     raw_data = entry.raw_data if isinstance(entry.raw_data, dict) else {}
-    generated_plan = raw_data.get("generated_plan") if isinstance(raw_data, dict) else None
-    plan_payload = generated_plan.get("plan") if isinstance(generated_plan, dict) else None
-    raw_plan_text = generated_plan.get("raw_text") if isinstance(generated_plan, dict) else None
-    plan_error = generated_plan.get("error") if isinstance(generated_plan, dict) else None
+    generated_plan = (
+        raw_data.get("generated_plan") if isinstance(raw_data, dict) else None
+    )
+    plan_payload = (
+        generated_plan.get("plan") if isinstance(generated_plan, dict) else None
+    )
+    raw_plan_text = (
+        generated_plan.get("raw_text") if isinstance(generated_plan, dict) else None
+    )
+    plan_error = (
+        generated_plan.get("error") if isinstance(generated_plan, dict) else None
+    )
     generation_source = None
     if isinstance(generated_plan, dict):
         generation_source = generated_plan.get("generation_source")
@@ -2032,7 +2221,9 @@ def get_preferences(
     if plan_payload and normalized_lang:
         generated_plan_language = None
         if isinstance(generated_plan, dict):
-            generated_plan_language = _normalize_language(generated_plan.get("language"))
+            generated_plan_language = _normalize_language(
+                generated_plan.get("language")
+            )
         base_lang = generated_plan_language or _normalize_language(
             raw_data.get("language") or raw_data.get("lang")
         )
@@ -2064,7 +2255,9 @@ def get_preferences(
                     if existing_status != "pending":
                         status_map[normalized_lang] = "pending"
                         updated_raw = dict(raw_data)
-                        updated_raw["generated_plan_translations_status"] = _json_safe(status_map)
+                        updated_raw["generated_plan_translations_status"] = _json_safe(
+                            status_map
+                        )
                         entry.raw_data = updated_raw
                         db.add(entry)
                         db.commit()
@@ -2101,6 +2294,7 @@ def get_preferences(
         "cooking_time_preference": entry.cooking_time_preference,
         "dietary_restrictions": entry.dietary_restrictions,
         "preferred_cuisines": entry.preferred_cuisines,
+        "carry_forward_enabled": _coerce_bool(raw_data.get("carry_forward_enabled")),
         "raw_data": entry.raw_data,
         "user_id": entry.user_id,
         "plan_status": plan_status,
@@ -2117,7 +2311,9 @@ def get_preferences(
 
 
 @app.get("/auth/session", response_model=SessionResponse)
-def get_active_session(user: User = Depends(current_user_dependency)) -> SessionResponse:
+def get_active_session(
+    user: User = Depends(current_user_dependency),
+) -> SessionResponse:
     return SessionResponse(
         user_id=user.id,
         clerk_user_id=user.clerk_user_id or "",
@@ -2127,7 +2323,9 @@ def get_active_session(user: User = Depends(current_user_dependency)) -> Session
 
 
 @app.get("/admin/session", response_model=AdminSessionResponse)
-def get_admin_session(user: User = Depends(admin_user_dependency)) -> AdminSessionResponse:
+def get_admin_session(
+    user: User = Depends(admin_user_dependency),
+) -> AdminSessionResponse:
     return AdminSessionResponse(
         user_id=user.id,
         clerk_user_id=user.clerk_user_id or "",
@@ -2155,12 +2353,16 @@ def get_admin_dashboard_metrics(
     try:
         total_users = db.scalar(select(func.count(User.id))) or 0
         users_current_week = (
-            db.scalar(select(func.count(User.id)).where(User.created_at >= current_week_start)) or 0
+            db.scalar(
+                select(func.count(User.id)).where(User.created_at >= current_week_start)
+            )
+            or 0
         )
         users_previous_week = (
             db.scalar(
                 select(func.count(User.id)).where(
-                    User.created_at >= previous_week_start, User.created_at < current_week_start
+                    User.created_at >= previous_week_start,
+                    User.created_at < current_week_start,
                 )
             )
             or 0
@@ -2213,9 +2415,15 @@ def get_admin_dashboard_metrics(
 
 @app.get("/admin/users", response_model=AdminUserListResponse)
 def list_admin_users(
-    search: Optional[str] = Query(None, description="Match username or email (case-insensitive)"),
-    start_date: Optional[datetime] = Query(None, description="Filter by signup date (UTC)"),
-    end_date: Optional[datetime] = Query(None, description="Filter by signup date (UTC)"),
+    search: Optional[str] = Query(
+        None, description="Match username or email (case-insensitive)"
+    ),
+    start_date: Optional[datetime] = Query(
+        None, description="Filter by signup date (UTC)"
+    ),
+    end_date: Optional[datetime] = Query(
+        None, description="Filter by signup date (UTC)"
+    ),
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_session),
@@ -2336,7 +2544,9 @@ def update_admin_user_status(
 
 @app.get("/admin/recipes", response_model=AdminRecipeListResponse)
 def list_admin_recipes(
-    search: Optional[str] = Query(None, description="Match title or tags (case-insensitive)"),
+    search: Optional[str] = Query(
+        None, description="Match title or tags (case-insensitive)"
+    ),
     active: Optional[bool] = Query(None, description="Filter by active status"),
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
@@ -2408,13 +2618,21 @@ def delete_admin_recipe(
         action_type="recipe_deleted",
         action_detail=f"Deleted recipe {recipe.title}",
         status="success",
-        metadata={"recipe_id": str(recipe.id), "title": recipe.title, "is_active": False},
+        metadata={
+            "recipe_id": str(recipe.id),
+            "title": recipe.title,
+            "is_active": False,
+        },
     )
 
     return _admin_recipe_detail(recipe)
 
 
-@app.post("/admin/recipes", response_model=AdminRecipeDetail, status_code=status.HTTP_201_CREATED)
+@app.post(
+    "/admin/recipes",
+    response_model=AdminRecipeDetail,
+    status_code=status.HTTP_201_CREATED,
+)
 def create_admin_recipe(
     payload: AdminRecipeCreate,
     db: Session = Depends(get_session),
@@ -2492,7 +2710,9 @@ def update_admin_recipe(
     updates = payload.dict(exclude_unset=True)
     if "cost_category" in updates:
         try:
-            updates["cost_category"] = _normalize_cost_category(updates["cost_category"])
+            updates["cost_category"] = _normalize_cost_category(
+                updates["cost_category"]
+            )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
     title_changed = "title" in updates and updates.get("title") != recipe.title
@@ -2500,10 +2720,14 @@ def update_admin_recipe(
 
     if slug_value:
         base_slug = _slugify_recipe_title(slug_value)
-        updates["slug"] = _ensure_unique_recipe_slug(db, base_slug, exclude_id=recipe.id)
+        updates["slug"] = _ensure_unique_recipe_slug(
+            db, base_slug, exclude_id=recipe.id
+        )
     elif title_changed:
         base_slug = _slugify_recipe_title(str(updates.get("title")))
-        updates["slug"] = _ensure_unique_recipe_slug(db, base_slug, exclude_id=recipe.id)
+        updates["slug"] = _ensure_unique_recipe_slug(
+            db, base_slug, exclude_id=recipe.id
+        )
 
     updates["updated_at"] = datetime.now(timezone.utc)
 
@@ -2558,9 +2782,9 @@ async def import_admin_recipes(
     skipped = 0
     errors: list[AdminRecipeImportError] = []
 
-    existing_rows = db.execute(
-        select(Recipe.id, Recipe.title, Recipe.ingredients)
-    ).mappings().all()
+    existing_rows = (
+        db.execute(select(Recipe.id, Recipe.title, Recipe.ingredients)).mappings().all()
+    )
     existing_tokens: list[dict[str, Any]] = []
     for row in existing_rows:
         existing_tokens.append(
@@ -2618,7 +2842,9 @@ async def import_admin_recipes(
                     existing.is_active = normalized["is_active"]
                 if normalized["created_at"] is not None:
                     existing.created_at = normalized["created_at"]
-                existing.updated_at = normalized["updated_at"] or datetime.now(timezone.utc)
+                existing.updated_at = normalized["updated_at"] or datetime.now(
+                    timezone.utc
+                )
                 db.add(existing)
                 db.commit()
                 db.refresh(existing)
@@ -2684,7 +2910,9 @@ async def import_admin_recipes(
                 embedding=normalized["embedding"],
                 scraped_at=normalized["scraped_at"],
                 scrape_hash=normalized["scrape_hash"],
-                is_active=True if normalized["is_active"] is None else normalized["is_active"],
+                is_active=True
+                if normalized["is_active"] is None
+                else normalized["is_active"],
             )
             if normalized["created_at"] is not None:
                 recipe.created_at = normalized["created_at"]
@@ -2725,10 +2953,14 @@ async def import_admin_recipes(
 
 @app.get("/admin/logs", response_model=AdminActivityLogListResponse)
 def list_admin_activity_logs(
-    start_date: Optional[datetime] = Query(None, description="Filter by start date (UTC)"),
+    start_date: Optional[datetime] = Query(
+        None, description="Filter by start date (UTC)"
+    ),
     end_date: Optional[datetime] = Query(None, description="Filter by end date (UTC)"),
     actor_type: Optional[str] = Query(None, description="Filter by actor type"),
-    status_filter: Optional[str] = Query(None, alias="status", description="Filter by status"),
+    status_filter: Optional[str] = Query(
+        None, alias="status", description="Filter by status"
+    ),
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_session),
@@ -2779,7 +3011,9 @@ def list_user_preferences(
     current_user: User = Depends(current_user_dependency),
 ) -> Dict[str, Any]:
     if user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Cannot access another user's preferences")
+        raise HTTPException(
+            status_code=403, detail="Cannot access another user's preferences"
+        )
 
     entries = db.scalars(select(Preference).where(Preference.user_id == user_id)).all()
     return {
@@ -2804,9 +3038,14 @@ def get_plan_history(
 ) -> Dict[str, Any]:
     """Get user's meal plan history with recipe tracking."""
     # Get total count
-    total = db.scalar(
-        select(func.count(Preference.id)).where(Preference.user_id == current_user.id)
-    ) or 0
+    total = (
+        db.scalar(
+            select(func.count(Preference.id)).where(
+                Preference.user_id == current_user.id
+            )
+        )
+        or 0
+    )
 
     # Get preferences with plan recipes
     preferences = db.scalars(
@@ -2828,19 +3067,21 @@ def get_plan_history(
 
         plan_status = _plan_status_from_raw_data(pref.raw_data)
 
-        plans.append({
-            "preference_id": pref.id,
-            "submitted_at": pref.submitted_at,
-            "plan_status": plan_status,
-            "recipes": [
-                {
-                    "recipe_id": str(pr.recipe_id),
-                    "day_name": pr.day_name,
-                    "meal_type": pr.meal_type,
-                }
-                for pr in plan_recipes
-            ],
-        })
+        plans.append(
+            {
+                "preference_id": pref.id,
+                "submitted_at": pref.submitted_at,
+                "plan_status": plan_status,
+                "recipes": [
+                    {
+                        "recipe_id": str(pr.recipe_id),
+                        "day_name": pr.day_name,
+                        "meal_type": pr.meal_type,
+                    }
+                    for pr in plan_recipes
+                ],
+            }
+        )
 
     return {
         "items": plans,
@@ -2868,8 +3109,7 @@ def create_or_update_rating(
     # Check if rating already exists
     existing_rating = db.scalar(
         select(Rating).where(
-            Rating.user_id == current_user.id,
-            Rating.recipe_id == payload.recipe_id
+            Rating.user_id == current_user.id, Rating.recipe_id == payload.recipe_id
         )
     )
 
@@ -2889,7 +3129,10 @@ def create_or_update_rating(
             action_type="rating_updated",
             action_detail=f"Updated rating for recipe {recipe.title}",
             status="success",
-            metadata={"recipe_id": str(payload.recipe_id), "is_liked": payload.is_liked},
+            metadata={
+                "recipe_id": str(payload.recipe_id),
+                "is_liked": payload.is_liked,
+            },
         )
 
         return RatingResponse(
@@ -2919,7 +3162,10 @@ def create_or_update_rating(
             action_type="rating_created",
             action_detail=f"Rated recipe {recipe.title}",
             status="success",
-            metadata={"recipe_id": str(payload.recipe_id), "is_liked": payload.is_liked},
+            metadata={
+                "recipe_id": str(payload.recipe_id),
+                "is_liked": payload.is_liked,
+            },
         )
 
         return RatingResponse(
@@ -2940,9 +3186,12 @@ def get_my_ratings(
     current_user: User = Depends(current_user_dependency),
 ) -> RatingListResponse:
     """Get current user's recipe ratings."""
-    total = db.scalar(
-        select(func.count(Rating.id)).where(Rating.user_id == current_user.id)
-    ) or 0
+    total = (
+        db.scalar(
+            select(func.count(Rating.id)).where(Rating.user_id == current_user.id)
+        )
+        or 0
+    )
 
     ratings = db.scalars(
         select(Rating)
@@ -2974,9 +3223,12 @@ def get_rating_progress(
     current_user: User = Depends(current_user_dependency),
 ) -> RatingProgressResponse:
     """Get user's progress toward personalization threshold."""
-    total_ratings = db.scalar(
-        select(func.count(Rating.id)).where(Rating.user_id == current_user.id)
-    ) or 0
+    total_ratings = (
+        db.scalar(
+            select(func.count(Rating.id)).where(Rating.user_id == current_user.id)
+        )
+        or 0
+    )
 
     threshold = 10
     is_unlocked = total_ratings >= threshold
@@ -3013,7 +3265,9 @@ def list_recipes(
     total = db.scalar(count_stmt) or 0
 
     rows = db.scalars(
-        base_stmt.order_by(Recipe.created_at.desc().nullslast(), Recipe.slug).offset(offset).limit(limit)
+        base_stmt.order_by(Recipe.created_at.desc().nullslast(), Recipe.slug)
+        .offset(offset)
+        .limit(limit)
     ).all()
 
     return {
@@ -3040,9 +3294,7 @@ def get_recipe_alternatives(
     restrictions and excluding disliked recipes.
     """
     # Fetch source recipe
-    source_recipe = db.scalar(
-        select(Recipe).where(Recipe.id == recipe_id)
-    )
+    source_recipe = db.scalar(select(Recipe).where(Recipe.id == recipe_id))
 
     if not source_recipe or not source_recipe.is_active:
         raise HTTPException(status_code=404, detail="Recipe not found")
@@ -3052,7 +3304,7 @@ def get_recipe_alternatives(
     if not effective_meal_type:
         raise HTTPException(
             status_code=400,
-            detail="Cannot determine meal type - source recipe has no meal_type and none provided"
+            detail="Cannot determine meal type - source recipe has no meal_type and none provided",
         )
 
     # Get user's latest dietary restrictions
@@ -3067,16 +3319,18 @@ def get_recipe_alternatives(
     # Get disliked recipe IDs (fetch into Python set to avoid subquery)
     disliked_ids = set(
         db.scalars(
-            select(Rating.recipe_id)
-            .where(Rating.user_id == current_user.id, Rating.is_liked == False)
+            select(Rating.recipe_id).where(
+                Rating.user_id == current_user.id, Rating.is_liked == False
+            )
         ).all()
     )
 
     # Get liked recipe IDs for prioritization
     liked_ids = set(
         db.scalars(
-            select(Rating.recipe_id)
-            .where(Rating.user_id == current_user.id, Rating.is_liked == True)
+            select(Rating.recipe_id).where(
+                Rating.user_id == current_user.id, Rating.is_liked == True
+            )
         ).all()
     )
 
@@ -3099,8 +3353,8 @@ def get_recipe_alternatives(
             stmt = stmt.where(Recipe.dietary_flags["is_vegan"].astext == "true")
         elif restriction_lower == "vegetarian":
             stmt = stmt.where(
-                (Recipe.dietary_flags["is_vegetarian"].astext == "true") |
-                (Recipe.dietary_flags["is_vegan"].astext == "true")
+                (Recipe.dietary_flags["is_vegetarian"].astext == "true")
+                | (Recipe.dietary_flags["is_vegan"].astext == "true")
             )
         elif restriction_lower == "gluten_free" or "gluten" in restriction_lower:
             stmt = stmt.where(~Recipe.allergens.any("gluten"))
@@ -3108,15 +3362,13 @@ def get_recipe_alternatives(
             stmt = stmt.where(~Recipe.allergens.any("dairy"))
         elif restriction_lower == "nut_free" or "nut" in restriction_lower:
             stmt = stmt.where(
-                ~Recipe.allergens.any("nuts") &
-                ~Recipe.allergens.any("tree nuts")
+                ~Recipe.allergens.any("nuts") & ~Recipe.allergens.any("tree nuts")
             )
 
     # Order by: liked first, then popularity, then random
     # We'll fetch more than needed and sort in Python for liked priority
     stmt = stmt.order_by(
-        Recipe.popularity_score.desc().nullslast(),
-        func.random()
+        Recipe.popularity_score.desc().nullslast(), func.random()
     ).limit(limit * 3)  # Fetch extra to allow for liked sorting
 
     candidates = db.scalars(stmt).all()
@@ -3142,16 +3394,18 @@ def get_recipe_alternatives(
         elif recipe.cook_time_minutes:
             cook_time = f"{recipe.cook_time_minutes} min"
 
-        alternatives.append(AlternativeRecipe(
-            id=recipe.id,
-            title=recipe.title,
-            calories=int(calories),
-            protein=float(protein),
-            carbs=float(carbs),
-            fat=float(fat),
-            cook_time=cook_time,
-            is_liked=recipe.id in liked_ids,
-        ))
+        alternatives.append(
+            AlternativeRecipe(
+                id=recipe.id,
+                title=recipe.title,
+                calories=int(calories),
+                protein=float(protein),
+                carbs=float(carbs),
+                fat=float(fat),
+                cook_time=cook_time,
+                is_liked=recipe.id in liked_ids,
+            )
+        )
 
     return AlternativesResponse(
         alternatives=alternatives,

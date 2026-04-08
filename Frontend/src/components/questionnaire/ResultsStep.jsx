@@ -3,11 +3,16 @@ import { motion as Motion } from 'framer-motion';
 import {
   CheckCircle, RefreshCw, ChevronLeft, ChevronRight,
   Shuffle, ThumbsUp, ThumbsDown, MoreHorizontal, Sun, Coffee, Utensils, Moon,
-  Info, ChevronDown, ChevronUp, X, Sparkles, Wand2
+  Info, ChevronDown, ChevronUp, X, Sparkles
 } from 'lucide-react';
 import { useAuth } from '@clerk/clerk-react';
 import { useLanguage } from '@/i18n/useLanguage';
 import { useRatings } from '@/hooks/useRatings';
+import {
+  getLeftoverMealLabel,
+  normalizeServerPlan,
+  toStandaloneMealOverride,
+} from './resultsPlanUtils';
 
 // Profile Summary Component
 const ProfileSummary = memo(function ProfileSummary({ data, calorieTarget, t, onRestart }) {
@@ -75,7 +80,6 @@ const ProfileSummary = memo(function ProfileSummary({ data, calorieTarget, t, on
   );
 });
 
-const WEEK_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const MEAL_TYPES = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
 const MACRO_COLORS = { protein: '#3D5A3D', carbs: '#22c55e', fat: '#f97316' };
 const GENERATION_STAGE_LABELS = {
@@ -189,52 +193,6 @@ const formatIngredient = (value) => {
   return String(value).trim();
 };
 
-const normalizeServerPlan = (plan, t) => {
-  const translate = t || ((v) => v);
-  if (!plan?.days?.length) return null;
-
-  const normalizedDays = WEEK_DAYS.map((weekday) => {
-    const match = plan.days.find((d) => d?.name?.toLowerCase() === weekday.toLowerCase());
-    const macros = match?.macros || {};
-      const meals = MEAL_TYPES.reduce((acc, mealType) => {
-        const src = match?.meals?.[mealType];
-        const hasContent = src && (src.name || src.ingredients?.length || src.calories);
-        if (mealType === 'Snacks' && !hasContent) {
-          acc[mealType] = null;
-        return acc;
-      }
-      const safeMeal = src || {};
-      acc[mealType] = {
-        id: safeMeal.id,
-        name: safeMeal.name || translate('{mealType} option', { mealType: translate(mealType) }),
-        calories: Number(safeMeal.calories) || 0,
-        protein: Number(safeMeal.protein) || 0,
-        carbs: Number(safeMeal.carbs) || 0,
-        fat: Number(safeMeal.fat) || 0,
-        cookTime: safeMeal.cookTime || '20 min',
-        ingredients: Array.isArray(safeMeal.ingredients) ? safeMeal.ingredients : [],
-        instructions: safeMeal.instructions || '',
-      };
-      return acc;
-    }, {});
-    return {
-      name: match?.name || weekday,
-      calories: Number(match?.calories) || 0,
-      macros: { protein: Number(macros.protein) || 0, carbs: Number(macros.carbs) || 0, fat: Number(macros.fat) || 0 },
-      meals
-    };
-  });
-
-  const macroTargets = {
-    protein: Number(plan?.macroTargets?.protein) || 0,
-    carbs: Number(plan?.macroTargets?.carbs) || 0,
-    fat: Number(plan?.macroTargets?.fat) || 0
-  };
-  const calorieTarget = Number(plan?.calorieTarget) || Math.round(normalizedDays.reduce((s, d) => s + (d.calories || 0), 0) / Math.max(normalizedDays.length, 1));
-
-  return { calorieTarget, macroTargets, days: normalizedDays };
-};
-
 // Day Card for carousel
 const DayCard = memo(function DayCard({ day, isActive, onSelect, dayNumber, t }) {
   const translate = t || ((v) => v);
@@ -289,6 +247,7 @@ const MealItem = memo(function MealItem({
 }) {
   const translate = t || ((v) => v);
   const [showMore, setShowMore] = useState(false);
+  const leftoverLabel = getLeftoverMealLabel(meal, translate);
 
   if (!meal) return null;
 
@@ -304,6 +263,9 @@ const MealItem = memo(function MealItem({
         <div className="meal-content">
           <span className="meal-type">{translate(mealType)}</span>
           <h4 className="meal-name">{meal.name}</h4>
+          {leftoverLabel && (
+            <p className="text-sm font-medium text-primary">{leftoverLabel}</p>
+          )}
           <div className="meal-meta">
             <span>{meal.calories} kcal</span>
             <span>P{meal.protein}g</span>
@@ -541,7 +503,7 @@ const DayCarousel = memo(function DayCarousel({ days, selectedIndex, onSelect, t
 });
 
 // Swap Modal
-const SwapModal = memo(function SwapModal({ isOpen, onClose, alternatives, loading, onSelect, currentMeal, t }) {
+const SwapModal = memo(function SwapModal({ isOpen, onClose, alternatives, loading, onSelect, t }) {
   const translate = t || ((v) => v);
 
   if (!isOpen) return null;
@@ -714,17 +676,7 @@ export default function ResultsStep({
       ...prev,
       [dayIndex]: {
         ...(prev[dayIndex] || {}),
-        [mealType]: {
-          id: alt.id,
-          name: alt.title,
-          calories: alt.calories,
-          protein: alt.protein,
-          carbs: alt.carbs,
-          fat: alt.fat,
-          cookTime: alt.cook_time || '20 min',
-          ingredients: [],
-          instructions: ''
-        }
+        [mealType]: toStandaloneMealOverride(alt)
       }
     }));
     setSwapModal({ open: false, dayIndex: null, mealType: null, recipeId: null });
@@ -746,7 +698,13 @@ export default function ResultsStep({
       const candidates = filtered.length ? filtered : pool;
       const next = candidates[Math.floor(Math.random() * candidates.length)];
       if (!next) return;
-      setPlanOverrides((prev) => ({ ...prev, [dayIndex]: { ...(prev[dayIndex] || {}), [mealType]: { ...next } } }));
+      setPlanOverrides((prev) => ({
+        ...prev,
+        [dayIndex]: {
+          ...(prev[dayIndex] || {}),
+          [mealType]: toStandaloneMealOverride(next),
+        },
+      }));
       return;
     }
     setSwapModal({ open: true, dayIndex, mealType, recipeId: meal.id });
@@ -945,7 +903,6 @@ export default function ResultsStep({
         alternatives={alternatives}
         loading={loadingAlternatives}
         onSelect={handleSelectAlternative}
-        currentMeal={swapModal.recipeId}
         t={t}
       />
     </div>

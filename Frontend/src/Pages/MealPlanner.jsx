@@ -496,7 +496,14 @@ export default function MealPlanner({ user }) {
 
     try {
       const token = await getAuthToken();
-      const response = await UserPreferences.create({ ...formData, language: lang }, token);
+      const response = await UserPreferences.create(
+        {
+          ...formData,
+          carry_forward_enabled: Boolean(formData.carry_forward_enabled),
+          language: lang,
+        },
+        token,
+      );
       const serverPlan = response?.plan ?? null;
       const rawText = response?.raw_plan ?? '';
       const serverError = response?.error ?? '';

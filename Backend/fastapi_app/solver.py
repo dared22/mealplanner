@@ -17,12 +17,20 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from models import PlanRecipe, Preference, Rating, Recipe
-from planner import generate_daily_macro_goal
+from planner import apply_carry_forward_leftovers, generate_daily_macro_goal
 
 logger = logging.getLogger(__name__)
 
 # Constants
-WEEK_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+WEEK_DAYS = [
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+]
 MACRO_TOLERANCE = 0.10  # ±10% tolerance for macro targets
 QUALITY_THRESHOLD_LIKED_RATIO = 0.5  # Minimum 50% liked recipes
 QUALITY_THRESHOLD_MACRO_DEVIATION = 0.2  # Maximum 20% macro deviation
@@ -56,7 +64,9 @@ def _normalize_cuisine_list(values: Optional[List[str]]) -> Set[str]:
     return {token for token in (_normalize_token(v) for v in values) if token}
 
 
-def _recipe_matches_preferred_cuisines(recipe_cuisine: Optional[str], allowed: Set[str]) -> bool:
+def _recipe_matches_preferred_cuisines(
+    recipe_cuisine: Optional[str], allowed: Set[str]
+) -> bool:
     if not allowed:
         return True
     if not recipe_cuisine:
@@ -125,7 +135,9 @@ def _cooking_time_bounds(value: Any) -> Tuple[Optional[int], Optional[int]]:
     return None, None
 
 
-def _apply_cooking_time_filter(df: pd.DataFrame, preference: Preference) -> pd.DataFrame:
+def _apply_cooking_time_filter(
+    df: pd.DataFrame, preference: Preference
+) -> pd.DataFrame:
     if df.empty or "total_time_minutes" not in df.columns:
         return df
     min_minutes, max_minutes = _cooking_time_bounds(preference.cooking_time_preference)
@@ -175,7 +187,7 @@ def _get_last_week_recipes(db: Session, user_id: UUID) -> Set[UUID]:
         select(Preference)
         .where(
             Preference.user_id == user_id,
-            Preference.raw_data["plan_status"].astext == "success"
+            Preference.raw_data["plan_status"].astext == "success",
         )
         .order_by(Preference.submitted_at.desc())
         .limit(1)
@@ -197,7 +209,7 @@ def _filter_recipes_for_solver(
     db: Session,
     preference: Preference,
     disliked_ids: Set[UUID],
-    last_week_ids: Set[UUID]
+    last_week_ids: Set[UUID],
 ) -> pd.DataFrame:
     """
     Pre-filter recipes to valid candidates (300-500 recipes).
@@ -223,8 +235,8 @@ def _filter_recipes_for_solver(
         elif restriction_lower == "vegetarian":
             # Vegetarian includes vegan recipes
             stmt = stmt.where(
-                (Recipe.dietary_flags["is_vegetarian"].astext == "true") |
-                (Recipe.dietary_flags["is_vegan"].astext == "true")
+                (Recipe.dietary_flags["is_vegetarian"].astext == "true")
+                | (Recipe.dietary_flags["is_vegan"].astext == "true")
             )
 
     result = db.execute(stmt)
@@ -255,7 +267,10 @@ def _filter_recipes_for_solver(
                     restriction_blocked = True
                     break
             elif restriction_lower == "vegetarian":
-                if not (_dietary_flag_truthy(flags, "is_vegetarian") or _dietary_flag_truthy(flags, "is_vegan")):
+                if not (
+                    _dietary_flag_truthy(flags, "is_vegetarian")
+                    or _dietary_flag_truthy(flags, "is_vegan")
+                ):
                     restriction_blocked = True
                     break
             elif restriction_lower == "gluten_free" or "gluten" in restriction_lower:
@@ -280,20 +295,22 @@ def _filter_recipes_for_solver(
         carbs = nutrition.get("carbs_g") or 0
         fat = nutrition.get("fat_g") or 0
 
-        recipe_data.append({
-            "id": recipe.id,
-            "title": recipe.title,
-            "meal_type": recipe.meal_type.lower() if recipe.meal_type else None,
-            "calories": float(calories),
-            "protein": float(protein),
-            "carbs": float(carbs),
-            "fat": float(fat),
-            "ingredients": recipe.ingredients,
-            "instructions": recipe.instructions,
-            "cost_category": recipe.cost_category,
-            "total_time_minutes": recipe.total_time_minutes,
-            "tags": recipe.tags or [],
-        })
+        recipe_data.append(
+            {
+                "id": recipe.id,
+                "title": recipe.title,
+                "meal_type": recipe.meal_type.lower() if recipe.meal_type else None,
+                "calories": float(calories),
+                "protein": float(protein),
+                "carbs": float(carbs),
+                "fat": float(fat),
+                "ingredients": recipe.ingredients,
+                "instructions": recipe.instructions,
+                "cost_category": recipe.cost_category,
+                "total_time_minutes": recipe.total_time_minutes,
+                "tags": recipe.tags or [],
+            }
+        )
 
     df = pd.DataFrame(recipe_data)
 
@@ -318,7 +335,9 @@ def _filter_recipes_for_solver(
     if preference.cooking_time_preference:
         time_filtered = _apply_cooking_time_filter(df, preference)
         if time_filtered.empty and not df.empty:
-            logger.info("Cooking time filter eliminated all recipes; dropping cooking time constraint.")
+            logger.info(
+                "Cooking time filter eliminated all recipes; dropping cooking time constraint."
+            )
         else:
             df = time_filtered
 
@@ -331,9 +350,7 @@ def _filter_recipes_for_solver(
 
 
 def _check_impossible_constraints(
-    df: pd.DataFrame,
-    macro_targets: Dict[str, float],
-    meals_per_day: int
+    df: pd.DataFrame, macro_targets: Dict[str, float], meals_per_day: int
 ) -> Optional[str]:
     """
     Check if constraints are mathematically impossible to satisfy.
@@ -382,7 +399,7 @@ def _build_solver_model(
     liked_ids: Set[UUID],
     macro_targets: Dict[str, float],
     meals_per_day: int,
-    timeout_seconds: int
+    timeout_seconds: int,
 ) -> Tuple[LpProblem, Dict, Dict]:
     """
     Build the PuLP optimization model.
@@ -422,7 +439,8 @@ def _build_solver_model(
     for day in WEEK_DAYS:
         for meal_type in meal_slots:
             slot_vars = [
-                var for (rid, d, mt), var in recipe_vars.items()
+                var
+                for (rid, d, mt), var in recipe_vars.items()
                 if d == day and mt == meal_type
             ]
             if slot_vars:
@@ -435,7 +453,8 @@ def _build_solver_model(
 
     for recipe_id in df["id"]:
         recipe_uses = [
-            var for (rid, day, meal_type), var in recipe_vars.items()
+            var
+            for (rid, day, meal_type), var in recipe_vars.items()
             if rid == recipe_id
         ]
         if recipe_uses:
@@ -450,10 +469,7 @@ def _build_solver_model(
     tolerance = MACRO_TOLERANCE
 
     for day in WEEK_DAYS:
-        day_vars = [
-            (rid, var) for (rid, d, mt), var in recipe_vars.items()
-            if d == day
-        ]
+        day_vars = [(rid, var) for (rid, d, mt), var in recipe_vars.items() if d == day]
 
         # Calories
         day_calories = []
@@ -503,7 +519,7 @@ def _build_meal_slots(meals_per_day: int) -> List[str]:
     slots = ["breakfast", "lunch", "dinner"]
     extra = max(meals_per_day - 3, 0)
     slots.extend(["snack"] * extra)
-    slots = slots[:max(meals_per_day, 1)]
+    slots = slots[: max(meals_per_day, 1)]
     if "dinner" not in slots:
         if slots:
             slots[-1] = "dinner"
@@ -512,7 +528,9 @@ def _build_meal_slots(meals_per_day: int) -> List[str]:
     return slots
 
 
-def _is_appropriate_meal_type(recipe_meal_type: Optional[str], slot_meal_type: str) -> bool:
+def _is_appropriate_meal_type(
+    recipe_meal_type: Optional[str], slot_meal_type: str
+) -> bool:
     """Check if a recipe is appropriate for a meal slot."""
     if not recipe_meal_type:
         # Recipes without meal_type can fill any slot (except breakfast)
@@ -533,10 +551,7 @@ def _is_appropriate_meal_type(recipe_meal_type: Optional[str], slot_meal_type: s
 
 
 def _extract_solution(
-    model: LpProblem,
-    df: pd.DataFrame,
-    recipe_vars: Dict,
-    meal_slots: List[str]
+    model: LpProblem, df: pd.DataFrame, recipe_vars: Dict, meal_slots: List[str]
 ) -> Dict[str, List[Dict[str, Any]]]:
     """
     Extract the solution from the solved model.
@@ -555,18 +570,20 @@ def _extract_solution(
                 if d == day and mt == meal_type:
                     if var.varValue == 1:
                         recipe = df[df["id"] == recipe_id].iloc[0]
-                        day_meals.append({
-                            "id": str(recipe["id"]),
-                            "name": recipe["title"],
-                            "meal_type": meal_type,
-                            "calories": float(recipe["calories"]),
-                            "protein": float(recipe["protein"]),
-                            "carbs": float(recipe["carbs"]),
-                            "fat": float(recipe["fat"]),
-                            "ingredients": recipe["ingredients"],
-                            "instructions": recipe["instructions"],
-                            "tags": recipe["tags"],
-                        })
+                        day_meals.append(
+                            {
+                                "id": str(recipe["id"]),
+                                "name": recipe["title"],
+                                "meal_type": meal_type,
+                                "calories": float(recipe["calories"]),
+                                "protein": float(recipe["protein"]),
+                                "carbs": float(recipe["carbs"]),
+                                "fat": float(recipe["fat"]),
+                                "ingredients": recipe["ingredients"],
+                                "instructions": recipe["instructions"],
+                                "tags": recipe["tags"],
+                            }
+                        )
                         break
 
         solution[day] = day_meals
@@ -577,7 +594,7 @@ def _extract_solution(
 def _calculate_quality_metrics(
     solution: Dict[str, List[Dict[str, Any]]],
     liked_ids: Set[UUID],
-    macro_targets: Dict[str, float]
+    macro_targets: Dict[str, float],
 ) -> Dict[str, float]:
     """
     Calculate quality metrics for the solution.
@@ -598,8 +615,9 @@ def _calculate_quality_metrics(
     liked_ratio = liked_meals / total_meals if total_meals > 0 else 0
 
     # Calculate macro deviation
-    daily_totals = {day: {"calories": 0, "protein": 0, "carbs": 0, "fat": 0}
-                   for day in WEEK_DAYS}
+    daily_totals = {
+        day: {"calories": 0, "protein": 0, "carbs": 0, "fat": 0} for day in WEEK_DAYS
+    }
 
     for day, meals in solution.items():
         for meal in meals:
@@ -624,8 +642,7 @@ def _calculate_quality_metrics(
 
 
 def _format_plan_output(
-    solution: Dict[str, List[Dict[str, Any]]],
-    macro_targets: Dict[str, float]
+    solution: Dict[str, List[Dict[str, Any]]], macro_targets: Dict[str, float]
 ) -> Dict[str, Any]:
     """
     Format the solution into the same structure as OpenAI planner.
@@ -703,7 +720,7 @@ def _format_plan_output(
                 "Lunch": lunch,
                 "Dinner": dinner,
                 "Snacks": snacks_meal,
-            }
+            },
         }
 
         days.append(day_plan)
@@ -755,7 +772,9 @@ def generate_personalized_plan(
     try:
         # Step 1: Load user ratings
         liked_ids, disliked_ids = _get_user_ratings(db, user_id)
-        logger.info(f"User {user_id}: {len(liked_ids)} liked, {len(disliked_ids)} disliked")
+        logger.info(
+            f"User {user_id}: {len(liked_ids)} liked, {len(disliked_ids)} disliked"
+        )
 
         # Step 2: Get last week's recipes to avoid repeats
         last_week_ids = _get_last_week_recipes(db, user_id)
@@ -785,7 +804,9 @@ def generate_personalized_plan(
         df = _filter_recipes_for_solver(db, preference, disliked_ids, last_week_ids)
 
         # Step 5: Check for impossible constraints
-        impossible_error = _check_impossible_constraints(df, macro_targets, meals_per_day)
+        impossible_error = _check_impossible_constraints(
+            df, macro_targets, meals_per_day
+        )
         if impossible_error:
             return {
                 "plan": None,
@@ -835,8 +856,10 @@ def generate_personalized_plan(
         total_meals = len(WEEK_DAYS) * len(meal_slots)
         liked_threshold = _adaptive_liked_threshold(len(liked_ids), total_meals)
 
-        if (metrics["liked_ratio"] < liked_threshold or
-            metrics["macro_deviation"] > QUALITY_THRESHOLD_MACRO_DEVIATION):
+        if (
+            metrics["liked_ratio"] < liked_threshold
+            or metrics["macro_deviation"] > QUALITY_THRESHOLD_MACRO_DEVIATION
+        ):
             logger.warning(
                 f"Solution below quality threshold: "
                 f"liked={metrics['liked_ratio']:.2f} (threshold={liked_threshold:.2f}), "
@@ -850,7 +873,9 @@ def generate_personalized_plan(
             }
 
         # Step 10: Format output
-        plan = _format_plan_output(solution, macro_targets)
+        plan = apply_carry_forward_leftovers(
+            _format_plan_output(solution, macro_targets), preference, db=db
+        )
 
         return {
             "plan": plan,

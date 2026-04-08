@@ -119,8 +119,28 @@ const PreferencesStep = memo(function PreferencesStep({ data, onChange }) {
         </Motion.div>
       </div>
 
+      <Motion.label
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.25 }}
+        className="flex items-start gap-4 rounded-2xl border border-border bg-card/60 px-5 py-4 cursor-pointer"
+      >
+        <input
+          type="checkbox"
+          checked={Boolean(data.carry_forward_enabled)}
+          onChange={(e) => onChange({ carry_forward_enabled: e.target.checked })}
+          className="mt-1 h-4 w-4 rounded border-border text-primary"
+        />
+        <div className="space-y-1">
+          <span className="input-label block mb-0">{t('Carry-forward leftovers')}</span>
+          <p className="text-sm text-muted-foreground">
+            {t('Reuse dinner leftovers for the next day when portions allow.')}
+          </p>
+        </div>
+      </Motion.label>
+
       {/* Summary chips */}
-      {(data.cooking_time_preference || data.meals_per_day || data.budget_range) && (
+      {(data.cooking_time_preference || data.meals_per_day || data.budget_range || data.carry_forward_enabled) && (
         <Motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -139,6 +159,11 @@ const PreferencesStep = memo(function PreferencesStep({ data, onChange }) {
           {data.budget_range && (
             <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-accent text-sm font-medium text-accent-foreground">
               {budgetOptions.find((o) => o.value === data.budget_range)?.label}
+            </span>
+          )}
+          {data.carry_forward_enabled && (
+            <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-accent text-sm font-medium text-accent-foreground">
+              {t('Leftovers enabled')}
             </span>
           )}
         </Motion.div>

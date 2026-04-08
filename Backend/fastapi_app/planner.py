@@ -27,10 +27,14 @@ OPENAI_MEAL_MODEL = os.getenv("OPENAI_MEAL_MODEL", OPENAI_MACRO_MODEL)
 OPENAI_MEAL_MAX_TOKENS = int(os.getenv("OPENAI_MEAL_MAX_TOKENS", "1400"))
 AI_MEAL_MAX_RETRIES = int(os.getenv("AI_MEAL_MAX_RETRIES", "2"))
 AI_RETRY_TEMPERATURES = [0.3, 0.5, 0.7]
-PLAN_BASE_LANGUAGE = os.getenv("PLAN_BASE_LANGUAGE") or os.getenv("RECIPE_BASE_LANGUAGE") or "no"
+PLAN_BASE_LANGUAGE = (
+    os.getenv("PLAN_BASE_LANGUAGE") or os.getenv("RECIPE_BASE_LANGUAGE") or "no"
+)
 
 if not OPENAI_API_KEY:
-    logger.warning("OPENAI_API_KEY is not configured; macro target generation will be disabled.")
+    logger.warning(
+        "OPENAI_API_KEY is not configured; macro target generation will be disabled."
+    )
     client: Optional[OpenAI] = None
 else:
     timeout = httpx.Timeout(
@@ -55,7 +59,7 @@ _MEAL_SYSTEM_PROMPT_TEMPLATE = Template(
     "You are a professional nutrition coach and chef. Return ONLY valid JSON with this schema:\n"
     "{\n"
     '  "meals": [\n'
-    '    {\n'
+    "    {\n"
     '      "meal_type": "breakfast|lunch|dinner|snack",\n'
     '      "name": string,\n'
     '      "calories": number,\n'
@@ -99,13 +103,38 @@ def _base_language_label() -> str:
     return _LANGUAGE_LABELS.get(code, "Norwegian")
 
 
-MEAL_SYSTEM_PROMPT = _MEAL_SYSTEM_PROMPT_TEMPLATE.safe_substitute(language=_base_language_label())
+MEAL_SYSTEM_PROMPT = _MEAL_SYSTEM_PROMPT_TEMPLATE.safe_substitute(
+    language=_base_language_label()
+)
 
-WEEK_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+WEEK_DAYS = [
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+]
 MEAL_TAG_KEYWORDS = {
     "breakfast": ["frokost", "breakfast"],
-    "lunch": ["lunsj", "lunch", "smorbrod", "sandwich", "smaretter", "salater", "supper"],
-    "dinner": ["middag", "middagsrett", "dinner", "ovnsretter", "gryter", "panneretter"],
+    "lunch": [
+        "lunsj",
+        "lunch",
+        "smorbrod",
+        "sandwich",
+        "smaretter",
+        "salater",
+        "supper",
+    ],
+    "dinner": [
+        "middag",
+        "middagsrett",
+        "dinner",
+        "ovnsretter",
+        "gryter",
+        "panneretter",
+    ],
 }
 
 _COOKING_TIME_MAP = {
@@ -138,6 +167,7 @@ class PreferenceDTO:
     dietary_restrictions: List[str]
     preferred_cuisines: List[str]
     language: Optional[str]
+    carry_forward_enabled: bool
 
 
 def _to_int(value: Any) -> Optional[int]:
@@ -146,6 +176,16 @@ def _to_int(value: Any) -> Optional[int]:
     except (TypeError, ValueError):
         return None
     return numeric
+
+
+def _to_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if value is None:
+        return False
+    return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
 def _get_pref_value(pref: Any, key: str) -> Any:
@@ -164,8 +204,12 @@ def _normalize_preference(pref: Any) -> PreferenceDTO:
     return PreferenceDTO(
         age=_to_int(_get_pref_value(pref, "age")),
         gender=_get_pref_value(pref, "gender"),
-        height_cm=_to_int(_get_pref_value(pref, "height_cm") or _get_pref_value(pref, "height")),
-        weight_kg=_to_int(_get_pref_value(pref, "weight_kg") or _get_pref_value(pref, "weight")),
+        height_cm=_to_int(
+            _get_pref_value(pref, "height_cm") or _get_pref_value(pref, "height")
+        ),
+        weight_kg=_to_int(
+            _get_pref_value(pref, "weight_kg") or _get_pref_value(pref, "weight")
+        ),
         activity_level=_get_pref_value(pref, "activity_level"),
         nutrition_goal=_get_pref_value(pref, "nutrition_goal"),
         meals_per_day=_to_int(_get_pref_value(pref, "meals_per_day")) or 3,
@@ -174,6 +218,7 @@ def _normalize_preference(pref: Any) -> PreferenceDTO:
         dietary_restrictions=_get_pref_value(pref, "dietary_restrictions") or [],
         preferred_cuisines=_get_pref_value(pref, "preferred_cuisines") or [],
         language=_get_pref_value(pref, "language") or _get_pref_value(pref, "lang"),
+        carry_forward_enabled=_to_bool(_get_pref_value(pref, "carry_forward_enabled")),
     )
 
 
@@ -310,7 +355,7 @@ def _extract_json(raw_text: str) -> Optional[Dict[str, Any]]:
         first = trimmed.find("{")
         last = trimmed.rfind("}")
         if first != -1 and last != -1 and last > first:
-            candidates.append(trimmed[first:last + 1])
+            candidates.append(trimmed[first : last + 1])
 
     for candidate in candidates:
         try:
@@ -367,7 +412,9 @@ def _validate_meal_entry(meal: Dict[str, Any], dto: PreferenceDTO) -> Optional[s
     Returns an error message if validation fails, or None if valid.
     """
     allowed_cuisines = _normalize_cuisine_list(dto.preferred_cuisines)
-    dietary_restrictions = [str(r).lower() for r in (dto.dietary_restrictions or []) if r]
+    dietary_restrictions = [
+        str(r).lower() for r in (dto.dietary_restrictions or []) if r
+    ]
     min_minutes, max_minutes = _cooking_time_bounds(dto.cooking_time_preference)
 
     # Check cuisine
@@ -397,7 +444,11 @@ def _validate_meal_entry(meal: Dict[str, Any], dto: PreferenceDTO) -> Optional[s
             return "Meal cook_time_minutes exceeds the preferred range."
 
     # Check dietary restrictions
-    flags = meal.get("dietary_flags", {}) if isinstance(meal.get("dietary_flags"), dict) else {}
+    flags = (
+        meal.get("dietary_flags", {})
+        if isinstance(meal.get("dietary_flags"), dict)
+        else {}
+    )
     allergens = _normalize_allergens(meal.get("allergens"))
     for restriction in dietary_restrictions:
         if restriction == "none":
@@ -406,7 +457,10 @@ def _validate_meal_entry(meal: Dict[str, Any], dto: PreferenceDTO) -> Optional[s
             if not _dietary_flag_truthy(flags, "is_vegan"):
                 return "Meal violates vegan restriction."
         elif restriction == "vegetarian":
-            if not (_dietary_flag_truthy(flags, "is_vegan") or _dietary_flag_truthy(flags, "is_vegetarian")):
+            if not (
+                _dietary_flag_truthy(flags, "is_vegan")
+                or _dietary_flag_truthy(flags, "is_vegetarian")
+            ):
                 return "Meal violates vegetarian restriction."
         elif "gluten" in restriction:
             if _violates_allergen_restriction(allergens, "gluten"):
@@ -470,7 +524,9 @@ def _validate_slot_counts(
     expected_slots: List[str],
 ) -> Optional[str]:
     """Validate that meal counts match expected slots."""
-    type_counts: Dict[str, int] = {key: 0 for key in {"breakfast", "lunch", "dinner", "snack"}}
+    type_counts: Dict[str, int] = {
+        key: 0 for key in {"breakfast", "lunch", "dinner", "snack"}
+    }
     for meal in meals:
         meal_type = meal.get("meal_type", "")
         type_counts[meal_type] = type_counts.get(meal_type, 0) + 1
@@ -567,12 +623,19 @@ def _generate_meals_with_openai(
     remaining_targets: Optional[Dict[str, float]] = None,
 ) -> Dict[str, Any]:
     if client is None:
-        return {"meals": [], "error": "Meal generation is disabled because OPENAI_API_KEY is not configured."}
+        return {
+            "meals": [],
+            "error": "Meal generation is disabled because OPENAI_API_KEY is not configured.",
+        }
 
     total_targets = remaining_targets or targets
     cooking_text = _format_cooking_time_preference(dto.cooking_time_preference)
-    cuisine_text = ", ".join(dto.preferred_cuisines) if dto.preferred_cuisines else "none"
-    restrictions_text = ", ".join(dto.dietary_restrictions) if dto.dietary_restrictions else "none"
+    cuisine_text = (
+        ", ".join(dto.preferred_cuisines) if dto.preferred_cuisines else "none"
+    )
+    restrictions_text = (
+        ", ".join(dto.dietary_restrictions) if dto.dietary_restrictions else "none"
+    )
     avoid_text = ", ".join(avoid_names) if avoid_names else "none"
 
     slot_counts: Dict[str, int] = {}
@@ -609,7 +672,9 @@ Return JSON only, matching the system schema.
     max_attempts = AI_MEAL_MAX_RETRIES + 1
 
     for attempt in range(max_attempts):
-        temperature = AI_RETRY_TEMPERATURES[min(attempt, len(AI_RETRY_TEMPERATURES) - 1)]
+        temperature = AI_RETRY_TEMPERATURES[
+            min(attempt, len(AI_RETRY_TEMPERATURES) - 1)
+        ]
         attempt_messages = list(messages)
 
         if last_error and attempt > 0:
@@ -622,7 +687,12 @@ Return JSON only, matching the system schema.
                     ),
                 }
             )
-            logger.info("AI meal generation retry %d/%d: %s", attempt, max_attempts - 1, last_error)
+            logger.info(
+                "AI meal generation retry %d/%d: %s",
+                attempt,
+                max_attempts - 1,
+                last_error,
+            )
 
         raw_text = _request_with_chat(
             attempt_messages,
@@ -662,17 +732,17 @@ def generate_daily_macro_goal(pref: Any) -> Dict[str, Any]:
     dto = _normalize_preference(pref)
     prompt = f"""
 Create daily calorie and macro targets for this profile:
-- Age: {dto.age or 'unknown'}
-- Gender: {dto.gender or 'unknown'}
-- Height: {dto.height_cm or 'unknown'} cm
-- Weight: {dto.weight_kg or 'unknown'} kg
-- Activity level: {dto.activity_level or 'unknown'}
-- Nutrition goal: {dto.nutrition_goal or 'unknown'}
+- Age: {dto.age or "unknown"}
+- Gender: {dto.gender or "unknown"}
+- Height: {dto.height_cm or "unknown"} cm
+- Weight: {dto.weight_kg or "unknown"} kg
+- Activity level: {dto.activity_level or "unknown"}
+- Nutrition goal: {dto.nutrition_goal or "unknown"}
 - Meals per day: {dto.meals_per_day}
-- Budget range: {dto.budget_range or 'unknown'}
-- Cooking time preference: {dto.cooking_time_preference or 'unknown'}
-- Dietary restrictions: {', '.join(dto.dietary_restrictions) if dto.dietary_restrictions else 'none'}
-- Preferred cuisines: {', '.join(dto.preferred_cuisines) if dto.preferred_cuisines else 'no preference'}
+- Budget range: {dto.budget_range or "unknown"}
+- Cooking time preference: {dto.cooking_time_preference or "unknown"}
+- Dietary restrictions: {", ".join(dto.dietary_restrictions) if dto.dietary_restrictions else "none"}
+- Preferred cuisines: {", ".join(dto.preferred_cuisines) if dto.preferred_cuisines else "no preference"}
 
 Return ONLY JSON matching the schema in the system prompt.
 """
@@ -691,7 +761,10 @@ Return ONLY JSON matching the schema in the system prompt.
 
     payload = _extract_json(raw_text)
     if not payload:
-        return {"goal": None, "error": "Failed to parse macro targets from the AI response."}
+        return {
+            "goal": None,
+            "error": "Failed to parse macro targets from the AI response.",
+        }
 
     return {"goal": payload, "error": None}
 
@@ -748,8 +821,6 @@ def _build_meal_slots(meals_per_day: int) -> List[str]:
     return slots
 
 
-
-
 def _jsonify_value(value: Any) -> Any:
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
@@ -797,12 +868,16 @@ def _format_instructions(value: Any) -> str:
                 except (ValueError, SyntaxError):
                     parsed = None
             if isinstance(parsed, (list, tuple)):
-                return " ".join(str(item).strip() for item in parsed if str(item).strip())
+                return " ".join(
+                    str(item).strip() for item in parsed if str(item).strip()
+                )
 
             quoted = re.findall(r"'([^']+)'|\"([^\"]+)\"", text)
             if quoted:
                 segments = [a or b for a, b in quoted if (a or b)]
-                return " ".join(segment.strip() for segment in segments if segment.strip())
+                return " ".join(
+                    segment.strip() for segment in segments if segment.strip()
+                )
 
         return text
 
@@ -898,7 +973,9 @@ def query_candidate_recipes(
     query = select(Recipe).where(Recipe.is_active == True)
 
     # Apply dietary restrictions
-    dietary_restrictions = [str(r).lower() for r in (dto.dietary_restrictions or []) if r]
+    dietary_restrictions = [
+        str(r).lower() for r in (dto.dietary_restrictions or []) if r
+    ]
     for restriction in dietary_restrictions:
         if restriction == "none":
             continue
@@ -907,8 +984,8 @@ def query_candidate_recipes(
         elif restriction == "vegetarian":
             # Vegetarian means vegan OR vegetarian
             query = query.where(
-                (Recipe.dietary_flags["is_vegan"].astext == "true") |
-                (Recipe.dietary_flags["is_vegetarian"].astext == "true")
+                (Recipe.dietary_flags["is_vegan"].astext == "true")
+                | (Recipe.dietary_flags["is_vegetarian"].astext == "true")
             )
 
     # Apply preferred cuisines filter
@@ -948,7 +1025,11 @@ def query_candidate_recipes(
         nutrition = recipe.nutrition or {}
         calories = float(nutrition.get("calories", 0))
         protein = float(nutrition.get("protein_g", 0) or nutrition.get("protein", 0))
-        carbs = float(nutrition.get("carbs_g", 0) or nutrition.get("carbs", 0) or nutrition.get("carbohydrates", 0))
+        carbs = float(
+            nutrition.get("carbs_g", 0)
+            or nutrition.get("carbs", 0)
+            or nutrition.get("carbohydrates", 0)
+        )
         fat = float(nutrition.get("fat_g", 0) or nutrition.get("fat", 0))
 
         # Skip recipes with missing nutrition data
@@ -1042,7 +1123,8 @@ def select_db_recipes_for_day(
     for slot in meal_slots:
         # Get candidates for this slot, excluding already used recipes
         pool = [
-            recipe for recipe in candidates.get(slot, [])
+            recipe
+            for recipe in candidates.get(slot, [])
             if recipe["title"] not in used_names
         ]
 
@@ -1117,14 +1199,18 @@ def match_recipes_to_macro_goal(
 
     if db is not None:
         try:
-            candidates = query_candidate_recipes(db, dto, exclude_names=set(avoid_names))
+            candidates = query_candidate_recipes(
+                db, dto, exclude_names=set(avoid_names)
+            )
             db_meals, unfilled_slots = select_db_recipes_for_day(
                 candidates, meal_slots, targets, set(avoid_names)
             )
             # Convert DB recipes to meal format
             db_meals = [_format_db_recipe_as_meal(recipe) for recipe in db_meals]
         except Exception as exc:
-            logger.warning("DB recipe query failed, falling back to full AI generation: %s", exc)
+            logger.warning(
+                "DB recipe query failed, falling back to full AI generation: %s", exc
+            )
             db_meals = []
             unfilled_slots = meal_slots
 
@@ -1148,7 +1234,9 @@ def match_recipes_to_macro_goal(
         if meal_result.get("error"):
             # If AI fails and we have some DB meals, return what we have
             if db_meals:
-                logger.warning("AI meal generation failed but returning %d DB meals", len(db_meals))
+                logger.warning(
+                    "AI meal generation failed but returning %d DB meals", len(db_meals)
+                )
                 totals = _sum_meal_macros(db_meals)
                 return {
                     "meals": db_meals,
@@ -1216,7 +1304,9 @@ def _aggregate_snacks(recipes: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
-def _build_day_plan(day_name: str, recipes: List[Dict[str, Any]], totals: Dict[str, float]) -> Dict[str, Any]:
+def _build_day_plan(
+    day_name: str, recipes: List[Dict[str, Any]], totals: Dict[str, float]
+) -> Dict[str, Any]:
     meal_map: Dict[str, List[Dict[str, Any]]] = {
         "breakfast": [],
         "lunch": [],
@@ -1230,9 +1320,15 @@ def _build_day_plan(day_name: str, recipes: List[Dict[str, Any]], totals: Dict[s
         meal_map[meal_type].append(meal)
 
     meals_payload = {
-        "Breakfast": _format_meal(meal_map["breakfast"][0], "Breakfast") if meal_map["breakfast"] else None,
-        "Lunch": _format_meal(meal_map["lunch"][0], "Lunch") if meal_map["lunch"] else None,
-        "Dinner": _format_meal(meal_map["dinner"][0], "Dinner") if meal_map["dinner"] else None,
+        "Breakfast": _format_meal(meal_map["breakfast"][0], "Breakfast")
+        if meal_map["breakfast"]
+        else None,
+        "Lunch": _format_meal(meal_map["lunch"][0], "Lunch")
+        if meal_map["lunch"]
+        else None,
+        "Dinner": _format_meal(meal_map["dinner"][0], "Dinner")
+        if meal_map["dinner"]
+        else None,
         "Snacks": _aggregate_snacks(meal_map["snack"]) if meal_map["snack"] else None,
     }
 
@@ -1248,7 +1344,9 @@ def _build_day_plan(day_name: str, recipes: List[Dict[str, Any]], totals: Dict[s
     }
 
 
-def _build_weekly_plan(macro_goal: Dict[str, Any], days: List[Dict[str, Any]]) -> Dict[str, Any]:
+def _build_weekly_plan(
+    macro_goal: Dict[str, Any], days: List[Dict[str, Any]]
+) -> Dict[str, Any]:
     return {
         "calorieTarget": float(macro_goal.get("calorieTarget", 0)),
         "macroTargets": {
@@ -1258,6 +1356,179 @@ def _build_weekly_plan(macro_goal: Dict[str, Any], days: List[Dict[str, Any]]) -
         },
         "days": days,
     }
+
+
+def _normalize_serving_count(value: Any, default: int = 1) -> int:
+    try:
+        numeric = int(value)
+    except (TypeError, ValueError):
+        return default
+    return numeric if numeric > 0 else default
+
+
+def _apply_meal_metadata_defaults(meal: Any) -> Any:
+    if not isinstance(meal, dict):
+        return meal
+    updated = dict(meal)
+    updated["is_leftover"] = bool(updated.get("is_leftover", False))
+    updated["leftover_from_day"] = updated.get("leftover_from_day")
+    updated["leftover_from_meal_type"] = updated.get("leftover_from_meal_type")
+    updated["source_recipe_id"] = updated.get("source_recipe_id") or updated.get("id")
+    updated["cook_servings"] = _normalize_serving_count(
+        updated.get("cook_servings"), default=1
+    )
+    updated["servings_eaten"] = _normalize_serving_count(
+        updated.get("servings_eaten"), default=1
+    )
+    return updated
+
+
+def _load_recipe_portions_map(
+    db: Optional[Session], recipe_ids: Set[str]
+) -> Dict[str, int]:
+    if db is None or not recipe_ids:
+        return {}
+
+    normalized_ids: List[UUID] = []
+    for recipe_id in recipe_ids:
+        try:
+            normalized_ids.append(UUID(str(recipe_id)))
+        except (TypeError, ValueError):
+            continue
+
+    if not normalized_ids:
+        return {}
+
+    rows = db.execute(
+        select(Recipe.id, Recipe.portions).where(Recipe.id.in_(normalized_ids))
+    )
+    return {
+        str(recipe_id): _normalize_serving_count(portions, default=0)
+        for recipe_id, portions in rows
+        if recipe_id is not None
+    }
+
+
+def _select_carry_forward_target(meals: Dict[str, Any]) -> Optional[str]:
+    if not isinstance(meals, dict):
+        return None
+    lunch = meals.get("Lunch")
+    if isinstance(lunch, dict) and not lunch.get("is_leftover"):
+        return "Lunch"
+    dinner = meals.get("Dinner")
+    if isinstance(dinner, dict) and not dinner.get("is_leftover"):
+        return "Dinner"
+    return None
+
+
+def _recalculate_day_totals(day: Dict[str, Any]) -> None:
+    meals = day.get("meals") if isinstance(day.get("meals"), dict) else {}
+    day_meals = [meal for meal in meals.values() if isinstance(meal, dict)]
+    totals = _sum_meal_macros(day_meals)
+    day["calories"] = round(totals.get("calories", 0), 2)
+    day["macros"] = {
+        "protein": round(totals.get("protein", 0), 2),
+        "carbs": round(totals.get("carbs", 0), 2),
+        "fat": round(totals.get("fat", 0), 2),
+    }
+
+
+def apply_carry_forward_leftovers(
+    plan: Dict[str, Any], pref: Any, db: Optional[Session] = None
+) -> Dict[str, Any]:
+    """Annotate meals and optionally reuse dinner leftovers the next day."""
+    if not isinstance(plan, dict):
+        return plan
+
+    updated_plan = copy.deepcopy(plan)
+    days = updated_plan.get("days")
+    if not isinstance(days, list):
+        return updated_plan
+
+    for day in days:
+        meals = day.get("meals") if isinstance(day, dict) else None
+        if not isinstance(meals, dict):
+            continue
+        for key, meal in list(meals.items()):
+            meals[key] = _apply_meal_metadata_defaults(meal)
+
+    dto = _normalize_preference(pref)
+    if dto.carry_forward_enabled:
+        source_recipe_ids: Set[str] = set()
+        for day in days[:-1]:
+            meals = day.get("meals") if isinstance(day, dict) else None
+            dinner = meals.get("Dinner") if isinstance(meals, dict) else None
+            if not isinstance(dinner, dict) or dinner.get("is_leftover"):
+                continue
+            recipe_id = dinner.get("id") or dinner.get("source_recipe_id")
+            if recipe_id:
+                source_recipe_ids.add(str(recipe_id))
+
+        portions_by_recipe = _load_recipe_portions_map(db, source_recipe_ids)
+
+        for index in range(len(days) - 1):
+            current_day = days[index]
+            next_day = days[index + 1]
+            if not isinstance(current_day, dict) or not isinstance(next_day, dict):
+                continue
+
+            current_meals = (
+                current_day.get("meals")
+                if isinstance(current_day.get("meals"), dict)
+                else {}
+            )
+            next_meals = (
+                next_day.get("meals") if isinstance(next_day.get("meals"), dict) else {}
+            )
+            source_meal = current_meals.get("Dinner")
+            if not isinstance(source_meal, dict) or source_meal.get("is_leftover"):
+                continue
+
+            source_recipe_id = source_meal.get("id") or source_meal.get(
+                "source_recipe_id"
+            )
+            if (
+                not source_recipe_id
+                or portions_by_recipe.get(str(source_recipe_id), 0) < 2
+            ):
+                continue
+
+            target_key = _select_carry_forward_target(next_meals)
+            if not target_key:
+                continue
+
+            updated_source = dict(source_meal)
+            updated_source["is_leftover"] = False
+            updated_source["leftover_from_day"] = None
+            updated_source["leftover_from_meal_type"] = None
+            updated_source["source_recipe_id"] = updated_source.get(
+                "source_recipe_id"
+            ) or updated_source.get("id")
+            updated_source["cook_servings"] = max(
+                _normalize_serving_count(
+                    updated_source.get("cook_servings"), default=1
+                ),
+                2,
+            )
+            updated_source["servings_eaten"] = 1
+            current_meals["Dinner"] = updated_source
+
+            leftover_meal = dict(updated_source)
+            leftover_meal["is_leftover"] = True
+            leftover_meal["leftover_from_day"] = current_day.get("name")
+            leftover_meal["leftover_from_meal_type"] = "Dinner"
+            leftover_meal["source_recipe_id"] = updated_source.get(
+                "source_recipe_id"
+            ) or updated_source.get("id")
+            leftover_meal["cook_servings"] = updated_source["cook_servings"]
+            leftover_meal["servings_eaten"] = 1
+            next_meals[target_key] = leftover_meal
+
+    for day in days:
+        if isinstance(day, dict):
+            _recalculate_day_totals(day)
+
+    return updated_plan
 
 
 def fill_missing_meals(
@@ -1298,7 +1569,11 @@ def fill_missing_meals(
             meals = {}
             day["meals"] = meals
 
-        current_meals = [meals.get(k) for k in ("Breakfast", "Lunch", "Dinner", "Snacks") if meals.get(k)]
+        current_meals = [
+            meals.get(k)
+            for k in ("Breakfast", "Lunch", "Dinner", "Snacks")
+            if meals.get(k)
+        ]
         current_totals = _sum_meal_macros(current_meals)
 
         missing_slots: List[str] = []
@@ -1349,7 +1624,11 @@ def fill_missing_meals(
             meals["Snacks"] = _aggregate_snacks(new_snacks)
 
         # Recalculate totals for the day
-        day_meals = [meals.get(k) for k in ("Breakfast", "Lunch", "Dinner", "Snacks") if meals.get(k)]
+        day_meals = [
+            meals.get(k)
+            for k in ("Breakfast", "Lunch", "Dinner", "Snacks")
+            if meals.get(k)
+        ]
         day_totals = _sum_meal_macros(day_meals)
 
         day["calories"] = day_totals["calories"]
@@ -1376,7 +1655,10 @@ def translate_plan(plan: Dict[str, Any], language: Optional[str]) -> Dict[str, A
 
     translator = RecipeTranslator(target_language="English")
     if translator.client is None:
-        return {"plan": plan, "error": "Translation disabled: googletrans not configured."}
+        return {
+            "plan": plan,
+            "error": "Translation disabled: googletrans not configured.",
+        }
 
     translated_plan = copy.deepcopy(plan)
     failures = 0
@@ -1401,7 +1683,9 @@ def translate_plan(plan: Dict[str, Any], language: Optional[str]) -> Dict[str, A
     return {"plan": translated_plan, "error": error}
 
 
-def generate_daily_plan(pref: Any, translate: bool = False, db: Optional[Session] = None) -> Dict[str, Any]:
+def generate_daily_plan(
+    pref: Any, translate: bool = False, db: Optional[Session] = None
+) -> Dict[str, Any]:
     macro_response = generate_daily_macro_goal(pref)
     if macro_response.get("error"):
         return {"plan": None, "raw_text": None, "error": macro_response["error"]}
@@ -1436,7 +1720,9 @@ def generate_daily_plan(pref: Any, translate: bool = False, db: Optional[Session
             if name:
                 used_names.append(str(name))
 
-    plan_payload = _build_weekly_plan(macro_goal, days)
+    plan_payload = apply_carry_forward_leftovers(
+        _build_weekly_plan(macro_goal, days), pref, db=db
+    )
     base_language = _normalize_language(PLAN_BASE_LANGUAGE) or "no"
     plan_language = "en" if translate and _is_english(dto.language) else base_language
 

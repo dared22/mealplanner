@@ -16,6 +16,7 @@ Frontend/.env
 .claude
 .agents
 .planning
+.firecrawl
 
 # MCP servers virtual environments
 mcp-servers/**/venv/
