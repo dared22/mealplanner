@@ -18,7 +18,7 @@ os.environ.setdefault(
 
 from main import save_preferences  # noqa: E402
 from models import Preference, User  # noqa: E402
-from planner import apply_carry_forward_leftovers  # noqa: E402
+from planner import apply_carry_forward_leftovers, _format_db_recipe_as_meal  # noqa: E402
 
 
 class _FakeSession:
@@ -204,6 +204,35 @@ class CarryForwardTests(unittest.TestCase):
         self.assertIsNone(breakfast["leftover_from_meal_type"])
         self.assertEqual(breakfast["cook_servings"], 1)
         self.assertEqual(breakfast["servings_eaten"], 1)
+
+    def test_db_recipe_ingredients_are_scaled_to_one_serving(self) -> None:
+        meal = _format_db_recipe_as_meal(
+            {
+                "id": str(uuid4()),
+                "title": "Chili",
+                "meal_type": "dinner",
+                "calories": 800,
+                "protein": 60,
+                "carbs": 50,
+                "fat": 25,
+                "ingredients": [
+                    {"name": "minced beef", "quantity": 600, "unit": "g"},
+                    {"name": "kidney beans", "quantity": 2, "unit": "box"},
+                    {"name": "salt", "quantity": 1.5, "unit": "ts"},
+                ],
+                "instructions": ["Cook everything together."],
+                "tags": ["comfort"],
+                "portions": 4,
+            }
+        )
+
+        ingredients = meal["ingredients"]
+
+        self.assertEqual(meal["recipe_portions"], 4)
+        self.assertEqual(meal["ingredient_servings"], 1)
+        self.assertEqual(ingredients[0]["quantity"], 150)
+        self.assertEqual(ingredients[1]["quantity"], 0.5)
+        self.assertEqual(ingredients[2]["quantity"], 0.38)
 
 
 if __name__ == "__main__":

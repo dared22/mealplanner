@@ -40,6 +40,8 @@ const normalizeMeal = (meal, mealType, translate) => {
     source_recipe_id: safeMeal.source_recipe_id || safeMeal.id || null,
     cook_servings: toPositiveInt(safeMeal.cook_servings, 1),
     servings_eaten: toPositiveInt(safeMeal.servings_eaten, 1),
+    recipe_portions: toPositiveInt(safeMeal.recipe_portions, 1),
+    ingredient_servings: toPositiveInt(safeMeal.ingredient_servings, 1),
   };
 };
 
@@ -121,4 +123,6 @@ export const toStandaloneMealOverride = (mealLike = {}) => ({
   source_recipe_id: mealLike.id ?? mealLike.source_recipe_id ?? null,
   cook_servings: 1,
   servings_eaten: 1,
+  recipe_portions: 1,
+  ingredient_servings: 1,
 });

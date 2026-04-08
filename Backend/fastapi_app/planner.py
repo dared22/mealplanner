@@ -80,6 +80,7 @@ _MEAL_SYSTEM_PROMPT_TEMPLATE = Template(
     "- Return exactly one meal for each requested slot, matching the slot's meal_type.\n"
     "- Total macros across meals should closely match the provided targets.\n"
     "- Strictly follow dietary restrictions, preferred cuisines allow-list, and cooking time bounds.\n"
+    "- Ingredient quantities must be written for exactly 1 serving of each meal.\n"
     "- If impossible, return an empty meals array and a short error message.\n"
     "- IMPORTANT: All text content (name, ingredients, instructions) MUST be written in $language."
 )
@@ -515,6 +516,8 @@ def _normalize_meal_entry(meal: Dict[str, Any]) -> Dict[str, Any]:
         "instructions": _format_instructions(instructions),
         "ingredients": _jsonify_value(ingredients),
         "tags": tags,
+        "recipe_portions": 1,
+        "ingredient_servings": 1,
         "source": "ai",  # Track that this came from AI generation
     }
 
@@ -659,6 +662,7 @@ Constraints:
 - Preferred cuisines (allow-list, strict): {cuisine_text}
 - Cooking time per meal: {cooking_text}
 - Avoid repeating these meal names: {avoid_text}
+- Ingredient quantities must represent exactly 1 serving per returned meal.
 - Language: Write all meal names, ingredients, and instructions in {language_label}.
 
 Return JSON only, matching the system schema.
@@ -1057,6 +1061,7 @@ def query_candidate_recipes(
             "cost_category": recipe.cost_category,
             "total_time_minutes": recipe.total_time_minutes,
             "url": recipe.source_url,
+            "portions": _normalize_serving_count(recipe.portions, default=1),
         }
 
         candidates[meal_type].append(candidate)
@@ -1158,6 +1163,7 @@ def select_db_recipes_for_day(
 
 def _format_db_recipe_as_meal(recipe: Dict[str, Any]) -> Dict[str, Any]:
     """Format a DB recipe candidate as a meal entry with source tracking."""
+    recipe_portions = _normalize_serving_count(recipe.get("portions"), default=1)
     return {
         "id": recipe.get("id"),
         "name": recipe.get("title") or "Recipe",
@@ -1168,8 +1174,14 @@ def _format_db_recipe_as_meal(recipe: Dict[str, Any]) -> Dict[str, Any]:
         "fat": recipe.get("fat", 0),
         "url": recipe.get("url"),
         "instructions": _format_instructions(recipe.get("instructions")),
-        "ingredients": _jsonify_value(recipe.get("ingredients")),
+        "ingredients": _scale_ingredients_for_servings(
+            recipe.get("ingredients"),
+            source_servings=recipe_portions,
+            target_servings=1,
+        ),
         "tags": recipe.get("tags") or [],
+        "recipe_portions": recipe_portions,
+        "ingredient_servings": 1,
         "source": "db",  # Track that this came from database
     }
 
@@ -1366,6 +1378,62 @@ def _normalize_serving_count(value: Any, default: int = 1) -> int:
     return numeric if numeric > 0 else default
 
 
+def _normalize_quantity_value(value: Any) -> Optional[float]:
+    if value in (None, ""):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+
+    text = str(value).strip().replace(",", ".")
+    if not text:
+        return None
+
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def _format_scaled_quantity(value: float) -> Any:
+    rounded = round(float(value), 2)
+    if rounded.is_integer():
+        return int(rounded)
+    return rounded
+
+
+def _scale_ingredient_entry(
+    ingredient: Any, *, source_servings: int, target_servings: int = 1
+) -> Any:
+    if not isinstance(ingredient, dict):
+        return _jsonify_value(ingredient)
+
+    updated = dict(ingredient)
+    quantity = _normalize_quantity_value(updated.get("quantity"))
+    if quantity is not None and source_servings > 0 and target_servings > 0:
+        updated["quantity"] = _format_scaled_quantity(
+            quantity * float(target_servings) / float(source_servings)
+        )
+    return _jsonify_value(updated)
+
+
+def _scale_ingredients_for_servings(
+    ingredients: Any, *, source_servings: int, target_servings: int = 1
+) -> List[Any]:
+    if not isinstance(ingredients, list):
+        return []
+    if source_servings <= 0 or target_servings <= 0:
+        return _jsonify_value(ingredients)
+
+    return [
+        _scale_ingredient_entry(
+            ingredient,
+            source_servings=source_servings,
+            target_servings=target_servings,
+        )
+        for ingredient in ingredients
+    ]
+
+
 def _apply_meal_metadata_defaults(meal: Any) -> Any:
     if not isinstance(meal, dict):
         return meal
@@ -1379,6 +1447,12 @@ def _apply_meal_metadata_defaults(meal: Any) -> Any:
     )
     updated["servings_eaten"] = _normalize_serving_count(
         updated.get("servings_eaten"), default=1
+    )
+    updated["recipe_portions"] = _normalize_serving_count(
+        updated.get("recipe_portions"), default=1
+    )
+    updated["ingredient_servings"] = _normalize_serving_count(
+        updated.get("ingredient_servings"), default=1
     )
     return updated
 

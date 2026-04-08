@@ -253,6 +253,9 @@ const MealItem = memo(function MealItem({
 
   const Icon = MEAL_ICONS[mealType] || Utensils;
   const hasDetails = meal.instructions || (meal.ingredients && meal.ingredients.length > 0);
+  const ingredientTitle = meal.ingredient_servings === 1
+    ? translate('Ingredients (1 serving)')
+    : translate('Ingredients');
 
   return (
     <div className="meal-item-wrapper">
@@ -324,7 +327,7 @@ const MealItem = memo(function MealItem({
         >
           {meal.ingredients && meal.ingredients.length > 0 && (
             <div className="meal-section">
-              <h5 className="meal-section-title">{translate('Ingredients')}</h5>
+              <h5 className="meal-section-title">{ingredientTitle}</h5>
               <ul className="meal-list">
                 {meal.ingredients.map((ingredient, idx) => (
                   <li key={idx} className="meal-list-item">{formatIngredient(ingredient)}</li>

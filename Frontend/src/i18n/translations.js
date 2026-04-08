@@ -342,6 +342,7 @@ export const translations = {
     'Like this meal': 'Lik dette m\u00e5ltidet',
     'Dislike this meal': 'Mislik dette m\u00e5ltidet',
     Ingredients: 'Ingredienser',
+    'Ingredients (1 serving)': 'Ingredienser (1 porsjon)',
     Instructions: 'Instrukser',
     'Gather ingredients: {items}.': 'Samle ingrediensene: {items}.',
     'Aim to finish in about {time}.': 'Pr\u00f8v \u00e5 bli ferdig p\u00e5 ca. {time}.',

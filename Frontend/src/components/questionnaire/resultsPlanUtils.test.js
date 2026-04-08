@@ -32,6 +32,8 @@ test('normalizeServerPlan preserves leftover metadata', () => {
             source_recipe_id: 'dinner-1',
             cook_servings: 2,
             servings_eaten: 1,
+            recipe_portions: 4,
+            ingredient_servings: 1,
           },
           Dinner: { id: 'dinner-2', name: 'Salmon', calories: 700, protein: 60, carbs: 40, fat: 25 },
           Snacks: null,
@@ -49,6 +51,8 @@ test('normalizeServerPlan preserves leftover metadata', () => {
   assert.equal(lunch.source_recipe_id, 'dinner-1');
   assert.equal(lunch.cook_servings, 2);
   assert.equal(lunch.servings_eaten, 1);
+  assert.equal(lunch.recipe_portions, 4);
+  assert.equal(lunch.ingredient_servings, 1);
 });
 
 
@@ -87,4 +91,6 @@ test('toStandaloneMealOverride strips leftover linkage for swaps', () => {
   assert.equal(swappedMeal.leftover_from_meal_type, null);
   assert.equal(swappedMeal.cook_servings, 1);
   assert.equal(swappedMeal.servings_eaten, 1);
+  assert.equal(swappedMeal.recipe_portions, 1);
+  assert.equal(swappedMeal.ingredient_servings, 1);
 });
