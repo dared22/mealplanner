@@ -105,6 +105,11 @@ class CarryForwardTests(unittest.TestCase):
                             "protein": 65,
                             "carbs": 60,
                             "fat": 30,
+                            "ingredients": [
+                                {"name": "minced beef", "quantity": 150, "unit": "g"},
+                                {"name": "beans", "quantity": 0.5, "unit": "box"},
+                            ],
+                            "ingredient_servings": 1,
                         },
                         "Snacks": None,
                     },
@@ -158,6 +163,9 @@ class CarryForwardTests(unittest.TestCase):
 
         self.assertEqual(monday_dinner["cook_servings"], 2)
         self.assertEqual(monday_dinner["servings_eaten"], 1)
+        self.assertEqual(monday_dinner["ingredient_servings"], 2)
+        self.assertEqual(monday_dinner["ingredients"][0]["quantity"], 300)
+        self.assertEqual(monday_dinner["ingredients"][1]["quantity"], 1)
         self.assertFalse(monday_dinner["is_leftover"])
 
         self.assertTrue(tuesday_lunch["is_leftover"])
@@ -167,6 +175,9 @@ class CarryForwardTests(unittest.TestCase):
         self.assertEqual(tuesday_lunch["id"], dinner_recipe_id)
         self.assertEqual(tuesday_lunch["name"], "Chili")
         self.assertEqual(tuesday_lunch["calories"], 800)
+        self.assertEqual(tuesday_lunch["ingredient_servings"], 1)
+        self.assertEqual(tuesday_lunch["ingredients"][0]["quantity"], 150)
+        self.assertEqual(tuesday_lunch["ingredients"][1]["quantity"], 0.5)
 
     def test_apply_carry_forward_leftovers_adds_default_metadata(self) -> None:
         recipe_id = str(uuid4())

@@ -1585,9 +1585,17 @@ def apply_carry_forward_leftovers(
                 2,
             )
             updated_source["servings_eaten"] = 1
+            updated_source["ingredients"] = _scale_ingredients_for_servings(
+                updated_source.get("ingredients"),
+                source_servings=_normalize_serving_count(
+                    updated_source.get("ingredient_servings"), default=1
+                ),
+                target_servings=updated_source["cook_servings"],
+            )
+            updated_source["ingredient_servings"] = updated_source["cook_servings"]
             current_meals["Dinner"] = updated_source
 
-            leftover_meal = dict(updated_source)
+            leftover_meal = dict(source_meal)
             leftover_meal["is_leftover"] = True
             leftover_meal["leftover_from_day"] = current_day.get("name")
             leftover_meal["leftover_from_meal_type"] = "Dinner"
@@ -1596,6 +1604,14 @@ def apply_carry_forward_leftovers(
             ) or updated_source.get("id")
             leftover_meal["cook_servings"] = updated_source["cook_servings"]
             leftover_meal["servings_eaten"] = 1
+            leftover_meal["ingredients"] = _scale_ingredients_for_servings(
+                leftover_meal.get("ingredients"),
+                source_servings=_normalize_serving_count(
+                    leftover_meal.get("ingredient_servings"), default=1
+                ),
+                target_servings=1,
+            )
+            leftover_meal["ingredient_servings"] = 1
             next_meals[target_key] = leftover_meal
 
     for day in days:
