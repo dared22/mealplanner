@@ -5,6 +5,7 @@ import MealPlanner from '@/Pages/MealPlanner.jsx'
 import Login from '@/Pages/Login.jsx'
 import Recipes from '@/Pages/Recipes.jsx'
 import Groceries from '@/Pages/Groceries.jsx'
+import More from '@/Pages/More.jsx'
 // Explicitly point to the provider file to avoid resolving the plain context (.js) file
 import LanguageProvider from '@/i18n/LanguageContext.jsx'
 import AdminGuard from '@/components/admin/AdminGuard'
@@ -44,6 +45,7 @@ function AppRoutes() {
           <Route path="/planner" element={<MealPlanner user={normalizedUser} />} />
           <Route path="/recipes" element={<Recipes />} />
           <Route path="/groceries" element={<Groceries />} />
+          <Route path="/more" element={<More />} />
         </Routes>
       </SignedIn>
       <SignedOut>

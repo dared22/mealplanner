@@ -23,7 +23,7 @@ const clerkAppearance = {
 
     /* Social buttons — minimal icon-only circles */
     socialButtonsBlockButton:
-      'border border-[var(--border)] bg-[var(--card)] rounded-full transition-all duration-200 hover:border-[var(--primary)] hover:bg-[var(--accent)]',
+      'border border-[var(--border)] bg-[var(--card)] rounded-full transition-[background-color,border-color] duration-200 hover:border-[var(--primary)] hover:bg-[var(--accent)]',
     socialButtonsBlockButtonText: 'text-[var(--foreground)] text-sm font-medium',
     socialButtonsProviderIcon: 'w-5 h-5',
 
@@ -37,8 +37,8 @@ const clerkAppearance = {
       'bg-transparent border-0 border-b-2 border-[var(--border)] rounded-none px-0 py-3 text-base text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] focus:border-[var(--primary)] focus:ring-0 focus:shadow-none transition-colors',
     formFieldHintText: 'text-xs text-[var(--muted-foreground)]',
     formFieldWarningText: 'text-xs text-amber-600',
-    formFieldErrorText: 'text-xs text-red-500 mt-1',
-    formFieldSuccessText: 'text-xs text-emerald-600',
+    formFieldErrorText: 'text-xs text-destructive mt-1',
+    formFieldSuccessText: 'text-xs text-success',
 
     /* "Last used" badge */
     identityPreviewEditButton: 'text-[var(--primary)] text-xs font-medium',
@@ -46,7 +46,7 @@ const clerkAppearance = {
 
     /* Primary action button */
     formButtonPrimary:
-      'bg-[var(--primary)] text-white rounded-full font-semibold text-sm tracking-wide py-3 transition-all duration-200 hover:opacity-90 hover:shadow-[0_4px_12px_rgba(61,90,61,0.25)] focus:shadow-[0_0_0_3px_rgba(61,90,61,0.15)]',
+      'bg-[var(--primary)] text-white rounded-full font-semibold text-sm tracking-wide py-3 transition-[box-shadow,opacity] duration-200 hover:opacity-90 hover:shadow-[0_4px_12px_rgba(61,90,61,0.25)] focus:shadow-[0_0_0_3px_rgba(61,90,61,0.15)]',
 
     /* Footer / alternate action */
     footerAction: 'flex justify-center',
@@ -57,8 +57,8 @@ const clerkAppearance = {
     footer: 'hidden',
 
     /* Error/alert boxes */
-    alert: 'bg-red-50 border border-red-200 rounded-xl text-sm',
-    alertText: 'text-red-700',
+    alert: 'bg-destructive/10 border border-destructive/25 rounded-xl text-sm',
+    alertText: 'text-destructive',
 
     /* OTP / verification inputs */
     otpCodeFieldInput: 'border-b-2 border-[var(--border)] rounded-none bg-transparent text-[var(--foreground)] focus:border-[var(--primary)]',

@@ -13,7 +13,7 @@ export default function MealTips() {
           <div className="w-24 h-24 mx-auto mb-6 rounded-full bg-primary/10 flex items-center justify-center">
             <Lightbulb className="w-12 h-12 text-primary" />
           </div>
-          <h1 className="headline-serif mb-4">
+          <h1 className="text-4xl md:text-5xl font-bold tracking-[-0.01em] text-foreground leading-tight mb-4">
             {t('Meal Tips')}
           </h1>
           <p className="text-lg text-muted-foreground mb-2">

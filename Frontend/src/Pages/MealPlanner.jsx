@@ -1,13 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState, memo } from 'react';
 import { Link } from 'react-router-dom';
-import { SignedIn, SignedOut, UserButton, useAuth } from '@clerk/clerk-react';
-import { AnimatePresence, motion as Motion } from 'framer-motion';
-import { ArrowLeft, ArrowRight, BookOpen, Calendar, Lock, Moon, Search, ShoppingCart, Sun, TrendingUp, User } from 'lucide-react';
+import { useAuth } from '@clerk/clerk-react';
+import { AnimatePresence } from 'framer-motion';
+import { ArrowLeft, ArrowRight, Lock, Moon, Sun } from 'lucide-react';
 import { UserPreferences } from '@/Entities/UserPreferences';
 import { useLanguage } from '@/i18n/useLanguage';
 import { LogoInline } from '@/components/Logo';
+import { AppShell } from '@/components/DashboardLayout';
 
-import ProgressBar from '@/components/questionnaire/ProgressBar';
 import PersonalInfoStep from '@/components/questionnaire/PersonalInfoStep';
 import { validatePersonalInfo } from '@/components/questionnaire/validation';
 import ActivityStep from '@/components/questionnaire/ActivityStep';
@@ -52,131 +52,8 @@ const persistProgress = (storageKey, payload) => {
   }
 };
 
-// Step metadata for left panel content
-const STEP_META = [
-  {
-    title: 'Foundation of Growth',
-    subtitle: 'Every journey is unique. Your biometrics provide the essential data to calibrate your personalized nutrition plan.',
-    icon: TrendingUp,
-  },
-  {
-    title: 'Energy Calibration',
-    subtitle: 'Your physical activity level is a key factor in calculating your Basal Metabolic Rate (BMR) and Total Daily Energy Expenditure.',
-    icon: TrendingUp,
-  },
-  {
-    title: 'Goal Alignment',
-    subtitle: 'Understanding your primary objective helps us design meal plans that support your specific health and fitness targets.',
-    icon: TrendingUp,
-  },
-  {
-    title: 'Dietary Intelligence',
-    subtitle: 'Your dietary preferences and restrictions shape every recipe recommendation to ensure safe and enjoyable meals.',
-    icon: TrendingUp,
-  },
-  {
-    title: 'Flavor Profile',
-    subtitle: 'Cuisine preferences help us curate meals that match your taste, making healthy eating a delightful experience.',
-    icon: TrendingUp,
-  },
-  {
-    title: 'Lifestyle Fit',
-    subtitle: 'Cooking time and budget preferences ensure your meal plan fits seamlessly into your daily routine.',
-    icon: TrendingUp,
-  },
-];
-
 // Header with logo, step dots, and controls
-const Header = memo(function Header({ currentStep, totalSteps, lang, setLang, isDarkMode, setIsDarkMode, t }) {
-  if (currentStep === 7) {
-    return (
-      <header className="header dashboard-header">
-        <div className="dashboard-nav-container">
-          {/* Left section: Logo and Search */}
-          <div className="nav-section-left">
-            <Link to="/planner" className="dashboard-logo" aria-label="Preppr Home">
-              <LogoInline />
-            </Link>
-
-            {/* Search bar */}
-            <div className="nav-search-wrapper">
-              <div className="nav-search">
-                <Search className="w-4 h-4 text-muted-foreground shrink-0" />
-                <input
-                  className="nav-search-input"
-                  type="text"
-                  placeholder={t('Search for meals or nutrients...')}
-                  aria-label={t('Search for meals or nutrients')}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Center section: Main navigation */}
-          <nav className="nav-section-center" aria-label="Main navigation">
-            <Link to="/planner" className="nav-link-item">
-              <Calendar className="nav-link-icon" />
-              <span className="nav-link-text">{t('Planner')}</span>
-            </Link>
-            <Link to="/recipes" className="nav-link-item">
-              <BookOpen className="nav-link-icon" />
-              <span className="nav-link-text">{t('Recipes')}</span>
-            </Link>
-            <Link to="/groceries" className="nav-link-item">
-              <ShoppingCart className="nav-link-icon" />
-              <span className="nav-link-text">{t('Groceries')}</span>
-            </Link>
-          </nav>
-
-          {/* Right section: User controls */}
-          <div className="nav-section-right">
-            {/* User Profile */}
-            <SignedIn>
-              <div className="nav-user-wrapper">
-                <UserButton
-                  appearance={{
-                    elements: {
-                      userButtonAvatarBox: 'w-9 h-9',
-                      userButtonBox: 'hover:opacity-80 transition-opacity'
-                    }
-                  }}
-                />
-              </div>
-            </SignedIn>
-            <SignedOut>
-              <Link to="/login" className="nav-control-btn" aria-label={t('Log In')}>
-                <User className="w-5 h-5" />
-              </Link>
-            </SignedOut>
-
-            {/* Divider */}
-            <div className="nav-separator" role="separator" />
-
-            {/* Language Toggle */}
-            <button
-              onClick={() => setLang(lang === 'en' ? 'no' : 'en')}
-              className="nav-lang-toggle"
-              type="button"
-              aria-label={`Switch to ${lang === 'en' ? 'Norwegian' : 'English'}`}
-            >
-              {lang === 'en' ? 'NO' : 'EN'}
-            </button>
-
-            {/* Theme Toggle */}
-            <button
-              onClick={() => setIsDarkMode(p => !p)}
-              className="nav-control-btn"
-              type="button"
-              aria-label={t('Toggle theme')}
-            >
-              {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-            </button>
-          </div>
-        </div>
-      </header>
-    );
-  }
-
+const Header = memo(function Header({ currentStep, totalSteps, lang, setLang, isDarkMode, setIsDarkMode }) {
   return (
     <header className="header">
       <div className="header-inner">
@@ -206,68 +83,6 @@ const Header = memo(function Header({ currentStep, totalSteps, lang, setLang, is
         </div>
       </div>
     </header>
-  );
-});
-
-// Left decorative panel for onboarding
-const LeftPanel = memo(function LeftPanel({ currentStep, t }) {
-  const meta = STEP_META[currentStep - 1] || STEP_META[0];
-  const Icon = meta.icon;
-
-  return (
-    <div className="onboarding-left">
-      <div className="onboarding-left-content">
-        {/* Decorative icon/illustration */}
-        <Motion.div
-          key={currentStep}
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.5 }}
-          className="mb-8"
-        >
-          <svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M30 90V50L45 35L60 50V90" stroke="var(--primary)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
-            <path d="M60 90V30L75 15L90 30V90" stroke="var(--primary)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
-            <line x1="20" y1="90" x2="100" y2="90" stroke="var(--primary)" strokeWidth="3" strokeLinecap="round"/>
-          </svg>
-        </Motion.div>
-
-        {/* Title */}
-        <Motion.h2
-          key={`title-${currentStep}`}
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.1 }}
-          className="text-3xl font-medium text-foreground mb-4 font-serif"
-        >
-          {t(meta.title)}
-        </Motion.h2>
-
-        {/* Subtitle */}
-        <Motion.p
-          key={`sub-${currentStep}`}
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.2 }}
-          className="text-muted-foreground max-w-sm leading-relaxed"
-        >
-          {t(meta.subtitle)}
-        </Motion.p>
-
-        {/* Progress indicator at bottom */}
-        <Motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.3 }}
-          className="mt-12 w-24 h-1 bg-border rounded-full overflow-hidden"
-        >
-          <div
-            className="h-full bg-primary rounded-full transition-all duration-500"
-            style={{ width: `${(currentStep / 6) * 100}%` }}
-          />
-        </Motion.div>
-      </div>
-    </div>
   );
 });
 
@@ -562,34 +377,27 @@ export default function MealPlanner({ user }) {
   // Dashboard layout for results
   if (currentStep === 7) {
     return (
-      <div className="min-h-screen bg-background">
-        <Header currentStep={currentStep} totalSteps={TOTAL_STEPS} lang={lang} setLang={setLang} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} t={t} />
-        <main className="pt-32 pb-12 px-4 md:px-8">
-          <div className="max-w-6xl mx-auto">
-            <AnimatePresence mode="wait">{renderStep()}</AnimatePresence>
-          </div>
-        </main>
-      </div>
+      <AppShell lang={lang} setLang={setLang} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} t={t}>
+        <div className="pb-20 md:pb-0">
+          <AnimatePresence mode="wait">{renderStep()}</AnimatePresence>
+        </div>
+      </AppShell>
     );
   }
 
-  // Onboarding layout with split screen
+  // Onboarding layout
   return (
     <div className="onboarding-container">
-      {/* Left decorative panel */}
-      <LeftPanel currentStep={currentStep} t={t} />
-
-      {/* Right form panel */}
       <div className="onboarding-right">
-        <Header currentStep={currentStep} totalSteps={TOTAL_STEPS} lang={lang} setLang={setLang} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} t={t} />
+        <Header currentStep={currentStep} totalSteps={TOTAL_STEPS} lang={lang} setLang={setLang} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
 
         <main className="flex-1 flex flex-col pt-24 pb-8 px-6 md:px-12 lg:px-16">
-          <div className="flex-1 max-w-xl mx-auto w-full">
+          <div className="flex-1 max-w-4xl mx-auto w-full">
             <AnimatePresence mode="wait">{renderStep()}</AnimatePresence>
           </div>
 
           {/* Navigation */}
-          <div className="max-w-xl mx-auto w-full mt-12 flex items-center justify-between">
+          <div className="max-w-4xl mx-auto w-full mt-12 flex items-center justify-between">
             <button onClick={prevStep} disabled={currentStep === 1} className="btn-text disabled:opacity-30">
               <ArrowLeft className="w-4 h-4" />
               {t('Back')}

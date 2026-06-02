@@ -21,7 +21,7 @@ export default function PrivacyPolicy() {
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
               {t('Privacy Policy')}
             </p>
-            <h1 className="headline-serif">
+            <h1 className="text-4xl md:text-5xl font-bold tracking-[-0.01em] text-foreground leading-tight">
               {t('Privacy Policy')}
             </h1>
             <p className="text-sm text-muted-foreground">

@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react';
-import { motion as Motion } from 'framer-motion';
+import { motion as Motion, useReducedMotion } from 'framer-motion';
 import {
-  CheckCircle, RefreshCw, ChevronLeft, ChevronRight,
+  CheckCircle, RefreshCw,
   Shuffle, ThumbsUp, ThumbsDown, MoreHorizontal, Sun, Coffee, Utensils, Moon,
-  Info, ChevronDown, ChevronUp, X, Sparkles
+  Info, ChevronDown, ChevronUp, X, Sparkles, AlertCircle, Bell
 } from 'lucide-react';
 import { useAuth } from '@clerk/clerk-react';
 import { useLanguage } from '@/i18n/useLanguage';
@@ -58,7 +58,7 @@ const ProfileSummary = memo(function ProfileSummary({ data, calorieTarget, t, on
         <div className="profile-summary-card">
           <span className="profile-summary-label">{translate('Physical Stats')}</span>
           <span className="profile-summary-value">
-            {data.age || '—'} {translate('yrs')} • {data.height || '—'}cm • {data.weight || '—'}kg
+            {data.age || translate('N/A')} {translate('yrs')} • {data.height || translate('N/A')}cm • {data.weight || translate('N/A')}kg
           </span>
         </div>
 
@@ -81,12 +81,21 @@ const ProfileSummary = memo(function ProfileSummary({ data, calorieTarget, t, on
 });
 
 const MEAL_TYPES = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
-const MACRO_COLORS = { protein: '#3D5A3D', carbs: '#22c55e', fat: '#f97316' };
+const MACRO_COLORS = { protein: 'oklch(0.36 0.04 145)', carbs: '#22c55e', fat: '#f97316' };
 const GENERATION_STAGE_LABELS = {
-  finding_recipes: 'Finding recipes...',
-  optimizing_nutrition: 'Optimizing nutrition...',
-  finalizing: 'Finalizing plan...'
+  finding_recipes: 'Finding recipes',
+  optimizing_nutrition: 'Optimizing nutrition',
+  finalizing: 'Finalizing plan'
 };
+
+const ESTIMATED_DURATION_MS = 45000;
+const EXTENDED_THRESHOLD_MS = 30000;
+const GENERATION_TIPS = [
+  'Most people eat the same 9 meals on rotation each week.',
+  'Cooking once for two meals can save about 4 hours a week.',
+  'Plans that include leftovers cut grocery costs by roughly 20%.',
+  'Variety across cuisines correlates with better nutrient coverage.',
+];
 
 const MEAL_ICONS = {
   Breakfast: Coffee,
@@ -108,11 +117,11 @@ const GenerationBadge = memo(function GenerationBadge({ source, t }) {
   const description = translate('Optimized based on your ratings');
 
   return (
-    <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-200">
+    <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-success/10 text-success">
       <Sparkles className="w-3.5 h-3.5" />
       <span>{label}</span>
-      <span className="hidden sm:inline text-muted-foreground">
-        — {description}
+      <span className="hidden sm:inline text-success/80">
+        · {description}
       </span>
     </div>
   );
@@ -196,40 +205,43 @@ const formatIngredient = (value) => {
 // Day Card for carousel
 const DayCard = memo(function DayCard({ day, isActive, onSelect, dayNumber, t }) {
   const translate = t || ((v) => v);
-  const mealCount = Object.values(day.meals || {}).filter(Boolean).length;
+  const prefersReducedMotion = useReducedMotion();
+  const translatedDayName = translate(day.name);
+  const dayAbbr = translatedDayName.slice(0, 3).toUpperCase();
+  const macros = day.macros || {};
+  const protein = Number(macros.protein) || 0;
+  const carbs = Number(macros.carbs) || 0;
+  const fat = Number(macros.fat) || 0;
+  const macroTotal = Math.max(protein + carbs + fat, 1);
+  const macroSegments = [
+    { key: 'protein', value: protein, color: MACRO_COLORS.protein },
+    { key: 'carbs', value: carbs, color: MACRO_COLORS.carbs },
+    { key: 'fat', value: fat, color: MACRO_COLORS.fat },
+  ];
 
   return (
     <Motion.button
       type="button"
       onClick={onSelect}
-      whileTap={{ scale: 0.98 }}
+      whileTap={prefersReducedMotion ? undefined : { scale: 0.98 }}
+      aria-label={translate('Day {number}', { number: dayNumber })}
       className={`day-card ${isActive ? 'active' : ''}`}
     >
-      {/* Icon */}
-      <div className="day-icon">
-        <svg className="w-8 h-8 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
-        </svg>
-      </div>
-
-      {/* Label */}
-      <span className="day-label">{translate('Day')} {dayNumber}</span>
-
-      {/* Day Name */}
-      <h3 className="day-name">{translate(day.name)}</h3>
-
-      {/* Dots representing meals */}
-      <div className="day-dots">
-        {[...Array(mealCount)].map((_, i) => (
-          <span key={i} className="day-dot" />
+      <span className="day-abbr">{dayAbbr}</span>
+      <span className="day-number">{dayNumber}</span>
+      <div className="day-sparkbar" aria-hidden="true">
+        {macroSegments.map((segment) => (
+          <span
+            key={segment.key}
+            className="day-sparkbar-segment"
+            style={{
+              width: `${(segment.value / macroTotal) * 100}%`,
+              backgroundColor: segment.color,
+            }}
+          />
         ))}
       </div>
-
-      {/* Stats */}
-      <div className="day-stats">
-        <span className="day-kcal">{day.calories} kcal</span>
-        <span className="day-macro">P{day.macros.protein}g</span>
-      </div>
+      <span className="day-kcal">{day.calories}{translate('kcal')}</span>
     </Motion.button>
   );
 });
@@ -299,7 +311,7 @@ const MealItem = memo(function MealItem({
                 type="button"
                 onClick={() => onRate(meal.id, true)}
                 disabled={ratingDisabled}
-                className={`meal-action ${recipeRating?.is_liked === true ? 'text-green-500' : ''}`}
+                className={`meal-action ${recipeRating?.is_liked === true ? 'text-success' : ''}`}
                 title={translate('Like this meal')}
               >
                 <ThumbsUp className={`w-4 h-4 ${recipeRating?.is_liked === true ? 'fill-current' : ''}`} />
@@ -308,7 +320,7 @@ const MealItem = memo(function MealItem({
                 type="button"
                 onClick={() => onRate(meal.id, false)}
                 disabled={ratingDisabled}
-                className={`meal-action ${recipeRating?.is_liked === false ? 'text-red-500' : ''}`}
+                className={`meal-action ${recipeRating?.is_liked === false ? 'text-destructive' : ''}`}
                 title={translate('Dislike this meal')}
               >
                 <ThumbsDown className={`w-4 h-4 ${recipeRating?.is_liked === false ? 'fill-current' : ''}`} />
@@ -398,14 +410,14 @@ const RatingProgress = memo(function RatingProgress({ progress, t }) {
 
   if (progress.is_unlocked) {
     return (
-      <div className="p-4 rounded-xl bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900">
+      <div className="p-4 rounded-xl bg-success/10 border border-success/25">
         <div className="flex items-center gap-2">
-          <CheckCircle className="w-5 h-5 text-green-600" />
-          <span className="text-sm font-medium text-green-800 dark:text-green-200">
+          <CheckCircle className="w-5 h-5 text-success" />
+          <span className="text-sm font-medium text-success">
             {translate('Personalized plans unlocked!')}
           </span>
         </div>
-        <p className="mt-1 text-xs text-green-600 dark:text-green-400">
+        <p className="mt-1 text-xs text-success">
           {translate('Your next plan will be tailored to your preferences.')}
         </p>
       </div>
@@ -426,7 +438,7 @@ const RatingProgress = memo(function RatingProgress({ progress, t }) {
       </div>
       <div className="h-2 bg-secondary rounded-full overflow-hidden">
         <div
-          className="h-full bg-primary transition-all duration-300"
+          className="h-full bg-primary transition-[width] duration-300"
           style={{ width: `${percentage}%` }}
         />
       </div>
@@ -443,44 +455,21 @@ const RatingProgress = memo(function RatingProgress({ progress, t }) {
 // Day Carousel
 const DayCarousel = memo(function DayCarousel({ days, selectedIndex, onSelect, t }) {
   const trackRef = useRef(null);
-  const [canScroll, setCanScroll] = useState({ prev: false, next: false });
-
-  const checkScroll = useCallback(() => {
-    const track = trackRef.current;
-    if (!track) return;
-    const { scrollLeft, scrollWidth, clientWidth } = track;
-    setCanScroll({ prev: scrollLeft > 12, next: scrollLeft < scrollWidth - clientWidth - 12 });
-  }, []);
-
-  useEffect(() => { checkScroll(); }, [checkScroll, days.length]);
-
-  useEffect(() => {
-    const track = trackRef.current;
-    if (!track) return;
-    track.addEventListener('scroll', checkScroll, { passive: true });
-    return () => track.removeEventListener('scroll', checkScroll);
-  }, [checkScroll]);
+  const prefersReducedMotion = useReducedMotion();
 
   useEffect(() => {
     const track = trackRef.current;
     const node = track?.children[selectedIndex];
-    node?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-  }, [selectedIndex]);
-
-  const scroll = (dir) => trackRef.current?.scrollBy({ left: dir * trackRef.current.clientWidth * 0.8, behavior: 'smooth' });
+    node?.scrollIntoView({
+      behavior: prefersReducedMotion ? 'auto' : 'smooth',
+      inline: 'center',
+      block: 'nearest',
+    });
+  }, [prefersReducedMotion, selectedIndex]);
 
   return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => scroll(-1)}
-        disabled={!canScroll.prev}
-        className="absolute left-0 top-1/2 z-10 -translate-y-1/2 hidden lg:flex btn-icon disabled:opacity-30"
-      >
-        <ChevronLeft className="w-5 h-5" />
-      </button>
-
-      <div ref={trackRef} className="flex gap-4 overflow-x-auto hide-scrollbar snap-x snap-mandatory py-2 px-1">
+    <div className="day-timeline">
+      <div ref={trackRef} className="day-timeline-track hide-scrollbar">
         {days.map((day, idx) => (
           <DayCard
             key={day.name}
@@ -492,15 +481,6 @@ const DayCarousel = memo(function DayCarousel({ days, selectedIndex, onSelect, t
           />
         ))}
       </div>
-
-      <button
-        type="button"
-        onClick={() => scroll(1)}
-        disabled={!canScroll.next}
-        className="absolute right-0 top-1/2 z-10 -translate-y-1/2 hidden lg:flex btn-icon disabled:opacity-30"
-      >
-        <ChevronRight className="w-5 h-5" />
-      </button>
     </div>
   );
 });
@@ -508,20 +488,91 @@ const DayCarousel = memo(function DayCarousel({ days, selectedIndex, onSelect, t
 // Swap Modal
 const SwapModal = memo(function SwapModal({ isOpen, onClose, alternatives, loading, onSelect, t }) {
   const translate = t || ((v) => v);
+  const prefersReducedMotion = useReducedMotion();
+  const dialogRef = useRef(null);
+  const closeButtonRef = useRef(null);
+  const openerRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    openerRef.current = document.activeElement;
+    document.body.style.overflow = 'hidden';
+
+    const getFocusableElements = () => {
+      if (!dialogRef.current) return [];
+      return Array.from(
+        dialogRef.current.querySelectorAll(
+          'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )
+      ).filter((element) => !element.hasAttribute('disabled') && element.getAttribute('aria-hidden') !== 'true');
+    };
+
+    const focusFirstElement = () => {
+      const focusableElements = getFocusableElements();
+      const firstElement = closeButtonRef.current || focusableElements[0];
+      firstElement?.focus();
+    };
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        onCloseRef.current();
+        return;
+      }
+
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    focusFirstElement();
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', handleKeyDown);
+      openerRef.current?.focus?.();
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40" onClick={onClose}>
       <Motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="swap-modal-title"
+        initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.95 }}
+        animate={prefersReducedMotion ? undefined : { opacity: 1, scale: 1 }}
         className="bg-card rounded-2xl p-6 w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-semibold">{translate('Swap Meal')}</h3>
-          <button onClick={onClose} className="btn-icon">
+          <h3 id="swap-modal-title" className="text-lg font-semibold">{translate('Swap Meal')}</h3>
+          <button ref={closeButtonRef} onClick={onClose} className="btn-icon" aria-label={translate('Close swap modal')}>
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -550,7 +601,7 @@ const SwapModal = memo(function SwapModal({ isOpen, onClose, alternatives, loadi
                     </div>
                   </div>
                   {alt.is_liked && (
-                    <ThumbsUp className="w-4 h-4 text-green-500 fill-current" />
+                    <ThumbsUp className="w-4 h-4 text-success fill-current" />
                   )}
                 </div>
               </button>
@@ -558,6 +609,103 @@ const SwapModal = memo(function SwapModal({ isOpen, onClose, alternatives, loadi
           </div>
         )}
       </Motion.div>
+    </div>
+  );
+});
+
+// Loading-state components
+const ProgressArc = memo(function ProgressArc({ progress, prefersReducedMotion }) {
+  const radius = 36;
+  const circumference = 2 * Math.PI * radius;
+  const clamped = Math.max(0, Math.min(progress, 0.97));
+  const offset = circumference * (1 - clamped);
+
+  return (
+    <svg className="w-20 h-20 -rotate-90" viewBox="0 0 80 80" aria-hidden="true">
+      <circle
+        cx="40" cy="40" r={radius}
+        fill="none"
+        strokeWidth="4"
+        className="stroke-primary/15"
+      />
+      <circle
+        cx="40" cy="40" r={radius}
+        fill="none"
+        strokeWidth="4"
+        strokeLinecap="round"
+        strokeDasharray={circumference}
+        strokeDashoffset={offset}
+        className="stroke-primary"
+        style={prefersReducedMotion ? undefined : {
+          transition: 'stroke-dashoffset 400ms cubic-bezier(0.22, 1, 0.36, 1)'
+        }}
+      />
+    </svg>
+  );
+});
+
+const ProfileChips = memo(function ProfileChips({ data, t }) {
+  const translate = t || ((v) => v);
+
+  const goalMap = {
+    lose_weight: translate('Lose weight'),
+    maintain_weight: translate('Maintain weight'),
+    gain_weight: translate('Gain weight'),
+    build_muscle: translate('Build muscle'),
+    improve_health: translate('Improve health'),
+  };
+  const goalLabel = data?.nutrition_goal ? goalMap[data.nutrition_goal] : null;
+  const cuisines = Array.isArray(data?.preferred_cuisines)
+    ? data.preferred_cuisines.slice(0, 2).map((c) => translate(c)).join(' + ')
+    : null;
+  const cookingTime = data?.cooking_time_preference ? translate(data.cooking_time_preference) : null;
+
+  const chips = [
+    data?.age ? `${data.age} ${translate('yrs')}` : null,
+    goalLabel,
+    cuisines || null,
+    cookingTime,
+  ].filter(Boolean);
+
+  if (chips.length === 0) return null;
+
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-1.5">
+      {chips.map((chip, i) => (
+        <span
+          key={`${chip}-${i}`}
+          className="inline-flex items-center px-2.5 py-1 rounded-full bg-accent text-xs font-medium text-foreground"
+        >
+          {chip}
+        </span>
+      ))}
+    </div>
+  );
+});
+
+const RotatingTip = memo(function RotatingTip({ t, prefersReducedMotion }) {
+  const translate = t || ((v) => v);
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => {
+    if (prefersReducedMotion) return undefined;
+    const id = window.setInterval(() => {
+      setIndex((i) => (i + 1) % GENERATION_TIPS.length);
+    }, 5200);
+    return () => window.clearInterval(id);
+  }, [prefersReducedMotion]);
+
+  return (
+    <div className="min-h-[44px] flex items-center justify-center">
+      <Motion.p
+        key={index}
+        initial={prefersReducedMotion ? false : { opacity: 0, y: 4 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+        className="text-sm text-muted-foreground max-w-md text-center"
+      >
+        {translate(GENERATION_TIPS[index])}
+      </Motion.p>
     </div>
   );
 });
@@ -579,12 +727,15 @@ export default function ResultsStep({
   const { t } = useLanguage();
   const { getToken } = useAuth();
   const { progress, submitRating, getRating, loading: ratingLoading } = useRatings();
+  const prefersReducedMotion = useReducedMotion();
   const activePlan = useMemo(() => normalizeServerPlan(plan, t), [plan, t]);
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
   const [planOverrides, setPlanOverrides] = useState({});
   const [generationStage, setGenerationStage] = useState(null);
   const [generationStartTime, setGenerationStartTime] = useState(null);
   const [showExtendedMessage, setShowExtendedMessage] = useState(false);
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [notifyState, setNotifyState] = useState('idle'); // idle | armed | unsupported | denied
   const [swapModal, setSwapModal] = useState({ open: false, dayIndex: null, mealType: null, recipeId: null });
   const [alternatives, setAlternatives] = useState([]);
   const [loadingAlternatives, setLoadingAlternatives] = useState(false);
@@ -625,17 +776,19 @@ export default function ResultsStep({
     if (isLoading) {
       if (!generationStartTime) {
         setGenerationStartTime(Date.now());
+        setLoadingProgress(0);
       }
       return;
     }
     setGenerationStartTime(null);
     setShowExtendedMessage(false);
-  }, [isLoading, generationStartTime]);
+    setLoadingProgress(isReady ? 1 : 0);
+  }, [isLoading, isReady, generationStartTime]);
 
   useEffect(() => {
     if (!generationStartTime) return undefined;
     const elapsed = Date.now() - generationStartTime;
-    const remaining = 10000 - elapsed;
+    const remaining = EXTENDED_THRESHOLD_MS - elapsed;
     if (remaining <= 0) {
       setShowExtendedMessage(true);
       return undefined;
@@ -644,10 +797,75 @@ export default function ResultsStep({
     return () => clearTimeout(timeout);
   }, [generationStartTime]);
 
+  useEffect(() => {
+    if (!generationStartTime) return undefined;
+    let cancelled = false;
+    const update = () => {
+      if (cancelled) return;
+      const elapsed = Date.now() - generationStartTime;
+      // Eases toward 0.95: fast early, slow late. Never quite reaches 1 until success arrives.
+      const t = Math.min(elapsed / ESTIMATED_DURATION_MS, 1);
+      const eased = 1 - Math.pow(1 - t, 2.2);
+      setLoadingProgress(Math.min(eased, 0.95));
+    };
+    update();
+    const interval = window.setInterval(update, prefersReducedMotion ? 1000 : 250);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [generationStartTime, prefersReducedMotion]);
+
   const generationStageLabel = useMemo(() => {
     const label = GENERATION_STAGE_LABELS[generationStage];
-    return label ? t(label) : t('Preparing your meal plan...');
+    return label ? t(label) : t('Preparing your meal plan');
   }, [generationStage, t]);
+
+  const handleArmNotification = useCallback(async () => {
+    if (typeof window === 'undefined' || !('Notification' in window)) {
+      setNotifyState('unsupported');
+      return;
+    }
+    if (Notification.permission === 'granted') {
+      setNotifyState('armed');
+      return;
+    }
+    if (Notification.permission === 'denied') {
+      setNotifyState('denied');
+      return;
+    }
+    try {
+      const result = await Notification.requestPermission();
+      setNotifyState(result === 'granted' ? 'armed' : result === 'denied' ? 'denied' : 'idle');
+    } catch {
+      setNotifyState('unsupported');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (notifyState !== 'armed' || !isReady) return;
+    if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+      setNotifyState('idle');
+      return;
+    }
+    try {
+      const n = new Notification(t('Your meal plan is ready'), {
+        body: t('Tap to open your weekly plan.'),
+        tag: 'preppr-plan-ready',
+      });
+      n.onclick = () => {
+        window.focus();
+        n.close();
+      };
+    } catch {
+      // Notification creation can fail in private windows; ignore.
+    }
+    setNotifyState('idle');
+  }, [notifyState, isReady, t]);
+
+  useEffect(() => {
+    if (!isLoading) setNotifyState('idle');
+  }, [isLoading]);
 
   const fetchAlternatives = useCallback(async (recipeId, mealType) => {
     if (!recipeId) return;
@@ -718,25 +936,37 @@ export default function ResultsStep({
     <div className="space-y-8">
       {/* Hero Section */}
       <Motion.div
-        initial={{ opacity: 0, y: 20 }}
+        initial={prefersReducedMotion ? false : { opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
         className="text-center"
       >
-        <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-primary flex items-center justify-center">
+        <div className="w-20 h-20 mx-auto mb-6 relative flex items-center justify-center">
           {isLoading ? (
-            <RefreshCw className="w-10 h-10 text-white animate-spin" />
+            <>
+              <ProgressArc progress={loadingProgress} prefersReducedMotion={prefersReducedMotion} />
+              <span className="absolute text-sm font-semibold text-primary tabular-nums">
+                {Math.round(loadingProgress * 100)}%
+              </span>
+            </>
           ) : (
-            <CheckCircle className="w-10 h-10 text-white" />
+            <div className={`w-20 h-20 rounded-full flex items-center justify-center ${showError ? 'bg-destructive/10' : 'bg-primary'}`}>
+              {showError ? (
+                <AlertCircle className="w-10 h-10 text-destructive" />
+              ) : (
+                <CheckCircle className="w-10 h-10 text-primary-foreground" />
+              )}
+            </div>
           )}
         </div>
 
-        <h1 className="headline-serif mb-3">
+        <h1 className="text-4xl md:text-5xl font-bold tracking-[-0.01em] text-foreground leading-tight mb-3">
           {isReady ? (
-            <>{t('Your')} <span className="accent">{t('meal plan')}</span> {t('is ready')}</>
+            <>{t('Your')} <span className="text-primary">{t('meal plan')}</span> {t('is ready')}</>
           ) : isLoading ? (
-            <>{t('Preparing your')} <span className="accent">{t('plan')}</span>...</>
+            <>{t('Preparing your')} <span className="text-primary">{t('plan')}</span></>
           ) : (
-            <>{t('Something went')} <span className="accent">{t('wrong')}</span></>
+            <>{t('Something went')} <span className="text-primary">{t('wrong')}</span></>
           )}
         </h1>
 
@@ -750,7 +980,7 @@ export default function ResultsStep({
           {isReady
             ? t('Balanced menus aligned with your goals and preferences.')
             : isLoading
-            ? t("We're assembling your personalized plan.")
+            ? t('Usually under a minute. You can leave this tab open or come back to it.')
             : t('Please try again or adjust your preferences.')}
         </p>
 
@@ -766,20 +996,65 @@ export default function ResultsStep({
         )}
       </Motion.div>
 
-      {/* Loading State */}
+      {/* Loading anchor: profile + rotating tip + reassurance */}
       {isLoading && (
         <Motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="p-12 rounded-2xl bg-card border border-border text-center"
+          initial={prefersReducedMotion ? false : { opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
+          className="max-w-xl mx-auto p-6 rounded-2xl bg-card border border-border"
         >
-          <div className="w-16 h-16 mx-auto mb-4 border-4 border-border border-t-primary rounded-full animate-spin" />
-          <p className="text-lg font-medium text-foreground">{generationStageLabel}</p>
-          {showExtendedMessage && (
-            <p className="text-sm text-muted-foreground mt-2">
-              {t('This is taking longer than usual, almost done...')}
-            </p>
-          )}
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <p className="text-xs uppercase tracking-wider text-muted-foreground font-medium text-center">
+                {t('Generating plan for')}
+              </p>
+              <ProfileChips data={data} t={t} />
+            </div>
+
+            <div className="pt-3 border-t border-border">
+              <RotatingTip t={t} prefersReducedMotion={prefersReducedMotion} />
+            </div>
+
+            <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+              <span className="relative flex h-1.5 w-1.5">
+                {!prefersReducedMotion && (
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-60" />
+                )}
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-primary" />
+              </span>
+              <span>{generationStageLabel}</span>
+            </div>
+
+            {showExtendedMessage && (
+              <div className="pt-2 space-y-3">
+                <p className="text-xs text-foreground/70 text-center">
+                  {t('Still working on it. Your progress is saved if you need to close this tab.')}
+                </p>
+                <div className="flex justify-center">
+                  {notifyState === 'armed' ? (
+                    <span className="inline-flex items-center gap-1.5 text-xs text-primary font-medium">
+                      <CheckCircle className="w-3.5 h-3.5" />
+                      {t("We'll ping you when it's ready.")}
+                    </span>
+                  ) : notifyState === 'denied' ? (
+                    <span className="text-xs text-muted-foreground">
+                      {t('Notifications are blocked in your browser settings.')}
+                    </span>
+                  ) : notifyState === 'unsupported' ? null : (
+                    <button
+                      type="button"
+                      onClick={handleArmNotification}
+                      className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+                    >
+                      <Bell className="w-3.5 h-3.5" />
+                      {t('Notify me when ready')}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </Motion.div>
       )}
 
@@ -788,10 +1063,10 @@ export default function ResultsStep({
         <Motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="p-6 rounded-2xl bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900"
+          className="p-6 rounded-2xl bg-destructive/10 border border-destructive/25"
         >
-          <h3 className="font-semibold text-red-900 dark:text-red-200">{t("We couldn't finalize your plan")}</h3>
-          <p className="mt-2 text-sm text-red-700 dark:text-red-300">
+          <h3 className="font-semibold text-destructive">{t("We couldn't finalize your plan")}</h3>
+          <p className="mt-2 text-sm text-destructive">
             {errorMessage || t('Please adjust your answers or try generating again.')}
           </p>
         </Motion.div>
@@ -878,7 +1153,7 @@ export default function ResultsStep({
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">{t('Difference')}</span>
-                      <span className={`font-semibold ${selectedDay.calories <= displayPlan.calorieTarget ? 'text-primary' : 'text-orange-500'}`}>
+                      <span className={`font-semibold ${selectedDay.calories <= displayPlan.calorieTarget ? 'text-primary' : 'text-warning'}`}>
                         {selectedDay.calories - displayPlan.calorieTarget > 0 ? '+' : ''}{selectedDay.calories - displayPlan.calorieTarget} kcal
                       </span>
                     </div>
@@ -890,9 +1165,9 @@ export default function ResultsStep({
           )}
 
           {/* Raw Response (collapsible for debug) */}
-          {rawPlanText && (
+          {import.meta.env.DEV && rawPlanText && (
             <details className="p-4 rounded-2xl bg-secondary text-sm">
-              <summary className="cursor-pointer font-semibold text-foreground">{t('View AI Response')}</summary>
+              <summary className="cursor-pointer font-semibold text-foreground">{t('debugAiResponse')}</summary>
               <pre className="mt-3 whitespace-pre-wrap text-xs text-muted-foreground overflow-auto max-h-64">{rawPlanText}</pre>
             </details>
           )}

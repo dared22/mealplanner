@@ -21,7 +21,7 @@ export default function DataDeletion() {
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
               {t('Data Deletion')}
             </p>
-            <h1 className="headline-serif">
+            <h1 className="text-4xl md:text-5xl font-bold tracking-[-0.01em] text-foreground leading-tight">
               {t('User Data Deletion')}
             </h1>
             <p className="text-sm text-muted-foreground">

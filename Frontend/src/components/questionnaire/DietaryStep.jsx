@@ -1,23 +1,42 @@
 import React, { memo, useCallback, useMemo } from 'react';
-import { motion as Motion } from 'framer-motion';
-import { Check } from 'lucide-react';
+import { motion as Motion, useReducedMotion } from 'framer-motion';
 import { useLanguage } from '@/i18n/useLanguage';
 
 const DietaryStep = memo(function DietaryStep({ data, onChange }) {
   const { t } = useLanguage();
+  const prefersReducedMotion = useReducedMotion();
 
   const dietaryOptions = useMemo(
     () => [
-      { value: 'none', title: t('No Restrictions'), badge: 'ALL' },
-      { value: 'vegetarian', title: t('Vegetarian'), badge: 'VEG' },
-      { value: 'vegan', title: t('Vegan'), badge: 'VGN' },
-      { value: 'gluten_free', title: t('Gluten-Free'), badge: 'GF' },
-      { value: 'dairy_free', title: t('Dairy-Free'), badge: 'DF' },
-      { value: 'nut_free', title: t('Nut-Free'), badge: 'NF' },
-      { value: 'keto', title: t('Keto'), badge: 'KETO' },
-      { value: 'paleo', title: t('Paleo'), badge: 'PALEO' },
+      { value: 'none', title: t('No Restrictions') },
+      { value: 'gluten_free', title: t('Gluten-free'), hint: t('must avoid') },
+      { value: 'dairy_free', title: t('Dairy-free'), hint: t('must avoid') },
+      { value: 'nut_free', title: t('Nut-free'), hint: t('must avoid') },
+      { value: 'vegetarian', title: t('Vegetarian') },
+      { value: 'vegan', title: t('Vegan') },
+      { value: 'keto', title: t('Keto') },
+      { value: 'paleo', title: t('Paleo') },
     ],
     [t]
+  );
+
+  const restrictionGroups = useMemo(
+    () => [
+      {
+        label: t('Allergens'),
+        values: ['gluten_free', 'dairy_free', 'nut_free'],
+      },
+      {
+        label: t('Diet style'),
+        values: ['vegetarian', 'vegan', 'keto', 'paleo'],
+      },
+    ],
+    [t]
+  );
+
+  const optionByValue = useMemo(
+    () => new Map(dietaryOptions.map((option) => [option.value, option])),
+    [dietaryOptions]
   );
 
   const currentRestrictions = useMemo(
@@ -49,9 +68,9 @@ const DietaryStep = memo(function DietaryStep({ data, onChange }) {
 
   return (
     <Motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={prefersReducedMotion ? false : { opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
+      exit={prefersReducedMotion ? undefined : { opacity: 0, y: -20 }}
       transition={{ duration: 0.4 }}
       className="space-y-10"
     >
@@ -65,52 +84,56 @@ const DietaryStep = memo(function DietaryStep({ data, onChange }) {
         </p>
       </div>
 
-      {/* Dietary Cards Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        {dietaryOptions.map((option, index) => {
-          const isSelected = currentRestrictions.includes(option.value);
+      {/* Segmented restrictions list */}
+      <div className="dietary-list">
+        <button
+          type="button"
+          onClick={() => toggleRestriction('none')}
+          aria-pressed={currentRestrictions.includes('none')}
+          className={`dietary-row dietary-row-pinned ${
+            currentRestrictions.includes('none') ? 'active' : ''
+          }`}
+        >
+          <span className="dietary-dot" aria-hidden="true" />
+          <span className="dietary-label">{optionByValue.get('none')?.title}</span>
+        </button>
 
-          return (
-            <Motion.button
-              key={option.value}
-              type="button"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.03 * index }}
-              onClick={() => toggleRestriction(option.value)}
-              className={`selectable-card flex flex-col items-center text-center py-6 px-4 ${
-                isSelected ? 'selected' : ''
-              }`}
-            >
-              {/* Check indicator */}
-              {isSelected && (
-                <div className="check-icon">
-                  <Check className="w-4 h-4" />
-                </div>
-              )}
+        {restrictionGroups.map((group) => (
+          <div key={group.label} className="dietary-group">
+            <div className="choice-group-heading">
+              <span>{group.label}</span>
+            </div>
+            <div className="divide-y divide-border">
+              {group.values.map((value) => {
+                const option = optionByValue.get(value);
+                const isSelected = currentRestrictions.includes(value);
+                const isDisabled = currentRestrictions.includes('none');
 
-              {/* Badge */}
-              <div
-                className={`w-16 h-12 rounded-xl flex items-center justify-center mb-4 text-xs font-bold uppercase tracking-wide transition-colors ${
-                  isSelected
-                    ? 'bg-primary text-white'
-                    : 'bg-secondary text-foreground'
-                }`}
-              >
-                {option.badge}
-              </div>
-
-              {/* Title */}
-              <h3 className="font-semibold text-sm text-foreground">{option.title}</h3>
-            </Motion.button>
-          );
-        })}
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => toggleRestriction(value)}
+                    aria-pressed={isSelected}
+                    className={`dietary-row ${isSelected ? 'active' : ''} ${
+                      isDisabled ? 'muted' : ''
+                    }`}
+                  >
+                    <span className="dietary-dot" aria-hidden="true" />
+                    <span className="dietary-label">{option?.title}</span>
+                    {option?.hint && <span className="dietary-hint">{option.hint}</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* Selected summary */}
       {currentRestrictions.length > 0 && !currentRestrictions.includes('none') && (
         <Motion.p
-          initial={{ opacity: 0, y: 10 }}
+          initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           className="text-center text-sm text-primary font-medium"
         >

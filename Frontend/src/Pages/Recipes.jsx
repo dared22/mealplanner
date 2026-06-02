@@ -49,7 +49,7 @@ function TabPill({ active, label, onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className={`px-4 py-2 rounded-full border text-sm font-semibold transition-all ${
+      className={`px-4 py-2 rounded-full border text-sm font-semibold transition-[color,background-color,border-color,box-shadow] ${
         active
           ? 'bg-primary text-white border-primary shadow-sm'
           : 'bg-card text-foreground border-border hover:border-primary/40'
@@ -275,8 +275,8 @@ export default function Recipes() {
       <div className="space-y-8 pb-12">
         {/* Page Header */}
         <div className="space-y-3">
-          <h1 className="headline-serif">
-            <span className="accent">{t('Recipe Collection')}</span>
+          <h1 className="text-4xl md:text-5xl font-bold tracking-[-0.01em] text-foreground leading-tight">
+            <span className="text-primary">{t('Recipe Collection')}</span>
           </h1>
           <p className="text-muted-foreground text-lg max-w-lg">
             {t('Discover delicious and nutritious meals tailored to your preferences')}
@@ -469,8 +469,8 @@ export default function Recipes() {
 
             {error ? (
               <div className="rounded-2xl border border-border/50 bg-card p-16 text-center space-y-5">
-                <div className="w-16 h-16 rounded-full bg-red-50 mx-auto flex items-center justify-center">
-                  <ChefHat className="w-8 h-8 text-red-400" />
+                <div className="w-16 h-16 rounded-full bg-destructive/10 mx-auto flex items-center justify-center">
+                  <ChefHat className="w-8 h-8 text-destructive" />
                 </div>
                 <div className="space-y-2">
                   <p className="text-xl font-semibold text-foreground">

@@ -66,10 +66,10 @@ const PersonalInfoStep = memo(function PersonalInfoStep({ data, onChange }) {
             min={10}
             max={100}
             onChange={(e) => handleNumberChange('age', e.target.value)}
-            className={`input-underline ${showAgeError ? 'border-red-500 focus:border-red-500' : ''}`}
+              className={`input-underline ${showAgeError ? 'border-destructive focus:border-destructive' : ''}`}
           />
           {showAgeError && (
-            <p className="text-sm text-red-500 mt-2">{t(errors.age)}</p>
+            <p className="text-sm text-destructive mt-2">{t(errors.age)}</p>
           )}
         </Motion.div>
 
@@ -83,7 +83,7 @@ const PersonalInfoStep = memo(function PersonalInfoStep({ data, onChange }) {
           <select
             value={data.gender || ''}
             onChange={(e) => onChange({ gender: e.target.value })}
-            className={`select-underline ${showGenderError ? 'border-red-500 focus:border-red-500' : ''}`}
+              className={`select-underline ${showGenderError ? 'border-destructive focus:border-destructive' : ''}`}
           >
             <option value="">{t('Select an option')}</option>
             {genderOptions.map((opt) => (
@@ -93,7 +93,7 @@ const PersonalInfoStep = memo(function PersonalInfoStep({ data, onChange }) {
             ))}
           </select>
           {showGenderError && (
-            <p className="text-sm text-red-500 mt-2">{t(errors.gender)}</p>
+            <p className="text-sm text-destructive mt-2">{t(errors.gender)}</p>
           )}
         </Motion.div>
 
@@ -113,13 +113,13 @@ const PersonalInfoStep = memo(function PersonalInfoStep({ data, onChange }) {
               max={210}
               onChange={(e) => handleNumberChange('height', e.target.value)}
               className={`input-underline pr-12 ${
-                showHeightError || showLogicError ? 'border-red-500 focus:border-red-500' : ''
+                showHeightError || showLogicError ? 'border-destructive focus:border-destructive' : ''
               }`}
             />
             <span className="absolute right-0 bottom-3 text-muted-foreground">cm</span>
           </div>
           {(showHeightError || showLogicError) && (
-            <p className="text-sm text-red-500 mt-2">
+            <p className="text-sm text-destructive mt-2">
               {showLogicError ? t(errors.logic) : t(errors.height)}
             </p>
           )}
@@ -141,13 +141,13 @@ const PersonalInfoStep = memo(function PersonalInfoStep({ data, onChange }) {
               max={400}
               onChange={(e) => handleNumberChange('weight', e.target.value)}
               className={`input-underline pr-12 ${
-                showWeightError || showLogicError ? 'border-red-500 focus:border-red-500' : ''
+                showWeightError || showLogicError ? 'border-destructive focus:border-destructive' : ''
               }`}
             />
             <span className="absolute right-0 bottom-3 text-muted-foreground">kg</span>
           </div>
           {(showWeightError || showLogicError) && !showHeightError && (
-            <p className="text-sm text-red-500 mt-2">
+            <p className="text-sm text-destructive mt-2">
               {showLogicError ? t(errors.logic) : t(errors.weight)}
             </p>
           )}
