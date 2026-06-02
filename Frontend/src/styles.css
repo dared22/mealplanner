@@ -753,14 +753,15 @@
   }
 
   .day-timeline-track {
-    @apply flex overflow-x-auto snap-x snap-mandatory px-1 py-2;
+    @apply flex gap-2 overflow-x-auto snap-x snap-mandatory px-1 py-2
+           sm:grid sm:grid-cols-7 sm:gap-3 sm:overflow-visible;
   }
 
   .day-card {
     @apply flex h-[92px] min-w-[88px] snap-start flex-col items-start justify-between
            border-b border-transparent bg-card px-3 py-3 text-left transition-colors duration-200
            hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background
-           sm:min-w-[104px];
+           sm:w-full sm:min-w-0;
   }
 
   .day-card.active {
