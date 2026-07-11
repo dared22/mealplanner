@@ -1,9 +1,40 @@
 const WEEK_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const MEAL_TYPES = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
+const PREP_WORDS = [
+  'finhakket', 'hakket', 'grovhakket', 'finhakkede', 'hakkede', 'revet', 'revne', 'skivet',
+  'skiver', 'oppkuttet', 'kuttet', 'strimlet', 'terninger', 'most', 'kokt', 'kokte', 'fersk',
+  'ferske', 'frossen', 'frosne', 'stor', 'store', 'liten', 'små', 'mellomstor', 'moden',
+  'modne', 'chopped', 'finely', 'coarsely', 'roughly', 'diced', 'grated', 'sliced', 'slices',
+  'shredded', 'minced', 'crushed', 'mashed', 'peeled', 'cooked', 'fresh', 'frozen', 'ripe',
+  'large', 'small', 'medium', 'big', 'of', 'av',
+];
+const PREP_WORD_SET = new Set(PREP_WORDS);
 
 const toTrimmedString = (value) => (typeof value === 'string' ? value.trim() : '');
 
 const normalizeKey = (value) => value.toLowerCase();
+
+const uppercaseFirst = (value) => value.charAt(0).toUpperCase() + value.slice(1);
+
+const normalizeIngredientName = (name) => {
+  const preparedName = name
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/,/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const strippedName = preparedName
+    .split(/\s+/)
+    .filter((token) => token && !PREP_WORD_SET.has(token.toLowerCase()))
+    .join(' ');
+  const canonicalName = strippedName || name;
+  const wasNormalized = Boolean(strippedName) && canonicalName !== name;
+
+  return {
+    key: normalizeKey(canonicalName),
+    displayName: wasNormalized ? uppercaseFirst(canonicalName) : canonicalName,
+    wasNormalized,
+  };
+};
 
 const parseQuantity = (value) => {
   if (value === undefined || value === null || value === '') return null;
@@ -90,18 +121,21 @@ export const buildShoppingList = (plan) => {
         const ingredient = normalizeIngredient(rawIngredient);
         if (!ingredient) return;
 
-        const itemKey = normalizeKey(ingredient.name);
+        const normalizedName = normalizeIngredientName(ingredient.name);
+        const itemKey = normalizedName.key;
         let item = itemsByName.get(itemKey);
 
         if (!item) {
           item = {
-            name: ingredient.name,
+            name: normalizedName.displayName,
             amounts: [],
             amountsByUnit: new Map(),
             sources: [],
             sourceKeys: new Set(),
           };
           itemsByName.set(itemKey, item);
+        } else if (normalizedName.wasNormalized) {
+          item.name = uppercaseFirst(item.name);
         }
 
         addAmount(item, ingredient);

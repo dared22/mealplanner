@@ -174,3 +174,130 @@ test('buildShoppingList handles null and missing shapes defensively', () => {
     ],
   }), []);
 });
+
+test('buildShoppingList merges Norwegian prep-name variants across days', () => {
+  const list = buildShoppingList({
+    days: [
+      {
+        name: 'Monday',
+        meals: {
+          Dinner: meal('Onion soup', [{ name: 'finhakket løk', quantity: 1, unit: 'stk' }]),
+        },
+      },
+      {
+        name: 'Tuesday',
+        meals: {
+          Dinner: meal('Onion tart', [{ name: 'løk', quantity: 2, unit: 'stk' }]),
+        },
+      },
+    ],
+  });
+
+  assert.deepEqual(list, [
+    {
+      name: 'Løk',
+      amounts: [{ quantity: 3, unit: 'stk' }],
+      sources: [
+        { day: 'Monday', mealType: 'Dinner', mealName: 'Onion soup' },
+        { day: 'Tuesday', mealType: 'Dinner', mealName: 'Onion tart' },
+      ],
+    },
+  ]);
+});
+
+test('buildShoppingList strips prep words at token boundaries only', () => {
+  const list = buildShoppingList({
+    days: [
+      {
+        name: 'Monday',
+        meals: {
+          Dinner: meal('Onions', [
+            { name: 'rødløk', quantity: 1, unit: 'stk' },
+            { name: 'løk', quantity: 2, unit: 'stk' },
+          ]),
+        },
+      },
+    ],
+  });
+
+  assert.deepEqual(list.map((item) => item.name), ['løk', 'rødløk']);
+});
+
+test('buildShoppingList merges English prep-name variants', () => {
+  const list = buildShoppingList({
+    days: [
+      {
+        name: 'Monday',
+        meals: {
+          Dinner: meal('Soup', ['chopped onion', 'onion']),
+        },
+      },
+    ],
+  });
+
+  assert.deepEqual(list, [
+    {
+      name: 'Onion',
+      amounts: [],
+      sources: [{ day: 'Monday', mealType: 'Dinner', mealName: 'Soup' }],
+    },
+  ]);
+});
+
+test('buildShoppingList normalizes comma-separated prep words', () => {
+  const list = buildShoppingList({
+    days: [
+      {
+        name: 'Monday',
+        meals: {
+          Dinner: meal('Soup', [
+            { name: 'løk, finhakket', quantity: 1, unit: 'stk' },
+            { name: 'løk', quantity: 2, unit: 'stk' },
+          ]),
+        },
+      },
+    ],
+  });
+
+  assert.deepEqual(list[0], {
+    name: 'Løk',
+    amounts: [{ quantity: 3, unit: 'stk' }],
+    sources: [{ day: 'Monday', mealType: 'Dinner', mealName: 'Soup' }],
+  });
+});
+
+test('buildShoppingList falls back when a name contains only prep words', () => {
+  const [item] = buildShoppingList({
+    days: [
+      {
+        name: 'Monday',
+        meals: {
+          Dinner: meal('Produce', ['fersk']),
+        },
+      },
+    ],
+  });
+
+  assert.equal(item.name, 'fersk');
+});
+
+test('buildShoppingList removes parenthetical segments before merging', () => {
+  const list = buildShoppingList({
+    days: [
+      {
+        name: 'Monday',
+        meals: {
+          Dinner: meal('Salad', ['onion (raw)', 'onion']),
+        },
+      },
+    ],
+  });
+
+  assert.deepEqual(list, [
+    {
+      name: 'Onion',
+      amounts: [],
+      sources: [{ day: 'Monday', mealType: 'Dinner', mealName: 'Salad' }],
+    },
+  ]);
+});
