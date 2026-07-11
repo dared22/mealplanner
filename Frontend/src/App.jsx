@@ -44,7 +44,7 @@ function AppRoutes() {
           <Route path="/" element={<Navigate to="/planner" replace />} />
           <Route path="/planner" element={<MealPlanner user={normalizedUser} />} />
           <Route path="/recipes" element={<Recipes />} />
-          <Route path="/groceries" element={<Groceries />} />
+          <Route path="/groceries" element={<Groceries user={normalizedUser} />} />
           <Route path="/more" element={<More />} />
         </Routes>
       </SignedIn>

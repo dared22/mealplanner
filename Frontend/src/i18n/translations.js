@@ -28,6 +28,32 @@ export const translations = {
       'You do not have permission to access the admin panel.',
     'Return to Home': 'Return to Home',
     'Under Construction': 'Under Construction',
+    'Shopping list': 'Shopping list',
+    'Weekly essentials': 'Weekly essentials',
+    'Plan from {date}': 'Plan from {date}',
+    'Copy list': 'Copy list',
+    'Copied!': 'Copied!',
+    'Loading shopping list...': 'Loading shopping list...',
+    'Unable to load shopping list': 'Unable to load shopping list',
+    'We could not load your latest meal plan. Please try again.':
+      'We could not load your latest meal plan. Please try again.',
+    'Your plan is still being prepared': 'Your plan is still being prepared',
+    'Your shopping list will be ready as soon as your meal plan is complete.':
+      'Your shopping list will be ready as soon as your meal plan is complete.',
+    'View meal planner': 'View meal planner',
+    'Your shopping list is waiting': 'Your shopping list is waiting',
+    'Create a meal plan and we will gather every ingredient here for you.':
+      'Create a meal plan and we will gather every ingredient here for you.',
+    'Create a meal plan': 'Create a meal plan',
+    '{count} items left': '{count} items left',
+    'Tap an item when it is in your cart': 'Tap an item when it is in your cart',
+    'Show item sources': 'Show item sources',
+    'Hide item sources': 'Hide item sources',
+    'Used in': 'Used in',
+    'Everything is in the cart': 'Everything is in the cart',
+    'You are ready to shop.': 'You are ready to shop.',
+    'In cart ({count})': 'In cart ({count})',
+    'Try again': 'Try again',
     debugAiResponse: ['View AI', 'Response'].join(' '),
   },
   no: {
@@ -488,6 +514,33 @@ export const translations = {
     Friday: 'Fredag',
     Saturday: 'L\u00f8rdag',
     Sunday: 'S\u00f8ndag',
+
+    // Shopping list page
+    'Shopping list': 'Handleliste',
+    'Weekly essentials': 'Ukens innkj\u00f8p',
+    'Plan from {date}': 'Plan fra {date}',
+    'Copy list': 'Kopier liste',
+    'Copied!': 'Kopiert!',
+    'Loading shopping list...': 'Laster handleliste...',
+    'Unable to load shopping list': 'Kunne ikke laste handlelisten',
+    'We could not load your latest meal plan. Please try again.':
+      'Vi kunne ikke laste den nyeste m\u00e5ltidsplanen din. Pr\u00f8v igjen.',
+    'Your plan is still being prepared': 'Planen din blir fortsatt laget',
+    'Your shopping list will be ready as soon as your meal plan is complete.':
+      'Handlelisten din er klar s\u00e5 snart m\u00e5ltidsplanen er ferdig.',
+    'View meal planner': 'Se m\u00e5ltidsplanleggeren',
+    'Your shopping list is waiting': 'Handlelisten din venter',
+    'Create a meal plan and we will gather every ingredient here for you.':
+      'Lag en m\u00e5ltidsplan, s\u00e5 samler vi alle ingrediensene her for deg.',
+    'Create a meal plan': 'Lag en m\u00e5ltidsplan',
+    '{count} items left': '{count} varer igjen',
+    'Tap an item when it is in your cart': 'Trykk p\u00e5 en vare n\u00e5r den er i kurven',
+    'Show item sources': 'Vis hvilke m\u00e5ltider varen brukes i',
+    'Hide item sources': 'Skjul hvilke m\u00e5ltider varen brukes i',
+    'Used in': 'Brukes i',
+    'Everything is in the cart': 'Alt er i kurven',
+    'You are ready to shop.': 'Du er klar til \u00e5 handle.',
+    'In cart ({count})': 'I kurven ({count})',
 
     // Recipes page
     'Your recipe library': 'Ditt oppskriftsbibliotek',
