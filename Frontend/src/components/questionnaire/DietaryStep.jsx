@@ -135,6 +135,7 @@ const DietaryStep = memo(function DietaryStep({ data, onChange }) {
         <Motion.p
           initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0 }}
           className="text-center text-sm text-primary font-medium"
         >
           {currentRestrictions.length} {t('restriction(s) selected')}

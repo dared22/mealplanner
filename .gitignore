@@ -24,3 +24,8 @@ mcp-servers/**/__pycache__/.planning/
 
 #md files
 planner_logic.md
+vision.md
+ROADMAP.md
+
+#data
+recipes.csv

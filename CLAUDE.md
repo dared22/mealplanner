@@ -1,177 +1,182 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code working in this repo. Keep this file short and true —
+if it drifts from the code, fix the file.
 
-## Project Overview
+## What this is
 
-This is a meal planning web application that generates personalized weekly meal plans using ChatGPT. Users fill out a questionnaire with their dietary preferences, and the backend generates meal plans that can be translated and saved for reuse.
+**Preppr** — a Norwegian-first, high-protein **budget meal-prep planner for one
+person**. One questionnaire produces a personalized weekly plan tuned to the
+user's calorie and protein goals, kept cheap, and built to meal-prep (batch
+cooking + carry-forward leftovers). Product source of truth: [vision.md](vision.md)
+and [PRODUCT.md](PRODUCT.md) (brand/UX). Design system: [DESIGN.md](DESIGN.md).
+Planner internals: [planner_logic.md](planner_logic.md).
 
-**Stack:**
-- Frontend: React 19 + Vite, React Router, Clerk (auth), TailwindCSS + shadcn/ui components
-- Backend: FastAPI (Python), PostgreSQL (Neon), SQLAlchemy ORM, OpenAI API
-- Deployment: Docker, Heroku
+Personal/student project, deployed on Heroku. Current scope is **one person** —
+not family/household planning (that's a later iteration). Three users to keep in
+mind: the budget-conscious student/solo eater, the gym/nutrition-aware person
+(protein + calorie goals), and the solo meal-prepper. Norwegian grocery deal
+coverage (Kiwi/Rema 1000/Extra/Meny) is the planned differentiator, not built
+yet (see [vision.md](vision.md) and [ROADMAP.md](ROADMAP.md)).
 
-## Development Commands
+## Operating mode — Claude plans, Codex writes
 
-### Backend (FastAPI)
+**Claude is the orchestrator and planner. It does NOT author code or content
+directly. Every file write — code, tests, docs, config — goes through a Codex
+agent.** This is a standing rule, not a per-task choice.
+
+Each task runs in three beats:
+
+1. **Plan (Claude).** Read the code, resolve ambiguity (rules below), and write
+   a concrete plan: the change, the exact files, and the check that proves it
+   works. Plan before delegating anything non-trivial.
+2. **Delegate the writing (Codex).** Hand each implementation chunk to Codex via
+   the `codex:codex-rescue` agent (or the `/codex:rescue` skill) with a
+   self-contained brief: goal, exact files/paths, constraints (the rules below),
+   and how to verify. One focused brief per chunk; split big work into chunks.
+3. **Review & verify (Claude).** Inspect what Codex wrote, run the check, and
+   send follow-up briefs to close gaps. Don't "just fix it" by editing directly.
+
+Claude still does these directly — they are not "writing": reading, searching,
+planning, running tests/commands, git, and reviewing Codex's output.
+
+If Codex is unavailable, surface it and ask before falling back — don't silently
+write the code yourself. Check readiness with `/codex:setup`.
+
+## How to work here (read first)
+
+1. **Surface uncertainty.** State the assumptions you're making and ask when the
+   request has more than one reading. Flag inconsistencies you notice instead of
+   coding past them. Don't silently pick an interpretation.
+2. **Keep it simple.** If 200 lines could be 50, write 50. No speculative
+   flexibility, no abstractions for one caller, no features nobody asked for.
+3. **Stay surgical.** Change only what the task needs. No drive-by reformatting,
+   renaming, or refactoring of code you happened to read.
+4. **Verify against a goal, not a vibe.** Prefer a runnable check — a test, a
+   request, a command — over assuming it works. Say plainly when something is
+   unverified.
+5. **OpenAI calls cost money.** Plan generation hits the OpenAI API. Don't kick
+   off generation loops casually; use small inputs when testing the path.
+
+## Stack
+
+- **Frontend:** React 19 + Vite, React Router, Clerk (auth), Tailwind +
+  shadcn/ui, Framer Motion. i18n: English + Norwegian.
+- **Backend:** FastAPI, SQLAlchemy 2.x, PostgreSQL (Neon, with `pgvector`
+  column), OpenAI API, PuLP (optimization solver), googletrans (translation).
+- **Deploy:** Docker, Heroku (separate frontend + backend dynos).
+
+## Commands
 
 ```bash
-cd Backend/fastapi_app
-python -m venv venv
-source venv/bin/activate  # or venv\Scripts\activate on Windows
+# Backend (from Backend/fastapi_app, venv at Backend/.venv, Python 3.10)
+source ../.venv/bin/activate
 pip install -r requirements.txt
+uvicorn main:app --reload --port 8000     # API + /docs (Swagger), /redoc
+pytest                                     # tests live in tests/
 
-# Run locally
-uvicorn main:app --reload --port 8000
-
-# Required environment variables (see .env):
-# - DATABASE_URL: PostgreSQL connection string
-# - OPENAI_API_KEY: OpenAI API key for meal plan generation
-# - CLERK_JWKS_URL: Clerk JWKS endpoint
-# - CLERK_JWT_ISSUER: Clerk issuer URL
-```
-
-### Frontend (Vite + React)
-
-```bash
-cd Frontend
+# Frontend (from Frontend)
 npm install
-
-# Run dev server
-npm run dev
-
-# Build for production
+npm run dev        # Vite dev server
 npm run build
+npm run lint       # eslint . — there is no test runner wired up
 
-# Preview production build
-npm run preview
-
-# Lint
-npm run lint
-
-# Required environment variables:
-# - VITE_CLERK_PUBLISHABLE_KEY: Clerk publishable key
-# - VITE_API_URL: Backend API URL (defaults to http://localhost:8000)
+# Both
+docker-compose up [--build]
 ```
 
-### Docker Compose
+**Env vars.** Backend: `DATABASE_URL`, `OPENAI_API_KEY`, `CLERK_JWKS_URL`,
+`CLERK_JWT_ISSUER` (optional model overrides: `OPENAI_PLAN_MODEL`,
+`OPENAI_MEAL_MODEL`, `PLAN_BASE_LANGUAGE`). Frontend:
+`VITE_CLERK_PUBLISHABLE_KEY`, `VITE_API_URL` (defaults to `http://localhost:8000`).
 
-```bash
-# Run both frontend and backend
-docker-compose up
+## Backend architecture (`Backend/fastapi_app/`)
 
-# Rebuild containers
-docker-compose up --build
-```
+| File | Responsibility |
+|------|----------------|
+| `main.py` | FastAPI app, all routes, auth deps, background tasks, admin + ratings + recipe endpoints, plan persistence, activity logging |
+| `planner.py` | Default generation path: OpenAI macro targets + random DB recipe selection (constraint relaxation ladder), carry-forward leftovers, ingredient scaling |
+| `solver.py` | PuLP constraint solver: personalized optimization for users with rating history |
+| `models.py` | SQLAlchemy models (see Data model) |
+| `database.py` | Engine + session |
+| `clerk_auth.py` | Clerk JWT verification, auto-create user on first login |
+| `recipe_translator.py` | Per-meal translation of generated plans |
+| `migrations/` | **Raw SQL** migrations, applied by hand. No Alembic in the repo — the CI `alembic upgrade head` step is orphaned and will fail; don't rely on it |
 
-## Architecture
+**Two-track plan generation** (gated in `_should_use_solver`):
+- **< 10 ratings → random DB path** (`planner.py`): OpenAI computes daily
+  calorie/macro targets, then recipes are picked **randomly from the DB** subject
+  to constraints. A per-day **relaxation ladder** applies: L0 dietary/allergy +
+  cuisine + budget + cooking time; L1 drops budget + cooking time; L2 also drops
+  cuisine. Allergy/dietary is the only constraint never relaxed. Each day is
+  filled to land within **±15%** of the calorie target (accepting the
+  least-relaxed level that fits, else the nearest combo). **No AI meal
+  generation** — recipes come only from the database.
+- **≥ 10 ratings → solver path** (`solver.py`): Integer LP that maximizes liked
+  recipes within macro (±10%), dietary, variety, and meal-type constraints.
+- **Fallback chain:** solver → random DB path → partial plan → error. An
+  impossible-constraint guard runs first (e.g. vegan + very high protein).
 
-### Backend Architecture
+Generation and translation run as **background tasks**; the frontend polls.
+Status lives in `Preference.raw_data` (`plan_status`, `translation_status`);
+plans in `raw_data["generated_plan"]`, translations under
+`generated_plan_translations[lang]`. `PlanRecipe` rows link a plan to recipes
+(used for last-week variety avoidance).
 
-**Entry point:** `Backend/fastapi_app/main.py`
+**Routes** (`/docs` is authoritative): `POST /preferences`,
+`GET /preferences/{id}?lang=`, `GET /auth/session`, recipe browse
+(`GET /recipes`, `/recipes/alternatives/{id}` for meal swaps), ratings
+(`POST /ratings`, `/ratings/me`, `/ratings/progress`), `GET /plans/history`,
+and an admin suite under `/admin/*` (dashboard, users, recipes CRUD + CSV/parquet
+import, activity logs). Everything except `/health` requires a Clerk token;
+admin routes require `is_admin`.
 
-**Core modules:**
-- `main.py` - FastAPI app, routes, CORS, background task orchestration
-- `models.py` - SQLAlchemy models: `User`, `Preference`, `Recipe`
-- `database.py` - Database session management and engine setup
-- `clerk_auth.py` - Clerk JWT verification and user session handling
-- `planner.py` - Meal plan generation using OpenAI API and recipe database
-- `recipe_translator.py` - Translation service for meal plans
+## Frontend architecture (`Frontend/src/`)
 
-**Data flow:**
-1. User submits preferences via `/preferences` POST endpoint
-2. Preferences stored in DB, background task triggered for plan generation
-3. `planner.py` queries OpenAI for daily macro targets and meal plans
-4. Plans are matched against recipe database (`recipes.parquet`)
-5. Plan stored in `raw_data` JSONB field on `Preference` model
-6. Frontend polls `/preferences/{id}` to retrieve generated plan
-7. If language differs from base language, translation background task triggered
+- `App.jsx` — routes, split by Clerk `SignedIn`/`SignedOut`. Signed-in:
+  `/planner` (default), `/recipes`, `/groceries`, `/more`, `/admin/*`,
+  `/privacy-policy`, `/data-deletion`. Signed-out: `Login` + legal pages.
+- `Pages/MealPlanner.jsx` — questionnaire orchestration.
+- `components/questionnaire/` — step components + `ResultsStep.jsx` (the plan
+  view; large), `validation.js`, `resultsPlanUtils.js`.
+- `Pages/Admin*.jsx` + `components/admin/` — admin dashboard, users, recipe
+  editor, logs, guarded by `AdminGuard`.
+- `Entities/` — API client layer (`api.js` resolves the backend URL).
+- `hooks/useRatings.js` — like/dislike state.
+- `i18n/` — `translations.js` (en + no), language context.
+- State: React hooks only, no global store. Plan fetched via polling.
 
-**Key patterns:**
-- Background tasks used for long-running operations (plan generation, translation)
-- Plan and translation status tracked via JSONB fields: `plan_status` (pending/success/error), `translation_status`
-- Auth: Clerk JWT extracted from Authorization header, verified, user auto-created if new
-- All generated plans stored in `Preference.raw_data["generated_plan"]`
-- Translations stored in `Preference.raw_data["generated_plan_translations"][lang]`
+## Data model (Postgres)
 
-### Frontend Architecture
+- **users** — `id`, `clerk_user_id`, `email`, `username`, `is_admin`,
+  `is_active`, `password_hash` (legacy/unused with Clerk).
+- **preferences** — structured questionnaire fields + `raw_data` JSONB (full
+  payload, generated plan, translations, status).
+- **recipes** — rich: `title`, `slug`, `ingredients`/`instructions` (JSONB),
+  times, `portions`, `cuisine`, `meal_type`, `dietary_flags`, `allergens`,
+  `nutrition`, `cost_per_serving_cents`, `cost_category` (`cheap` |
+  `medium expensive`), `embedding` (pgvector, **currently dormant — not
+  queried**), `tags`, scores, scrape metadata, `is_active`.
+- **ratings** — `(user_id, recipe_id, is_liked)`, unique per pair.
+- **plan_recipes** — plan ↔ recipe join (day, meal_type).
+- **activity_logs** — admin audit trail.
 
-**Entry point:** `Frontend/src/main.jsx` → `App.jsx`
+Recipes live in Postgres, seeded/imported from `recipes.csv` (root, ~14MB) via
+the admin import endpoint. There is **no `recipes.parquet`** despite older docs.
 
-**Routing structure:**
-- `/` - Redirects to `/planner`
-- `/planner` - Main meal planner (MealPlanner.jsx)
-- `/recipes` - Recipe browser (placeholder)
-- `/groceries` - Grocery list (placeholder)
+## Gotchas
 
-**Key components:**
-- `App.jsx` - Router setup, Clerk authentication wrapper
-- `Pages/MealPlanner.jsx` - Main planner page, questionnaire orchestration
-- `components/questionnaire/` - Multi-step form components:
-  - `PersonalInfoStep.jsx` - Age, gender, height, weight
-  - `GoalsStep.jsx` - Nutrition goals, meals per day
-  - `ActivityStep.jsx` - Activity level, cooking time, budget
-  - `DietaryStep.jsx` - Dietary restrictions
-  - `CuisineStep.jsx` - Preferred cuisines
-  - `PreferencesStep.jsx` - Additional preferences
-  - `ResultsStep.jsx` - Display generated meal plan
-- `components/DashboardLayout.jsx` - Layout wrapper with navigation
-- `i18n/LanguageContext.jsx` - Language switching (Norwegian/English)
-- `i18n/translations.js` - Translation strings
+- **Schema/migrations aren't automated.** Apply raw SQL in `migrations/` by
+  hand; the CI `alembic upgrade head` step has no Alembic config and fails.
+- **Budget today is a static recipe tier** (`cost_category`), not live prices.
+  The vision's "mattilbud" deal integration is **not built yet** (see roadmap).
+- **No grocery/shopping list is generated** — `/groceries` is a placeholder.
+- **Translation** uses the unofficial `googletrans`; flaky and uncached.
+- Base plan language is English; other languages are translated after.
 
-**State management:**
-- No global state library; uses React hooks (useState, useEffect)
-- User preferences stored in local component state
-- Meal plan fetched via API polling in ResultsStep
+## MCP — Neon DB access
 
-**API communication:**
-- API base URL: `import.meta.env.VITE_API_URL` or defaults to `http://localhost:8000`
-- Auth: Clerk session token passed in Authorization header
-- Endpoints used:
-  - POST `/preferences` - Submit user preferences
-  - GET `/preferences/{id}?lang={lang}` - Fetch generated plan
-  - GET `/auth/session` - Verify current user session
-
-### Database Schema
-
-**Users table:**
-- `id` (PK), `clerk_user_id` (unique), `email` (unique), `created_at`
-- Clerk handles auth; users auto-created on first login
-
-**Preferences table:**
-- `id` (PK), `user_id` (FK to users), `submitted_at`
-- Structured fields: age, gender, height_cm, weight_kg, activity_level, nutrition_goal, meals_per_day, budget_range, cooking_time_preference, dietary_restrictions, preferred_cuisines
-- `raw_data` (JSONB) - Stores full request payload plus generated plans and translations
-
-**Recipes table:**
-- Loaded from `recipes.parquet` (2MB dataset)
-- Fields: name, ingredients, instructions, nutrition, tags, type, price_tier
-- Meal type flags: `is_breakfast`, `is_lunch` (inferred from tags)
-
-## MCP Tools
-
-This project includes an MCP server for direct Neon database access:
-
-**Setup:**
-```bash
-cd mcp-servers/neon-db
-./setup.sh
-```
-
-Then restart Claude Code. Available tools:
-- `query` - Execute SELECT queries on the database
-- `execute` - Execute write operations (INSERT, UPDATE, DELETE)
-- `list_tables` - List all tables and their schemas
-- `describe_table` - Get detailed schema for a table
-- `get_table_data` - Fetch table data with filtering
-
-Use these tools to inspect data, debug issues, or make database changes without writing Python/SQL code manually.
-
-## Important Notes
-
-- **OpenAI API costs:** The app uses OpenAI's API for meal plan generation. Be mindful of usage costs.
-- **Clerk auth:** All endpoints except `/health` require valid Clerk session token.
-- **Background tasks:** Plan generation and translation happen asynchronously. Frontend should poll for results.
-- **JSONB storage:** Plans and translations stored as nested JSON in `Preference.raw_data` for flexibility.
-- **Language support:** Currently supports Norwegian (no/nb/nn) and English (en). Translation uses `googletrans`.
-- **Recipe dataset:** Recipes are loaded from a Parquet file into the database. The dataset is static and not user-editable.
+`mcp-servers/neon-db` exposes `query`, `execute`, `list_tables`,
+`describe_table`, `get_table_data`. Use it to inspect/debug data instead of
+hand-writing SQL scripts. Setup: `cd mcp-servers/neon-db && ./setup.sh`, then
+restart Claude Code.

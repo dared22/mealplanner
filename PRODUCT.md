@@ -6,32 +6,57 @@ product
 
 ## Users
 
-Preppr serves people who need a useful weekly plan faster than they need a
-perfect ritual. The product fits into ordinary kitchens, tired evenings, and
-short planning windows.
+Preppr serves one person planning a full week of their own meals. It fits into
+ordinary kitchens, tired evenings, short planning windows, and tight budgets —
+solo weekly eating, not family dinner planning. Today every plan, portion, and
+cost is sized for a single eater.
 
-- The time-pressed parent plans the week while supervising kids, answering
-  messages, and checking what is already in the fridge. Their job is to get a
-  credible plan quickly, carry leftovers forward, and avoid restarting the same
-  dinner conversation every day.
-- The dietary-restriction user needs the product to separate hard constraints
-  from preferences. Allergies, intolerances, religious restrictions, and chosen
-  dislikes are different needs. Their job is to see that meals are safe,
-  clearly tagged, and easy to trust before cooking.
-- The non-Norwegian speaker relies on the English and Norwegian toggle to use
-  Preppr without guessing. Their job is to answer the questionnaire, read the
-  generated plan, and reuse saved meals in the language they understand best.
+Three core users carry the most weight:
+
+- **The student / budget-conscious solo eater.** Wants to spend as little as
+  possible and stop thinking about food. Their job: get one credible week of
+  cheap meals, shop once, and meal-prep so they aren't re-deciding dinner every
+  night. Budget is a headline reason they're here.
+- **The gym / nutrition-aware eater.** Wants meals that hit their targets —
+  calories and protein above all — to lose fat, build muscle, or maintain,
+  without turning nutrition into homework. Their job: trust that the week fits
+  their goal and stays sustainable, ideally without overspending.
+- **The solo meal-prepper.** Cooks for themselves and wants to batch-cook, carry
+  leftovers forward, and eat well across the week from a few cooking sessions.
+  Their job: a plan that's realistic for one person to actually shop for and
+  cook.
+
+The same person is often all three at once. Two needs cut across them:
+
+- **Dietary constraints must be safe, not just preferences.** Allergies,
+  intolerances, and religious restrictions are hard constraints; dislikes are
+  soft. Meals must be clearly tagged and trustworthy before cooking.
+- **Norwegian or English, no guessing.** The language toggle lets users answer
+  the questionnaire, read the plan, and reuse saved meals in the language they
+  understand best.
+
+Household / multi-person planning is a deliberate *later* direction (see
+[ROADMAP.md](ROADMAP.md)), not part of the current product.
 
 ## Product Purpose
 
-Preppr turns a short questionnaire into a personalized weekly meal plan. It
-uses the user's goals, schedule, budget, diet, cuisine preferences, and cooking
-constraints to remove the recurring "what's for dinner" decision load.
+Preppr turns one short questionnaire into a personalized **weekly meal plan for
+one person**. It uses the user's stats, nutrition goal, budget, diet, cuisine
+preferences, and cooking constraints to answer a different question than family
+meal-planners do: not *"what's for dinner tonight for the household?"* but
+*"what should I eat this week to hit my protein and calorie goals without
+overspending — and how do I shop once and prep for it?"*
 
-Success means one sitting produces a plan the user can trust enough to shop
-from, cook from, save, and refine over time. The product must reduce planning
-friction, not replace the user's judgment. It must make the next meal feel
-clearer, not make nutrition feel like homework.
+The plan is built around the user's calorie and macro targets (protein first),
+supports batch cooking and carry-forward leftovers so it's realistic to meal-prep
+for one, and respects a budget. Today budget is a recipe cost tier; live
+Norwegian store prices across Kiwi, Rema 1000, Extra, and Meny are the intended
+differentiator and the next major build, not a current capability.
+
+Success means one sitting produces a week a solo eater can trust enough to shop
+from, prep, cook, save, and refine over time — goal-fit and affordable in the
+same plan. The product reduces planning friction; it does not replace the user's
+judgment or make nutrition feel like homework.
 
 ## Brand Personality
 
@@ -80,6 +105,10 @@ direction.
   saved-plan flows. Consistency is the affordance.
 - **Respect the time-pressed cook.** Every step must earn its place. The
   fastest path to a usable plan wins over ceremony, decoration, or cleverness.
+- **Show the cost plainly, never as a game.** Budget is a headline reason people
+  use Preppr, so cost must be legible and honest. State the number; do not
+  gamify it, inflate it, or turn saving money into optimization theater. When
+  store-deal savings ship, they follow the same rule.
 
 ## Accessibility & Inclusion
 

@@ -1,5 +1,5 @@
 import React, { memo, useCallback } from 'react';
-import { motion as Motion } from 'framer-motion';
+import { motion as Motion, useReducedMotion } from 'framer-motion';
 import { useLanguage } from '@/i18n/useLanguage';
 import { validatePersonalInfo } from './validation';
 
@@ -11,6 +11,7 @@ const genderOptions = [
 
 const PersonalInfoStep = memo(function PersonalInfoStep({ data, onChange }) {
   const { t } = useLanguage();
+  const prefersReducedMotion = useReducedMotion();
   const { errors } = validatePersonalInfo(data);
 
   const handleNumberChange = useCallback(
@@ -34,9 +35,9 @@ const PersonalInfoStep = memo(function PersonalInfoStep({ data, onChange }) {
 
   return (
     <Motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={prefersReducedMotion ? false : { opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
+      exit={prefersReducedMotion ? undefined : { opacity: 0, y: -20 }}
       transition={{ duration: 0.4 }}
       className="space-y-10"
     >
@@ -54,9 +55,8 @@ const PersonalInfoStep = memo(function PersonalInfoStep({ data, onChange }) {
       <div className="grid md:grid-cols-2 gap-x-12 gap-y-8">
         {/* Age */}
         <Motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={prefersReducedMotion ? false : { opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
         >
           <label className="input-label">{t('Age')}</label>
           <input
@@ -75,9 +75,8 @@ const PersonalInfoStep = memo(function PersonalInfoStep({ data, onChange }) {
 
         {/* Sex */}
         <Motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={prefersReducedMotion ? false : { opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15 }}
         >
           <label className="input-label">{t('Sex')}</label>
           <select
@@ -99,9 +98,8 @@ const PersonalInfoStep = memo(function PersonalInfoStep({ data, onChange }) {
 
         {/* Height */}
         <Motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={prefersReducedMotion ? false : { opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
         >
           <label className="input-label">{t('Height')}</label>
           <div className="relative">
@@ -127,9 +125,8 @@ const PersonalInfoStep = memo(function PersonalInfoStep({ data, onChange }) {
 
         {/* Weight */}
         <Motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={prefersReducedMotion ? false : { opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.25 }}
         >
           <label className="input-label">{t('Weight')}</label>
           <div className="relative">

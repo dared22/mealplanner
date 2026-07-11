@@ -120,6 +120,10 @@ export const translations = {
     'Please adjust your answers or try generating again.':
       'Vennligst juster svarene dine eller pr\u00f8v \u00e5 generere p\u00e5 nytt.',
     'Retake questionnaire': 'Ta sp\u00f8rreskjemaet p\u00e5 nytt',
+    'Retake questionnaire?': 'Ta sp\u00f8rreskjemaet p\u00e5 nytt?',
+    'This clears your current answers and generated plan. This cannot be undone.':
+      'Dette sletter de n\u00e5v\u00e6rende svarene dine og den genererte planen. Dette kan ikke angres.',
+    Cancel: 'Avbryt',
     'Week Overview': 'Ukeoversikt',
     'Your Weekly Plan': 'Din ukeplan',
     Day: 'Dag',

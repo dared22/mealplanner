@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState, memo } from '
 import { motion as Motion, useReducedMotion } from 'framer-motion';
 import {
   CheckCircle, RefreshCw,
-  Shuffle, ThumbsUp, ThumbsDown, MoreHorizontal, Sun, Coffee, Utensils, Moon,
+  Shuffle, ThumbsUp, ThumbsDown, Sun, Coffee, Utensils, Moon,
   Info, ChevronDown, ChevronUp, X, Sparkles, AlertCircle, Bell
 } from 'lucide-react';
 import { useAuth } from '@clerk/clerk-react';
@@ -81,7 +81,7 @@ const ProfileSummary = memo(function ProfileSummary({ data, calorieTarget, t, on
 });
 
 const MEAL_TYPES = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
-const MACRO_COLORS = { protein: 'oklch(0.36 0.04 145)', carbs: '#22c55e', fat: '#f97316' };
+const MACRO_COLORS = { protein: 'var(--macro-protein)', carbs: 'var(--macro-carbs)', fat: 'var(--macro-fat)' };
 const GENERATION_STAGE_LABELS = {
   finding_recipes: 'Finding recipes',
   optimizing_nutrition: 'Optimizing nutrition',
@@ -140,6 +140,8 @@ const ExplainabilityTooltip = memo(function ExplainabilityTooltip({ reasons, t }
         onClick={() => setIsOpen(!isOpen)}
         className="meal-action text-muted-foreground hover:text-primary"
         title={translate('Why this meal?')}
+        aria-label={translate('Why this meal?')}
+        aria-expanded={isOpen}
       >
         <Info className="w-4 h-4" />
       </button>
@@ -283,9 +285,9 @@ const MealItem = memo(function MealItem({
           )}
           <div className="meal-meta">
             <span>{meal.calories} kcal</span>
-            <span>P{meal.protein}g</span>
-            <span>C{meal.carbs}g</span>
-            <span>F{meal.fat}g</span>
+            <span>{translate('Protein')} {meal.protein}g</span>
+            <span>{translate('Carbs')} {meal.carbs}g</span>
+            <span>{translate('Fat')} {meal.fat}g</span>
           </div>
         </div>
         <div className="meal-actions">
@@ -295,11 +297,19 @@ const MealItem = memo(function MealItem({
               onClick={() => setShowMore(!showMore)}
               className="meal-action"
               title={showMore ? translate('Show less') : translate('Show more')}
+              aria-label={showMore ? translate('Show less') : translate('Show more')}
+              aria-expanded={showMore}
             >
               {showMore ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
             </button>
           )}
-          <button type="button" onClick={onSwap} className="meal-action" title={translate('Swap meal')}>
+          <button
+            type="button"
+            onClick={onSwap}
+            className="meal-action"
+            title={translate('Swap meal')}
+            aria-label={translate('Swap meal')}
+          >
             <Shuffle className="w-5 h-5" />
           </button>
           {recommendationReasons && (
@@ -313,6 +323,8 @@ const MealItem = memo(function MealItem({
                 disabled={ratingDisabled}
                 className={`meal-action ${recipeRating?.is_liked === true ? 'text-success' : ''}`}
                 title={translate('Like this meal')}
+                aria-label={translate('Like this meal')}
+                aria-pressed={recipeRating?.is_liked === true}
               >
                 <ThumbsUp className={`w-4 h-4 ${recipeRating?.is_liked === true ? 'fill-current' : ''}`} />
               </button>
@@ -322,6 +334,8 @@ const MealItem = memo(function MealItem({
                 disabled={ratingDisabled}
                 className={`meal-action ${recipeRating?.is_liked === false ? 'text-destructive' : ''}`}
                 title={translate('Dislike this meal')}
+                aria-label={translate('Dislike this meal')}
+                aria-pressed={recipeRating?.is_liked === false}
               >
                 <ThumbsDown className={`w-4 h-4 ${recipeRating?.is_liked === false ? 'fill-current' : ''}`} />
               </button>
@@ -613,6 +627,120 @@ const SwapModal = memo(function SwapModal({ isOpen, onClose, alternatives, loadi
   );
 });
 
+const RestartConfirmationDialog = memo(function RestartConfirmationDialog({ isOpen, onClose, onConfirm, t }) {
+  const translate = t || ((v) => v);
+  const prefersReducedMotion = useReducedMotion();
+  const dialogRef = useRef(null);
+  const closeButtonRef = useRef(null);
+  const openerRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    openerRef.current = document.activeElement;
+    document.body.style.overflow = 'hidden';
+
+    const getFocusableElements = () => {
+      if (!dialogRef.current) return [];
+      return Array.from(
+        dialogRef.current.querySelectorAll(
+          'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )
+      ).filter((element) => !element.hasAttribute('disabled') && element.getAttribute('aria-hidden') !== 'true');
+    };
+
+    const focusFirstElement = () => {
+      const focusableElements = getFocusableElements();
+      const firstElement = closeButtonRef.current || focusableElements[0];
+      firstElement?.focus();
+    };
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        onCloseRef.current();
+        return;
+      }
+
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    focusFirstElement();
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', handleKeyDown);
+      openerRef.current?.focus?.();
+    };
+  }, [isOpen]);
+
+  const handleConfirm = () => {
+    onConfirm();
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40" onClick={onClose}>
+      <Motion.div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="restart-confirmation-title"
+        initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.95 }}
+        animate={prefersReducedMotion ? undefined : { opacity: 1, scale: 1 }}
+        className="bg-card rounded-2xl p-6 w-full max-w-lg mx-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex justify-between items-center mb-4">
+          <h3 id="restart-confirmation-title" className="text-lg font-semibold">
+            {translate('Retake questionnaire?')}
+          </h3>
+          <button type="button" ref={closeButtonRef} onClick={onClose} className="btn-icon" aria-label={translate('Cancel')}>
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <p className="text-sm text-muted-foreground">
+          {translate('This clears your current answers and generated plan. This cannot be undone.')}
+        </p>
+
+        <div className="mt-6 flex flex-col-reverse sm:flex-row sm:justify-end gap-3">
+          <button type="button" onClick={onClose} className="btn-secondary">
+            {translate('Cancel')}
+          </button>
+          <button type="button" onClick={handleConfirm} className="btn-primary bg-destructive text-primary-foreground hover:bg-destructive/90">
+            {translate('Retake questionnaire')}
+          </button>
+        </div>
+      </Motion.div>
+    </div>
+  );
+});
+
 // Loading-state components
 const ProgressArc = memo(function ProgressArc({ progress, prefersReducedMotion }) {
   const radius = 36;
@@ -737,6 +865,7 @@ export default function ResultsStep({
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [notifyState, setNotifyState] = useState('idle'); // idle | armed | unsupported | denied
   const [swapModal, setSwapModal] = useState({ open: false, dayIndex: null, mealType: null, recipeId: null });
+  const [restartDialogOpen, setRestartDialogOpen] = useState(false);
   const [alternatives, setAlternatives] = useState([]);
   const [loadingAlternatives, setLoadingAlternatives] = useState(false);
 
@@ -932,6 +1061,11 @@ export default function ResultsStep({
     fetchAlternatives(meal.id, mealType);
   }, [displayPlan, swapPools, fetchAlternatives]);
 
+  const handleConfirmRestart = useCallback(() => {
+    setRestartDialogOpen(false);
+    onRestart?.();
+  }, [onRestart]);
+
   return (
     <div className="space-y-8">
       {/* Hero Section */}
@@ -960,7 +1094,7 @@ export default function ResultsStep({
           )}
         </div>
 
-        <h1 className="text-4xl md:text-5xl font-bold tracking-[-0.01em] text-foreground leading-tight mb-3">
+        <h1 className="text-4xl md:text-5xl font-bold font-serif tracking-[-0.01em] text-foreground leading-tight mb-3">
           {isReady ? (
             <>{t('Your')} <span className="text-primary">{t('meal plan')}</span> {t('is ready')}</>
           ) : isLoading ? (
@@ -1080,7 +1214,12 @@ export default function ResultsStep({
           transition={{ delay: 0.2 }}
           className="space-y-6"
         >
-          <ProfileSummary data={data} calorieTarget={displayPlan.calorieTarget} t={t} onRestart={onRestart} />
+          <ProfileSummary
+            data={data}
+            calorieTarget={displayPlan.calorieTarget}
+            t={t}
+            onRestart={onRestart ? () => setRestartDialogOpen(true) : null}
+          />
 
           {/* Weekly Overview Section */}
           <div className="p-6 rounded-2xl bg-card border border-border">
@@ -1089,9 +1228,6 @@ export default function ResultsStep({
                 <span className="section-subtitle">{t('Week Overview')}</span>
                 <h2 className="section-title">{t('Your Weekly Plan')}</h2>
               </div>
-              <button className="btn-icon">
-                <MoreHorizontal className="w-5 h-5" />
-              </button>
             </div>
 
             <DayCarousel
@@ -1181,6 +1317,12 @@ export default function ResultsStep({
         alternatives={alternatives}
         loading={loadingAlternatives}
         onSelect={handleSelectAlternative}
+        t={t}
+      />
+      <RestartConfirmationDialog
+        isOpen={restartDialogOpen}
+        onClose={() => setRestartDialogOpen(false)}
+        onConfirm={handleConfirmRestart}
         t={t}
       />
     </div>

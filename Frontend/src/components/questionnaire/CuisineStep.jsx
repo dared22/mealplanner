@@ -99,7 +99,7 @@ const CuisineStep = memo(function CuisineStep({ data, onChange }) {
                 <span>{group.label}</span>
               </div>
               <div className="cuisine-chip-cloud">
-                {group.items.map((cuisine, index) => {
+                {group.items.map((cuisine) => {
                   const isSelected = currentCuisines.includes(cuisine.value);
 
                   return (
@@ -108,7 +108,7 @@ const CuisineStep = memo(function CuisineStep({ data, onChange }) {
                       type="button"
                       initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }}
                       animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.02 * index }}
+                      transition={{ delay: 0 }}
                       onClick={() => toggleCuisine(cuisine.value)}
                       aria-pressed={isSelected}
                       className={`cuisine-chip ${isSelected ? 'active' : ''}`}

@@ -53,7 +53,7 @@ const persistProgress = (storageKey, payload) => {
 };
 
 // Header with logo, step dots, and controls
-const Header = memo(function Header({ currentStep, totalSteps, lang, setLang, isDarkMode, setIsDarkMode }) {
+const Header = memo(function Header({ currentStep, totalSteps, lang, setLang, isDarkMode, setIsDarkMode, t }) {
   return (
     <header className="header">
       <div className="header-inner">
@@ -62,13 +62,18 @@ const Header = memo(function Header({ currentStep, totalSteps, lang, setLang, is
 
         {/* Step dots - only show on onboarding */}
         {currentStep < 7 && (
-          <div className="step-dots">
-            {Array.from({ length: totalSteps - 1 }).map((_, i) => (
-              <div
-                key={i}
-                className={`step-dot ${i + 1 === currentStep ? 'active' : ''} ${i + 1 < currentStep ? 'completed' : ''}`}
-              />
-            ))}
+          <div className="flex items-center gap-3">
+            <span className="step-badge">
+              {t('Step {current} of {total}', { current: currentStep, total: 6 })}
+            </span>
+            <div className="step-dots">
+              {Array.from({ length: totalSteps - 1 }).map((_, i) => (
+                <div
+                  key={i}
+                  className={`step-dot ${i + 1 === currentStep ? 'active' : ''} ${i + 1 < currentStep ? 'completed' : ''}`}
+                />
+              ))}
+            </div>
           </div>
         )}
 
@@ -389,7 +394,7 @@ export default function MealPlanner({ user }) {
   return (
     <div className="onboarding-container">
       <div className="onboarding-right">
-        <Header currentStep={currentStep} totalSteps={TOTAL_STEPS} lang={lang} setLang={setLang} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+        <Header currentStep={currentStep} totalSteps={TOTAL_STEPS} lang={lang} setLang={setLang} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} t={t} />
 
         <main className="flex-1 flex flex-col pt-24 pb-8 px-6 md:px-12 lg:px-16">
           <div className="flex-1 max-w-4xl mx-auto w-full">

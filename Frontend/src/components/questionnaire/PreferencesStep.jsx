@@ -22,7 +22,7 @@ const PreferencesStep = memo(function PreferencesStep({ data, onChange }) {
         transition: { duration: 0.4 },
       };
 
-  const itemMotion = (delay = 0) => (
+  const itemMotion = () => (
     shouldReduceMotion
       ? {
           initial: false,
@@ -32,7 +32,7 @@ const PreferencesStep = memo(function PreferencesStep({ data, onChange }) {
       : {
           initial: { opacity: 0, y: 20 },
           animate: { opacity: 1, y: 0 },
-          transition: { delay },
+          transition: { delay: 0 },
         }
   );
 
@@ -69,7 +69,7 @@ const PreferencesStep = memo(function PreferencesStep({ data, onChange }) {
   return (
     <Motion.div {...containerMotion} className="space-y-8">
       <Motion.label
-        {...itemMotion(0.05)}
+        {...itemMotion()}
         className={`leftover-hero-card ${carryForwardEnabled ? 'active' : ''}`}
       >
         <span className="leftover-hero-icon" aria-hidden="true">
@@ -99,7 +99,7 @@ const PreferencesStep = memo(function PreferencesStep({ data, onChange }) {
       </Motion.label>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8">
-        <Motion.div {...itemMotion(0.1)}>
+        <Motion.div {...itemMotion()}>
           <label className="input-label">{t('Cooking Time')}</label>
           <select
             value={data.cooking_time_preference || ''}
@@ -115,7 +115,7 @@ const PreferencesStep = memo(function PreferencesStep({ data, onChange }) {
           </select>
         </Motion.div>
 
-        <Motion.div {...itemMotion(0.15)}>
+        <Motion.div {...itemMotion()}>
           <label className="input-label">{t('Meals Per Day')}</label>
           <select
             value={data.meals_per_day?.toString() || ''}
@@ -131,7 +131,7 @@ const PreferencesStep = memo(function PreferencesStep({ data, onChange }) {
           </select>
         </Motion.div>
 
-        <Motion.div {...itemMotion(0.2)}>
+        <Motion.div {...itemMotion()}>
           <label className="input-label">{t('Budget')}</label>
           <select
             value={data.budget_range || ''}

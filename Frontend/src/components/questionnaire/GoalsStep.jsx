@@ -79,7 +79,7 @@ const GoalsStep = memo(function GoalsStep({ data, onChange }) {
       {/* Goal choice slabs */}
       <div className="space-y-4">
         <div className="goal-slab-list">
-          {primaryGoals.map((goal, index) => {
+          {primaryGoals.map((goal) => {
             const isSelected = data.nutrition_goal === goal.value;
             const Icon = goal.icon;
 
@@ -89,7 +89,7 @@ const GoalsStep = memo(function GoalsStep({ data, onChange }) {
                 type="button"
                 initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.04 * index }}
+                transition={{ delay: 0 }}
                 onClick={() => handleSelect(goal.value)}
                 aria-pressed={isSelected}
                 className={`goal-slab ${isSelected ? 'active' : ''}`}
