@@ -38,6 +38,33 @@ const loadCheckedItems = (storageKey) => {
   }
 };
 
+const readGroceriesCache = (userId) => {
+  if (!userId || typeof window === 'undefined') return null;
+
+  try {
+    const cached = JSON.parse(window.localStorage.getItem(`groceries_cache_${userId}`));
+    if (!cached || !Array.isArray(cached.items) || !cached.preferenceId) return null;
+    return cached;
+  } catch {
+    return null;
+  }
+};
+
+const writeGroceriesCache = (userId, value) => {
+  if (!userId || typeof window === 'undefined') return;
+
+  try {
+    const cacheKey = `groceries_cache_${userId}`;
+    if (value === null) {
+      window.localStorage.removeItem(cacheKey);
+    } else {
+      window.localStorage.setItem(cacheKey, JSON.stringify(value));
+    }
+  } catch {
+    // Ignore storage errors; the freshly fetched list still works for the current session.
+  }
+};
+
 function StatusCard({ icon: Icon, title, message, action }) {
   return (
     <div className="mx-auto flex min-h-[52vh] max-w-xl items-center justify-center">
@@ -139,13 +166,24 @@ export default function Groceries({ user }) {
   useEffect(() => {
     let cancelled = false;
     let pollTimer = null;
+    const cached = readGroceriesCache(userId);
+    const hasHydratedCache = cached?.lang === lang;
+
+    if (hasHydratedCache) {
+      const cachedStorageKey = `groceries_checked_${userId}_${cached.preferenceId}`;
+      setItems(cached.items);
+      setPreferenceId(cached.preferenceId);
+      setSubmittedAt(cached.submittedAt ?? null);
+      setCheckedNames(loadCheckedItems(cachedStorageKey));
+      setViewState('ready');
+    }
 
     const waitForPoll = () => new Promise((resolve) => {
       pollTimer = window.setTimeout(resolve, TRANSLATION_POLL_INTERVAL);
     });
 
     const loadShoppingList = async () => {
-      setViewState('loading');
+      if (!hasHydratedCache) setViewState('loading');
       setExpandedNames([]);
 
       try {
@@ -163,6 +201,7 @@ export default function Groceries({ user }) {
         const successfulPlan = historyItems.find((entry) => entry?.plan_status === 'success');
 
         if (!successfulPlan) {
+          writeGroceriesCache(userId, null);
           setItems([]);
           setPreferenceId(null);
           setSubmittedAt(null);
@@ -172,6 +211,7 @@ export default function Groceries({ user }) {
         }
 
         if (!successfulPlan.preference_id) {
+          writeGroceriesCache(userId, null);
           setItems([]);
           setPreferenceId(null);
           setSubmittedAt(null);
@@ -207,8 +247,18 @@ export default function Groceries({ user }) {
         setSubmittedAt(successfulPlan.submitted_at ?? null);
         setCheckedNames(loadCheckedItems(nextStorageKey));
         setViewState(nextItems.length ? 'ready' : 'empty');
+        if (nextItems.length) {
+          writeGroceriesCache(userId, {
+            preferenceId: successfulPlan.preference_id,
+            submittedAt: successfulPlan.submitted_at ?? null,
+            lang,
+            items: nextItems,
+          });
+        } else {
+          writeGroceriesCache(userId, null);
+        }
       } catch {
-        if (!cancelled) setViewState('error');
+        if (!cancelled && !hasHydratedCache) setViewState('error');
       }
     };
 
