@@ -7,8 +7,37 @@ const PREP_WORDS = [
   'modne', 'chopped', 'finely', 'coarsely', 'roughly', 'diced', 'grated', 'sliced', 'slices',
   'shredded', 'minced', 'crushed', 'mashed', 'peeled', 'cooked', 'fresh', 'frozen', 'ripe',
   'large', 'small', 'medium', 'big', 'of', 'av',
+  'lunkent', 'lunken', 'flytende',
+  'frisk', 'friske', 'finsnittet', 'presset', 'ristet', 'ristede', 'grovhakkede', 'tynn',
+  'tynne', 'ring', 'ringer', 'i',
 ];
 const PREP_WORD_SET = new Set(PREP_WORDS);
+const UNIT_SYNONYMS = new Map([
+  ['skiver', 'skive'],
+  ['båter', 'båt'],
+  ['bokser', 'boks'],
+  ['poser', 'pose'],
+  ['never', 'neve'],
+]);
+const JUICE_ZEST_PREFIX = /^(?:saft(?:en)?\s+av|juice\s+of|zest\s+of|(?:revet\s+)?skall\s+av)(?=\d|\s)/i;
+const PURPOSE_TAILS = [
+  /\s+til\s+\S.*$/i,
+  /\s+eller\s+.*$/i,
+  /\s+gjerne\s+.*$/i,
+  /\s+à\s+\d.*$/i,
+  /\s+\d+(?:[.,]\d+)?\s*%$/,
+  /\s+for\s+(?:frying|serving|brushing|greasing|garnish).*$/i,
+  /\s+to\s+(?:taste|serve)$/i,
+];
+const QUANTITY_UNITS = 'skiver|skive|bokser|boks|poser|pose|never|neve|båter|båt|fedd|glass|stk|kg|dl|cl|ml|ss|ts|g|l';
+const LOST_COMMA_AMOUNT = new RegExp(
+  `^(?:ca\\.?\\s*)?(\\d+) (\\d+)(${QUANTITY_UNITS})\\.?\\s*(.+)$`,
+  'i',
+);
+const LEADING_AMOUNT = new RegExp(
+  `^(?:ca\\.?\\s*)?(\\d+(?:[.,]\\d+)?)\\s*(${QUANTITY_UNITS})\\.?\\s*(.+)$`,
+  'i',
+);
 
 const toTrimmedString = (value) => (typeof value === 'string' ? value.trim() : '');
 
@@ -27,12 +56,10 @@ const normalizeIngredientName = (name) => {
     .filter((token) => token && !PREP_WORD_SET.has(token.toLowerCase()))
     .join(' ');
   const canonicalName = strippedName || name;
-  const wasNormalized = Boolean(strippedName) && canonicalName !== name;
 
   return {
     key: normalizeKey(canonicalName),
-    displayName: wasNormalized ? uppercaseFirst(canonicalName) : canonicalName,
-    wasNormalized,
+    displayName: uppercaseFirst(canonicalName),
   };
 };
 
@@ -54,10 +81,76 @@ const parseQuantity = (value) => {
     : null;
 };
 
-const normalizeIngredient = (ingredient) => {
+const collapseAndDedupeTokens = (name) => name
+  .replace(/\s+/g, ' ')
+  .trim()
+  .split(' ')
+  .filter((token, index, tokens) => (
+    index === 0 || token.toLowerCase() !== tokens[index - 1].toLowerCase()
+  ))
+  .join(' ');
+
+const extractLeadingAmount = (name) => {
+  const lostCommaMatch = name.match(LOST_COMMA_AMOUNT);
+  if (lostCommaMatch) {
+    return {
+      name: lostCommaMatch[4].trim(),
+      quantity: Number(`${lostCommaMatch[1]}.${lostCommaMatch[2]}`),
+      unit: lostCommaMatch[3].toLowerCase(),
+    };
+  }
+
+  const match = name.match(LEADING_AMOUNT);
+  if (!match) return null;
+
+  return {
+    name: match[3].trim(),
+    quantity: Number(match[1].replace(',', '.')),
+    unit: match[2].toLowerCase(),
+  };
+};
+
+const positiveFiniteOrOne = (value) => {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : 1;
+};
+
+const isMissingQuantity = (value) => (
+  value === null || value === undefined || (typeof value === 'string' && !value.trim())
+);
+
+const repairIngredient = (ingredient, canExtractAmount, meal) => {
+  let name = collapseAndDedupeTokens(ingredient.name)
+    .replace(JUICE_ZEST_PREFIX, '')
+    .trim();
+
+  if (canExtractAmount) {
+    const extracted = extractLeadingAmount(name);
+    if (extracted) {
+      const scale = positiveFiniteOrOne(meal?.ingredient_servings)
+        / positiveFiniteOrOne(meal?.recipe_portions);
+      name = extracted.name;
+      ingredient.quantity = extracted.quantity * scale;
+      ingredient.unit = extracted.unit;
+      ingredient.hasAmount = true;
+    }
+  }
+
+  PURPOSE_TAILS.forEach((pattern) => {
+    name = name.replace(pattern, '');
+  });
+  name = name.replace(/\b(\S{3,})eller\s+(?!med\b|i\b|til\b|på\b|uten\b|av\b|og\b)\S.*$/i, '$1');
+
+  ingredient.name = name.trim() || collapseAndDedupeTokens(ingredient.name);
+  return ingredient;
+};
+
+const normalizeIngredient = (ingredient, meal) => {
   if (typeof ingredient === 'string') {
     const name = ingredient.trim();
-    return name ? { name, quantity: null, unit: '', hasAmount: false } : null;
+    return name
+      ? repairIngredient({ name, quantity: null, unit: '', hasAmount: false }, true, meal)
+      : null;
   }
 
   if (!ingredient || typeof ingredient !== 'object' || Array.isArray(ingredient)) return null;
@@ -65,18 +158,19 @@ const normalizeIngredient = (ingredient) => {
   const name = toTrimmedString(ingredient.name);
   if (!name) return null;
 
-  return {
+  return repairIngredient({
     name,
     quantity: parseQuantity(ingredient.quantity),
     unit: toTrimmedString(ingredient.unit),
     hasAmount: true,
-  };
+  }, isMissingQuantity(ingredient.quantity), meal);
 };
 
 const addAmount = (item, ingredient) => {
   if (!ingredient.hasAmount) return;
 
-  const unitKey = normalizeKey(ingredient.unit);
+  const normalizedUnit = normalizeKey(ingredient.unit);
+  const unitKey = UNIT_SYNONYMS.get(normalizedUnit) ?? normalizedUnit;
   let amount = item.amountsByUnit.get(unitKey);
 
   if (!amount) {
@@ -118,7 +212,7 @@ export const buildShoppingList = (plan) => {
       if (!meal || meal.is_leftover === true || !ingredients.length) return;
 
       ingredients.forEach((rawIngredient) => {
-        const ingredient = normalizeIngredient(rawIngredient);
+        const ingredient = normalizeIngredient(rawIngredient, meal);
         if (!ingredient) return;
 
         const normalizedName = normalizeIngredientName(ingredient.name);
@@ -134,8 +228,6 @@ export const buildShoppingList = (plan) => {
             sourceKeys: new Set(),
           };
           itemsByName.set(itemKey, item);
-        } else if (normalizedName.wasNormalized) {
-          item.name = uppercaseFirst(item.name);
         }
 
         addAmount(item, ingredient);
