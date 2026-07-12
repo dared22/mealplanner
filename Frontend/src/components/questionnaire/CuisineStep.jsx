@@ -1,28 +1,56 @@
-import React, { memo, useCallback, useMemo } from 'react';
-import { motion as Motion } from 'framer-motion';
-import { Check } from 'lucide-react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { motion as Motion, useReducedMotion } from 'framer-motion';
 import { useLanguage } from '@/i18n/useLanguage';
 
 const CuisineStep = memo(function CuisineStep({ data, onChange }) {
   const { t } = useLanguage();
+  const prefersReducedMotion = useReducedMotion();
+  const searchRef = useRef(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const cuisines = useMemo(
     () => [
-      { value: 'mediterranean', title: t('Mediterranean'), flag: '🇬🇷' },
-      { value: 'asian', title: t('Asian'), flag: '🥢' },
-      { value: 'mexican', title: t('Mexican'), flag: '🇲🇽' },
-      { value: 'italian', title: t('Italian'), flag: '🇮🇹' },
-      { value: 'indian', title: t('Indian'), flag: '🇮🇳' },
-      { value: 'american', title: t('American'), flag: '🇺🇸' },
-      { value: 'french', title: t('French'), flag: '🇫🇷' },
-      { value: 'norwegian', title: t('Norwegian'), flag: '🇳🇴' },
-      { value: 'japanese', title: t('Japanese'), flag: '🇯🇵' },
-      { value: 'middle_eastern', title: t('Middle Eastern'), flag: '🧆' },
+      { value: 'mediterranean', title: t('Mediterranean'), group: t('European') },
+      { value: 'italian', title: t('Italian'), group: t('European') },
+      { value: 'french', title: t('French'), group: t('European') },
+      { value: 'norwegian', title: t('Norwegian'), group: t('European') },
+      { value: 'asian', title: t('Asian'), group: t('Asian') },
+      { value: 'thai', title: t('Thai'), group: t('Asian') },
+      { value: 'japanese', title: t('Japanese'), group: t('Asian') },
+      { value: 'indian', title: t('Indian'), group: t('Asian') },
+      { value: 'american', title: t('American'), group: t('Americas') },
+      { value: 'mexican', title: t('Mexican'), group: t('Americas') },
+      { value: 'middle_eastern', title: t('Middle Eastern'), group: t('Middle Eastern') },
     ],
     [t]
   );
 
   const currentCuisines = useMemo(() => data.preferred_cuisines || [], [data.preferred_cuisines]);
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+
+  const groupedCuisines = useMemo(() => {
+    const visibleCuisines = normalizedQuery
+      ? cuisines.filter((cuisine) => cuisine.title.toLowerCase().includes(normalizedQuery))
+      : cuisines;
+
+    return visibleCuisines.reduce((groups, cuisine) => {
+      const group = groups.find((item) => item.label === cuisine.group);
+      if (group) {
+        group.items.push(cuisine);
+      } else {
+        groups.push({ label: cuisine.group, items: [cuisine] });
+      }
+      return groups;
+    }, []);
+  }, [cuisines, normalizedQuery]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const canAutofocus = window.matchMedia('(min-width: 768px)').matches;
+    if (canAutofocus) {
+      searchRef.current?.focus();
+    }
+  }, []);
 
   const toggleCuisine = useCallback(
     (value) => {
@@ -36,9 +64,9 @@ const CuisineStep = memo(function CuisineStep({ data, onChange }) {
 
   return (
     <Motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={prefersReducedMotion ? false : { opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
+      exit={prefersReducedMotion ? undefined : { opacity: 0, y: -20 }}
       transition={{ duration: 0.4 }}
       className="space-y-10"
     >
@@ -52,44 +80,57 @@ const CuisineStep = memo(function CuisineStep({ data, onChange }) {
         </p>
       </div>
 
-      {/* Cuisine Cards Grid */}
-      <div className="cuisine-grid">
-        {cuisines.map((cuisine, index) => {
-          const isSelected = currentCuisines.includes(cuisine.value);
+      {/* Searchable grouped chip cloud */}
+      <div className="space-y-6">
+        <input
+          ref={searchRef}
+          type="search"
+          value={searchQuery}
+          onChange={(event) => setSearchQuery(event.target.value)}
+          placeholder={t('Search by cuisine')}
+          aria-label={t('Search cuisines')}
+          className="cuisine-search"
+        />
 
-          return (
-            <Motion.button
-              key={cuisine.value}
-              type="button"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.03 * index }}
-              onClick={() => toggleCuisine(cuisine.value)}
-              className={`selectable-card flex flex-col items-center text-center py-6 px-6 min-h-[140px] min-w-[170px] ${
-                isSelected ? 'selected' : ''
-              }`}
-            >
-              {/* Check indicator */}
-              {isSelected && (
-                <div className="check-icon">
-                  <Check className="w-4 h-4" />
-                </div>
-              )}
+        <div className="space-y-6">
+          {groupedCuisines.map((group) => (
+            <div key={group.label} className="space-y-3">
+              <div className="choice-group-heading">
+                <span>{group.label}</span>
+              </div>
+              <div className="cuisine-chip-cloud">
+                {group.items.map((cuisine) => {
+                  const isSelected = currentCuisines.includes(cuisine.value);
 
-              {/* Flag/Emoji */}
-              <div className="text-4xl mb-4">{cuisine.flag}</div>
+                  return (
+                    <Motion.button
+                      key={cuisine.value}
+                      type="button"
+                      initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0 }}
+                      onClick={() => toggleCuisine(cuisine.value)}
+                      aria-pressed={isSelected}
+                      className={`cuisine-chip ${isSelected ? 'active' : ''}`}
+                    >
+                      {cuisine.title}
+                    </Motion.button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
 
-              {/* Title */}
-              <h3 className="font-semibold text-sm text-foreground leading-snug break-words">{cuisine.title}</h3>
-            </Motion.button>
-          );
-        })}
+          {groupedCuisines.length === 0 && (
+            <p className="text-sm text-muted-foreground">{t('No cuisines match your search')}</p>
+          )}
+        </div>
       </div>
 
       {/* Selected count */}
       {currentCuisines.length > 0 && (
         <Motion.p
-          initial={{ opacity: 0, y: 10 }}
+          initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           className="text-center text-sm text-primary font-medium"
         >

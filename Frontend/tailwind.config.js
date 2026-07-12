@@ -14,6 +14,9 @@ export default {
       colors: {
         primary: "var(--primary)",
         accent: "var(--accent)",
+        destructive: "var(--destructive)",
+        success: "var(--success)",
+        warning: "var(--warning)",
         background: "var(--background)",
         foreground: "var(--foreground)",
         card: "var(--card)",

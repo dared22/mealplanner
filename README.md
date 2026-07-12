@@ -1,8 +1,13 @@
 # Preppr
 
-A web application that generates personalized weekly meal plans using AI. You
-fill out a questionnaire with your dietary preferences, and the app creates
-custom meal plans that you can save, translate, and reuse.
+A Norwegian high-protein, budget meal-prep planner for one person. Fill out one
+short questionnaire and Preppr builds a full week of cheap, goal-fit meals around
+your calories, protein target, budget, and food preferences — so you can shop
+once and meal-prep for the week instead of re-deciding dinner every night.
+
+It's for the person asking *"what should I eat this week to hit my protein and
+calorie goals without overspending?"* — students, gym-goers, and others cooking
+for just themselves.
 
 **Live demo:** [preppr.xyz](https://www.preppr.xyz/)
 
@@ -11,21 +16,47 @@ custom meal plans that you can save, translate, and reuse.
 > recipe data. The demo uses a personal OpenAI API key for nutrition
 > calculations, so please be considerate when testing.
 
+## Current product focus
+
+Preppr's wedge is **solo weekly eating**, not family dinner planning. Today the
+planner is built for **one person**:
+
+- **One person, one week.** Recipes, portions, calories, macros, and cost are all
+  generated for a single eater. Household / multi-person scaling is a future
+  direction, not part of the current product.
+- **Goal-fit nutrition is the core constraint.** Daily calorie and macro targets
+  (protein first) come from your profile and goal — lose fat, build muscle,
+  maintain, or just eat high-protein cheaply.
+- **Meal prep, not nightly cooking.** Plans support batch cooking and
+  carry-forward leftovers (cook once, eat across days), so a week is realistic
+  for one person.
+- **Budget matters, but it's still a tier today.** Recipes carry a cost category
+  and the plan respects a budget preference. Live prices are not wired in yet.
+- **Norwegian-first.** English + Norwegian throughout.
+
+**Where it's headed (not built yet):** live weekly deal/price integration across
+**Kiwi, Rema 1000, Extra, and Meny**, plus a real consolidated shopping list with
+an estimated basket cost. Those are the highest-priority gaps — see
+[ROADMAP.md](ROADMAP.md).
+
 ## Features
 
-- **Personalized meal plans:** Generate weekly meal plans based on your
-  nutrition goals, dietary restrictions, and preferences
-- **AI-powered nutrition targets:** Uses OpenAI's API to calculate optimal
-  daily calorie and macro targets for your goals
-- **Custom optimization algorithm:** Meal recommendations are generated using
-  a proprietary algorithm that matches recipes to your nutrition targets and
-  preferences
-- **Multi-language support:** Available in English and Norwegian with
-  automatic translation
-- **Recipe database:** Access to a curated collection of recipes with
-  nutritional information
-- **Meal swapping:** Don't like a suggestion? Swap it for an alternative
-- **Persistent preferences:** Your settings are saved for future use
+- **One-person weekly plans:** a full week of meals from one short
+  questionnaire, sized for a single eater — not a household.
+- **Calorie & macro targeting:** daily calorie and protein/carb/fat targets are
+  derived from your stats and goal (lose fat, build muscle, maintain, or eat
+  high-protein cheaply) and constrain the whole week.
+- **Meal-prep aware:** plans support batch-cook portions and carry-forward
+  leftovers, so you cook fewer times and eat across days.
+- **Budget tier:** recipes are tagged by cost category and the plan honors a
+  budget preference. *(Live Norwegian store prices are planned, not built — see
+  Current product focus.)*
+- **Personalization over time:** like/dislike recipes; once you've rated enough,
+  the planner optimizes around what you actually like.
+- **Meal swapping:** swap any meal for a comparable alternative that still fits
+  your diet and targets.
+- **Recipe browser & plan history:** browse recipes and revisit past weeks.
+- **English + Norwegian:** full i18n with background translation.
 
 ## Tech stack
 
@@ -251,17 +282,19 @@ alternative approach.
 
 **For new users or fallback scenarios:**
 
-When you don't have enough rating history, the system uses a greedy selection
-algorithm that:
+When you don't have enough rating history, the system computes your daily
+calorie and macro targets (via OpenAI) and then picks recipes **randomly from
+the database** subject to your constraints. It uses a per-day relaxation ladder
+so it can always produce a plan:
 
-- Iterates through each meal slot sequentially
-- Calculates remaining macro targets for the day
-- Scores available recipes by how closely they match the remaining targets
-- Randomly selects from the top 5 closest matches (adds variety)
-- Tracks used recipes to prevent repetition
+1. **Strict** — dietary/allergy + preferred cuisines + budget + cooking time
+2. **Relaxed** — drops budget and cooking time (keeps allergies and cuisines)
+3. **Final** — also drops cuisines (allergies are *never* relaxed)
 
-This approach always produces valid plans but may not be as personalized as
-the constraint solver.
+Each day is filled to land within **±15%** of the calorie target. It accepts
+the least-relaxed level that fits the band, otherwise the nearest combination
+found, and tracks used recipes to keep the week varied. There is **no AI meal
+generation** — every meal comes from a real recipe in the database.
 
 ### Key constraints
 

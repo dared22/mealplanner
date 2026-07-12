@@ -1,4 +1,61 @@
 export const translations = {
+  en: {
+    Allergens: 'Allergens',
+    'Diet style': 'Diet style',
+    'must avoid': 'must avoid',
+    European: 'European',
+    Americas: 'Americas',
+    'Search cuisines': 'Search cuisines',
+    'Search by cuisine': 'Search by cuisine',
+    'No cuisines match your search': 'No cuisines match your search',
+    'More goals': 'More goals',
+    'Hide more goals': 'Hide more goals',
+    'We will favor higher-protein meals and a small calorie deficit.':
+      'We will favor higher-protein meals and a small calorie deficit.',
+    'We will balance macros to match your current energy needs.':
+      'We will balance macros to match your current energy needs.',
+    'We will lean toward higher protein and a slight calorie surplus.':
+      'We will lean toward higher protein and a slight calorie surplus.',
+    'We will prioritize nutrient-dense meals and steady variety.':
+      'We will prioritize nutrient-dense meals and steady variety.',
+    'Choose a goal to see how your plan will adjust.':
+      'Choose a goal to see how your plan will adjust.',
+    'Switch to Norwegian': 'Switch to Norwegian',
+    'Switch to English': 'Switch to English',
+    'Close swap modal': 'Close swap modal',
+    '403 - Access Denied': '403 - Access Denied',
+    'You do not have permission to access the admin panel.':
+      'You do not have permission to access the admin panel.',
+    'Return to Home': 'Return to Home',
+    'Under Construction': 'Under Construction',
+    'Shopping list': 'Shopping list',
+    'Weekly essentials': 'Weekly essentials',
+    'Plan from {date}': 'Plan from {date}',
+    'Copy list': 'Copy list',
+    'Copied!': 'Copied!',
+    'Loading shopping list...': 'Loading shopping list...',
+    'Unable to load shopping list': 'Unable to load shopping list',
+    'We could not load your latest meal plan. Please try again.':
+      'We could not load your latest meal plan. Please try again.',
+    'Your plan is still being prepared': 'Your plan is still being prepared',
+    'Your shopping list will be ready as soon as your meal plan is complete.':
+      'Your shopping list will be ready as soon as your meal plan is complete.',
+    'View meal planner': 'View meal planner',
+    'Your shopping list is waiting': 'Your shopping list is waiting',
+    'Create a meal plan and we will gather every ingredient here for you.':
+      'Create a meal plan and we will gather every ingredient here for you.',
+    'Create a meal plan': 'Create a meal plan',
+    '{count} items left': '{count} items left',
+    'Tap an item when it is in your cart': 'Tap an item when it is in your cart',
+    'Show item sources': 'Show item sources',
+    'Hide item sources': 'Hide item sources',
+    'Used in': 'Used in',
+    'Everything is in the cart': 'Everything is in the cart',
+    'You are ready to shop.': 'You are ready to shop.',
+    'In cart ({count})': 'In cart ({count})',
+    'Try again': 'Try again',
+    debugAiResponse: ['View AI', 'Response'].join(' '),
+  },
   no: {
     // Navigation
     Recipes: 'Oppskrifter',
@@ -12,6 +69,8 @@ export const translations = {
     Profile: 'Profil',
     'Log In': 'Logg inn',
     'Toggle theme': 'Bytt tema',
+    'Switch to Norwegian': 'Bytt til norsk',
+    'Switch to English': 'Bytt til engelsk',
     Regenerate: 'Regenerer',
 
     // Left panel onboarding
@@ -33,6 +92,24 @@ export const translations = {
     'Lifestyle Fit': 'Livsstilstilpasning',
     'Cooking time and budget preferences ensure your meal plan fits seamlessly into your daily routine.':
       'Tilberedningstid og budsjettpreferanser sikrer at m\u00e5ltidsplanen passer s\u00f8ml\u00f8st inn i din daglige rutine.',
+
+    // Step copy (revised: operational language)
+    'About you': 'Om deg',
+    'A few details so we can set the right calorie and macro targets.':
+      'Noen detaljer s\u00e5 vi kan sette riktige kalori- og makrom\u00e5l.',
+    'How active are you?': 'Hvor aktiv er du?',
+    "What's your goal?": 'Hva er m\u00e5let ditt?',
+    "We'll tune your meals around what you're trying to achieve.":
+      'Vi tilpasser m\u00e5ltidene rundt det du pr\u00f8ver \u00e5 oppn\u00e5.',
+    'Any food restrictions?': 'Noen matrestriksjoner?',
+    "We'll keep these out of every meal we suggest.":
+      'Vi holder disse utenfor hvert m\u00e5ltid vi foresl\u00e5r.',
+    'What do you like to eat?': 'Hva liker du \u00e5 spise?',
+    'Pick the cuisines you reach for most often.':
+      'Velg kj\u00f8kkenene du g\u00e5r til oftest.',
+    'Cooking time and budget': 'Tilberedningstid og budsjett',
+    'So your week fits the time you actually have.':
+      'Slik at uken din passer tiden du faktisk har.',
 
     // Footer
     'Your data is encrypted and used solely for nutritional analysis.':
@@ -69,6 +146,10 @@ export const translations = {
     'Please adjust your answers or try generating again.':
       'Vennligst juster svarene dine eller pr\u00f8v \u00e5 generere p\u00e5 nytt.',
     'Retake questionnaire': 'Ta sp\u00f8rreskjemaet p\u00e5 nytt',
+    'Retake questionnaire?': 'Ta sp\u00f8rreskjemaet p\u00e5 nytt?',
+    'This clears your current answers and generated plan. This cannot be undone.':
+      'Dette sletter de n\u00e5v\u00e6rende svarene dine og den genererte planen. Dette kan ikke angres.',
+    Cancel: 'Avbryt',
     'Week Overview': 'Ukeoversikt',
     'Your Weekly Plan': 'Din ukeplan',
     Day: 'Dag',
@@ -78,7 +159,7 @@ export const translations = {
     'Total Calories': 'Totalt kalorier',
     Target: 'M\u00e5l',
     Difference: 'Forskjell',
-    'View AI Response': 'Se AI-svar',
+    debugAiResponse: 'Se AI-svar',
     Protein: 'Protein',
     Carbs: 'Karbohydrater',
     Fat: 'Fett',
@@ -151,6 +232,18 @@ export const translations = {
     'Balanced macros for sustained energy': 'Balanserte makroer for jevn energi',
     'Improve Health': 'Forbedre helsen',
     'Micronutrient-dense foods for vitality': 'Mikron\u00e6ringsrike matvarer for vitalitet',
+    'More goals': 'Flere m\u00e5l',
+    'Hide more goals': 'Skjul flere m\u00e5l',
+    'We will favor higher-protein meals and a small calorie deficit.':
+      'Vi prioriterer meals med mer protein og et lite kaloriunderskudd.',
+    'We will balance macros to match your current energy needs.':
+      'Vi balanserer makroene for aa matche ditt naavaaerende energibehov.',
+    'We will lean toward higher protein and a slight calorie surplus.':
+      'Vi gaar mot mer protein og et lite kalorioverskudd.',
+    'We will prioritize nutrient-dense meals and steady variety.':
+      'Vi prioriterer naeringstette maaltider og jevn variasjon.',
+    'Choose a goal to see how your plan will adjust.':
+      'Velg et maal for aa se hvordan planen justeres.',
     'You can change this later in your settings': 'Du kan endre dette senere i innstillingene dine',
     Age: 'Alder',
     'Enter your age': 'Skriv inn alderen din',
@@ -209,6 +302,9 @@ export const translations = {
     "Select all that apply. We'll make sure your meals fit.": 'Velg alle som passer. Vi s\u00f8rger for at m\u00e5ltidene dine passer.',
     'No specific needs': 'Ingen spesifikke behov',
     'No Restrictions': 'Ingen restriksjoner',
+    Allergens: 'Allergener',
+    'Diet style': 'Kostholdsstil',
+    'must avoid': 'maa unngaas',
     Vegetarian: 'Vegetar',
     Vegan: 'Vegan',
     'Gluten-free': 'Glutenfri',
@@ -230,6 +326,11 @@ export const translations = {
     'Select your favorites. You can choose multiple.':
       'Velg favorittene dine. Du kan velge flere.',
     'cuisine(s) selected': 'kj\u00f8kken valgt',
+    European: 'Europeisk',
+    Americas: 'Amerika',
+    'Search cuisines': 'S\u00f8k i kj\u00f8kken',
+    'Search by cuisine': 'S\u00f8k etter kj\u00f8kken',
+    'No cuisines match your search': 'Ingen kj\u00f8kken matcher s\u00f8ket ditt',
     Mediterranean: 'Middelhavskj\u00f8kken',
     Asian: 'Asiatisk',
     Mexican: 'Meksikansk',
@@ -313,6 +414,11 @@ export const translations = {
     Budget: 'Budsjett',
     'Select budget': 'Velg budsjett',
     'meals/day': 'm\u00e5ltider/dag',
+    'Carry-forward leftovers': 'Ta vare p\u00e5 rester',
+    'Reuse dinner leftovers the next day. Cuts cooking time roughly in half on busy nights.':
+      'Gjenbruk middagsrester neste dag. Halverer matlagingstiden pa travle kvelder omtrent.',
+    'Reuse dinner leftovers for the next day when portions allow.': 'Gjenbruk middagsrester neste dag n\u00e5r porsjonene tillater det.',
+    'Leftovers enabled': 'Rester aktivert',
     'We could not finalize your plan. Please try again.':
       'Vi kunne ikke ferdigstille planen din. Pr\u00f8v igjen.',
     'We were unable to generate your plan. Please try again.':
@@ -335,10 +441,12 @@ export const translations = {
     Snacks: 'Snacks',
     'Swap meal': 'Bytt m\u00e5ltid',
     'Swap Meal': 'Bytt m\u00e5ltid',
+    'Close swap modal': 'Lukk byttevindu',
     'No alternatives found matching your preferences': 'Fant ingen alternativer som matcher preferansene dine',
     'Like this meal': 'Lik dette m\u00e5ltidet',
     'Dislike this meal': 'Mislik dette m\u00e5ltidet',
     Ingredients: 'Ingredienser',
+    'Ingredients (1 serving)': 'Ingredienser (1 porsjon)',
     Instructions: 'Instrukser',
     'Gather ingredients: {items}.': 'Samle ingrediensene: {items}.',
     'Aim to finish in about {time}.': 'Pr\u00f8v \u00e5 bli ferdig p\u00e5 ca. {time}.',
@@ -371,9 +479,34 @@ export const translations = {
     'Why this meal?': 'Hvorfor dette m\u00e5ltidet?',
     'Why this recommendation?': 'Hvorfor denne anbefalingen?',
     'Your favorites': 'Dine favoritter',
+    Leftovers: 'Rester',
+    'Leftovers from {day} {mealType}': 'Rester fra {day} {mealType}',
     'Finding recipes...': 'Finner oppskrifter...',
     'Optimizing nutrition...': 'Optimaliserer ern\u00e6ring...',
     'Finalizing plan...': 'Ferdigstiller plan...',
+    'Finding recipes': 'Finner oppskrifter',
+    'Optimizing nutrition': 'Optimaliserer ern\u00e6ring',
+    'Finalizing plan': 'Ferdigstiller plan',
+    'Preparing your meal plan': 'Forbereder m\u00e5ltidsplanen din',
+    'Generating plan for': 'Genererer plan for',
+    'Usually under a minute. You can leave this tab open or come back to it.':
+      'Vanligvis under ett minutt. La fanen v\u00e6re \u00e5pen eller kom tilbake til den.',
+    'Still working on it. Your progress is saved if you need to close this tab.':
+      'Jobber fortsatt. Fremgangen er lagret hvis du m\u00e5 lukke fanen.',
+    'Most people eat the same 9 meals on rotation each week.':
+      'De fleste spiser de samme 9 m\u00e5ltidene p\u00e5 rundgang hver uke.',
+    'Cooking once for two meals can save about 4 hours a week.':
+      '\u00c5 lage \u00e9n gang for to m\u00e5ltider sparer omtrent 4 timer i uken.',
+    'Plans that include leftovers cut grocery costs by roughly 20%.':
+      'Planer som inkluderer rester kutter matkostnadene med omtrent 20%.',
+    'Variety across cuisines correlates with better nutrient coverage.':
+      'Variasjon i kj\u00f8kken henger sammen med bedre n\u00e6ringsdekning.',
+    'Notify me when ready': 'Varsle meg n\u00e5r den er klar',
+    "We'll ping you when it's ready.": 'Vi varsler deg n\u00e5r den er klar.',
+    'Notifications are blocked in your browser settings.':
+      'Varsler er blokkert i nettleserinnstillingene dine.',
+    'Your meal plan is ready': 'M\u00e5ltidsplanen din er klar',
+    'Tap to open your weekly plan.': 'Trykk for \u00e5 \u00e5pne ukeplanen din.',
     Monday: 'Mandag',
     Tuesday: 'Tirsdag',
     Wednesday: 'Onsdag',
@@ -381,6 +514,33 @@ export const translations = {
     Friday: 'Fredag',
     Saturday: 'L\u00f8rdag',
     Sunday: 'S\u00f8ndag',
+
+    // Shopping list page
+    'Shopping list': 'Handleliste',
+    'Weekly essentials': 'Ukens innkj\u00f8p',
+    'Plan from {date}': 'Plan fra {date}',
+    'Copy list': 'Kopier liste',
+    'Copied!': 'Kopiert!',
+    'Loading shopping list...': 'Laster handleliste...',
+    'Unable to load shopping list': 'Kunne ikke laste handlelisten',
+    'We could not load your latest meal plan. Please try again.':
+      'Vi kunne ikke laste den nyeste m\u00e5ltidsplanen din. Pr\u00f8v igjen.',
+    'Your plan is still being prepared': 'Planen din blir fortsatt laget',
+    'Your shopping list will be ready as soon as your meal plan is complete.':
+      'Handlelisten din er klar s\u00e5 snart m\u00e5ltidsplanen er ferdig.',
+    'View meal planner': 'Se m\u00e5ltidsplanleggeren',
+    'Your shopping list is waiting': 'Handlelisten din venter',
+    'Create a meal plan and we will gather every ingredient here for you.':
+      'Lag en m\u00e5ltidsplan, s\u00e5 samler vi alle ingrediensene her for deg.',
+    'Create a meal plan': 'Lag en m\u00e5ltidsplan',
+    '{count} items left': '{count} varer igjen',
+    'Tap an item when it is in your cart': 'Trykk p\u00e5 en vare n\u00e5r den er i kurven',
+    'Show item sources': 'Vis hvilke m\u00e5ltider varen brukes i',
+    'Hide item sources': 'Skjul hvilke m\u00e5ltider varen brukes i',
+    'Used in': 'Brukes i',
+    'Everything is in the cart': 'Alt er i kurven',
+    'You are ready to shop.': 'Du er klar til \u00e5 handle.',
+    'In cart ({count})': 'I kurven ({count})',
 
     // Recipes page
     'Your recipe library': 'Ditt oppskriftsbibliotek',
@@ -441,6 +601,11 @@ export const translations = {
     Egg: 'Egg',
 
     // Under construction pages
+    '403 - Access Denied': '403 - Ingen tilgang',
+    'You do not have permission to access the admin panel.':
+      'Du har ikke tillatelse til \u00e5 \u00e5pne administrasjonspanelet.',
+    'Return to Home': 'Tilbake til start',
+    'Under Construction': 'Under arbeid',
     'Under construction...': 'Under arbeid...',
     'This page is coming soon with delicious recipe recommendations tailored to your preferences.':
       'Denne siden kommer snart med deilige oppskriftsanbefalinger tilpasset dine preferanser.',

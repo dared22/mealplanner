@@ -16,6 +16,7 @@ Frontend/.env
 .claude
 .agents
 .planning
+.firecrawl
 
 # MCP servers virtual environments
 mcp-servers/**/venv/
@@ -23,3 +24,8 @@ mcp-servers/**/__pycache__/.planning/
 
 #md files
 planner_logic.md
+vision.md
+ROADMAP.md
+
+#data
+recipes.csv

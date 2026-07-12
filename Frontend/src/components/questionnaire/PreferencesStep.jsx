@@ -1,9 +1,40 @@
 import React, { memo, useMemo } from 'react';
-import { motion as Motion } from 'framer-motion';
+import { motion as Motion, useReducedMotion } from 'framer-motion';
+import { RefreshCw } from 'lucide-react';
 import { useLanguage } from '@/i18n/useLanguage';
 
 const PreferencesStep = memo(function PreferencesStep({ data, onChange }) {
   const { t } = useLanguage();
+  const shouldReduceMotion = useReducedMotion();
+  const carryForwardEnabled = Boolean(data.carry_forward_enabled);
+
+  const containerMotion = shouldReduceMotion
+    ? {
+        initial: false,
+        animate: { opacity: 1 },
+        exit: { opacity: 0 },
+        transition: { duration: 0.01 },
+      }
+    : {
+        initial: { opacity: 0, y: 20 },
+        animate: { opacity: 1, y: 0 },
+        exit: { opacity: 0, y: -20 },
+        transition: { duration: 0.4 },
+      };
+
+  const itemMotion = () => (
+    shouldReduceMotion
+      ? {
+          initial: false,
+          animate: { opacity: 1 },
+          transition: { duration: 0.01 },
+        }
+      : {
+          initial: { opacity: 0, y: 20 },
+          animate: { opacity: 1, y: 0 },
+          transition: { delay: 0 },
+        }
+  );
 
   const cookingTimeOptions = useMemo(
     () => [
@@ -36,31 +67,39 @@ const PreferencesStep = memo(function PreferencesStep({ data, onChange }) {
   );
 
   return (
-    <Motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      transition={{ duration: 0.4 }}
-      className="space-y-10"
-    >
-      {/* Headline */}
-      <div>
-        <h1 className="headline-serif mb-3">
-          {t('Set your')} <span className="accent">{t('preferences')}</span>
-        </h1>
-        <p className="text-muted-foreground text-lg">
-          {t('Time, meal frequency, and budget.')}
-        </p>
-      </div>
+    <Motion.div {...containerMotion} className="space-y-8">
+      <Motion.label
+        {...itemMotion()}
+        className={`leftover-hero-card ${carryForwardEnabled ? 'active' : ''}`}
+      >
+        <span className="leftover-hero-icon" aria-hidden="true">
+          <RefreshCw className="w-5 h-5" />
+        </span>
+        <span className="leftover-hero-copy">
+          <span id="carry-forward-title" className="leftover-hero-title">
+            {t('Carry-forward leftovers')}
+          </span>
+          <span id="carry-forward-description" className="leftover-hero-description">
+            {t('Reuse dinner leftovers the next day. Cuts cooking time roughly in half on busy nights.')}
+          </span>
+        </span>
+        <input
+          type="checkbox"
+          role="switch"
+          checked={carryForwardEnabled}
+          aria-checked={carryForwardEnabled}
+          aria-labelledby="carry-forward-title"
+          aria-describedby="carry-forward-description"
+          onChange={(e) => onChange({ carry_forward_enabled: e.target.checked })}
+          className="leftover-switch-input sr-only"
+        />
+        <span className="leftover-switch" aria-hidden="true">
+          <span className="leftover-switch-thumb" />
+        </span>
+      </Motion.label>
 
-      {/* Form with underline inputs */}
-      <div className="grid md:grid-cols-3 gap-x-12 gap-y-8">
-        {/* Cooking Time */}
-        <Motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-        >
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8">
+        <Motion.div {...itemMotion()}>
           <label className="input-label">{t('Cooking Time')}</label>
           <select
             value={data.cooking_time_preference || ''}
@@ -76,12 +115,7 @@ const PreferencesStep = memo(function PreferencesStep({ data, onChange }) {
           </select>
         </Motion.div>
 
-        {/* Meals Per Day */}
-        <Motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15 }}
-        >
+        <Motion.div {...itemMotion()}>
           <label className="input-label">{t('Meals Per Day')}</label>
           <select
             value={data.meals_per_day?.toString() || ''}
@@ -97,12 +131,7 @@ const PreferencesStep = memo(function PreferencesStep({ data, onChange }) {
           </select>
         </Motion.div>
 
-        {/* Budget */}
-        <Motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-        >
+        <Motion.div {...itemMotion()}>
           <label className="input-label">{t('Budget')}</label>
           <select
             value={data.budget_range || ''}
@@ -118,31 +147,6 @@ const PreferencesStep = memo(function PreferencesStep({ data, onChange }) {
           </select>
         </Motion.div>
       </div>
-
-      {/* Summary chips */}
-      {(data.cooking_time_preference || data.meals_per_day || data.budget_range) && (
-        <Motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex flex-wrap justify-center gap-3"
-        >
-          {data.cooking_time_preference && (
-            <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-accent text-sm font-medium text-accent-foreground">
-              {cookingTimeOptions.find((o) => o.value === data.cooking_time_preference)?.label}
-            </span>
-          )}
-          {data.meals_per_day && (
-            <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-accent text-sm font-medium text-accent-foreground">
-              {data.meals_per_day} {t('meals/day')}
-            </span>
-          )}
-          {data.budget_range && (
-            <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-accent text-sm font-medium text-accent-foreground">
-              {budgetOptions.find((o) => o.value === data.budget_range)?.label}
-            </span>
-          )}
-        </Motion.div>
-      )}
     </Motion.div>
   );
 });

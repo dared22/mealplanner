@@ -1,10 +1,11 @@
 import React, { memo, useCallback, useMemo } from 'react';
-import { motion as Motion } from 'framer-motion';
+import { motion as Motion, useReducedMotion } from 'framer-motion';
 import { Check } from 'lucide-react';
 import { useLanguage } from '@/i18n/useLanguage';
 
 const ActivityStep = memo(function ActivityStep({ data, onChange }) {
   const { t } = useLanguage();
+  const prefersReducedMotion = useReducedMotion();
 
   const activityLevels = useMemo(
     () => [
@@ -78,9 +79,9 @@ const ActivityStep = memo(function ActivityStep({ data, onChange }) {
 
   return (
     <Motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={prefersReducedMotion ? false : { opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
+      exit={prefersReducedMotion ? undefined : { opacity: 0, y: -20 }}
       transition={{ duration: 0.4 }}
       className="space-y-10"
     >
@@ -96,15 +97,15 @@ const ActivityStep = memo(function ActivityStep({ data, onChange }) {
 
       {/* Activity Cards - Horizontal Row */}
       <div className="activity-grid">
-        {activityLevels.map((level, index) => {
+        {activityLevels.map((level) => {
           const isSelected = data.activity_level === level.value;
           return (
             <Motion.button
               key={level.value}
               type="button"
-              initial={{ opacity: 0, y: 20 }}
+              initial={prefersReducedMotion ? false : { opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.05 * index }}
+              transition={{ delay: 0 }}
               onClick={() => handleSelect(level.value)}
               className={`activity-card ${isSelected ? 'selected' : ''}`}
             >

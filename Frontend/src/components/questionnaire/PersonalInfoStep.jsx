@@ -1,5 +1,5 @@
 import React, { memo, useCallback } from 'react';
-import { motion as Motion } from 'framer-motion';
+import { motion as Motion, useReducedMotion } from 'framer-motion';
 import { useLanguage } from '@/i18n/useLanguage';
 import { validatePersonalInfo } from './validation';
 
@@ -11,6 +11,7 @@ const genderOptions = [
 
 const PersonalInfoStep = memo(function PersonalInfoStep({ data, onChange }) {
   const { t } = useLanguage();
+  const prefersReducedMotion = useReducedMotion();
   const { errors } = validatePersonalInfo(data);
 
   const handleNumberChange = useCallback(
@@ -34,9 +35,9 @@ const PersonalInfoStep = memo(function PersonalInfoStep({ data, onChange }) {
 
   return (
     <Motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={prefersReducedMotion ? false : { opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
+      exit={prefersReducedMotion ? undefined : { opacity: 0, y: -20 }}
       transition={{ duration: 0.4 }}
       className="space-y-10"
     >
@@ -54,9 +55,8 @@ const PersonalInfoStep = memo(function PersonalInfoStep({ data, onChange }) {
       <div className="grid md:grid-cols-2 gap-x-12 gap-y-8">
         {/* Age */}
         <Motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={prefersReducedMotion ? false : { opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
         >
           <label className="input-label">{t('Age')}</label>
           <input
@@ -66,24 +66,23 @@ const PersonalInfoStep = memo(function PersonalInfoStep({ data, onChange }) {
             min={10}
             max={100}
             onChange={(e) => handleNumberChange('age', e.target.value)}
-            className={`input-underline ${showAgeError ? 'border-red-500 focus:border-red-500' : ''}`}
+              className={`input-underline ${showAgeError ? 'border-destructive focus:border-destructive' : ''}`}
           />
           {showAgeError && (
-            <p className="text-sm text-red-500 mt-2">{t(errors.age)}</p>
+            <p className="text-sm text-destructive mt-2">{t(errors.age)}</p>
           )}
         </Motion.div>
 
         {/* Sex */}
         <Motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={prefersReducedMotion ? false : { opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15 }}
         >
           <label className="input-label">{t('Sex')}</label>
           <select
             value={data.gender || ''}
             onChange={(e) => onChange({ gender: e.target.value })}
-            className={`select-underline ${showGenderError ? 'border-red-500 focus:border-red-500' : ''}`}
+              className={`select-underline ${showGenderError ? 'border-destructive focus:border-destructive' : ''}`}
           >
             <option value="">{t('Select an option')}</option>
             {genderOptions.map((opt) => (
@@ -93,15 +92,14 @@ const PersonalInfoStep = memo(function PersonalInfoStep({ data, onChange }) {
             ))}
           </select>
           {showGenderError && (
-            <p className="text-sm text-red-500 mt-2">{t(errors.gender)}</p>
+            <p className="text-sm text-destructive mt-2">{t(errors.gender)}</p>
           )}
         </Motion.div>
 
         {/* Height */}
         <Motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={prefersReducedMotion ? false : { opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
         >
           <label className="input-label">{t('Height')}</label>
           <div className="relative">
@@ -113,13 +111,13 @@ const PersonalInfoStep = memo(function PersonalInfoStep({ data, onChange }) {
               max={210}
               onChange={(e) => handleNumberChange('height', e.target.value)}
               className={`input-underline pr-12 ${
-                showHeightError || showLogicError ? 'border-red-500 focus:border-red-500' : ''
+                showHeightError || showLogicError ? 'border-destructive focus:border-destructive' : ''
               }`}
             />
             <span className="absolute right-0 bottom-3 text-muted-foreground">cm</span>
           </div>
           {(showHeightError || showLogicError) && (
-            <p className="text-sm text-red-500 mt-2">
+            <p className="text-sm text-destructive mt-2">
               {showLogicError ? t(errors.logic) : t(errors.height)}
             </p>
           )}
@@ -127,9 +125,8 @@ const PersonalInfoStep = memo(function PersonalInfoStep({ data, onChange }) {
 
         {/* Weight */}
         <Motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={prefersReducedMotion ? false : { opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.25 }}
         >
           <label className="input-label">{t('Weight')}</label>
           <div className="relative">
@@ -141,13 +138,13 @@ const PersonalInfoStep = memo(function PersonalInfoStep({ data, onChange }) {
               max={400}
               onChange={(e) => handleNumberChange('weight', e.target.value)}
               className={`input-underline pr-12 ${
-                showWeightError || showLogicError ? 'border-red-500 focus:border-red-500' : ''
+                showWeightError || showLogicError ? 'border-destructive focus:border-destructive' : ''
               }`}
             />
             <span className="absolute right-0 bottom-3 text-muted-foreground">kg</span>
           </div>
           {(showWeightError || showLogicError) && !showHeightError && (
-            <p className="text-sm text-red-500 mt-2">
+            <p className="text-sm text-destructive mt-2">
               {showLogicError ? t(errors.logic) : t(errors.weight)}
             </p>
           )}
