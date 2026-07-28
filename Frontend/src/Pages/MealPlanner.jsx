@@ -313,6 +313,7 @@ export default function MealPlanner({ user }) {
   const [generationStage, setGenerationStage] = useState(() => initialProgress?.generationStage ?? null);
   const [generationSource, setGenerationSource] = useState(null);
   const [recommendationReasons, setRecommendationReasons] = useState(null);
+  const [budgetRelaxed, setBudgetRelaxed] = useState(false);
   const [planError, setPlanError] = useState(() => initialProgress?.planError ?? null);
   const [preferenceId, setPreferenceId] = useState(() => initialProgress?.preferenceId ?? null);
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -388,6 +389,7 @@ export default function MealPlanner({ user }) {
       const serverError = response?.error ?? '';
       const serverGenerationSource = response?.generation_source ?? null;
       const serverRecommendationReasons = response?.recommendation_reasons ?? null;
+      const serverBudgetRelaxed = response?.budget_relaxed ?? false;
       const translationStatus = response?.translation_status;
       const translationError = response?.translation_error;
       setGenerationStage(response?.generation_stage ?? null);
@@ -414,6 +416,7 @@ export default function MealPlanner({ user }) {
         setPlanError(null);
         setGenerationSource(serverGenerationSource);
         setRecommendationReasons(serverRecommendationReasons);
+        setBudgetRelaxed(serverBudgetRelaxed);
         return;
       }
 
@@ -473,6 +476,7 @@ export default function MealPlanner({ user }) {
         setRawPlanText(response?.raw_plan ?? '');
         setGenerationSource(response?.generation_source ?? null);
         setRecommendationReasons(response?.recommendation_reasons ?? null);
+        setBudgetRelaxed(response?.budget_relaxed ?? false);
       } catch {
         // ignore refresh errors
       }
@@ -490,6 +494,7 @@ export default function MealPlanner({ user }) {
     setGenerationStage('finding_recipes');
     setGenerationSource(null);
     setRecommendationReasons(null);
+    setBudgetRelaxed(false);
     setPreferenceId(null);
     setIsSubmitting(true);
     setCurrentStep(TOTAL_STEPS);
@@ -542,6 +547,7 @@ export default function MealPlanner({ user }) {
           generationStage={generationStage}
           generationSource={generationSource}
           recommendationReasons={recommendationReasons}
+          budgetRelaxed={budgetRelaxed}
           errorMessage={planError}
           onRegenerate={handleFinish}
           regenerateDisabled={isSubmitting}

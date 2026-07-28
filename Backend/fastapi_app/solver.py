@@ -8,11 +8,12 @@ and respecting dietary restrictions.
 
 import logging
 import re
+from collections import defaultdict
 from typing import Any, Dict, List, Optional, Set, Tuple
 from uuid import UUID
 
 import pandas as pd
-from pulp import LpMaximize, LpProblem, LpStatus, LpVariable, lpSum, value
+from pulp import LpMaximize, LpProblem, LpStatus, LpVariable, PULP_CBC_CMD, lpSum, value
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -26,6 +27,19 @@ WEEK_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
 MACRO_TOLERANCE = 0.10  # ±10% tolerance for macro targets
 QUALITY_THRESHOLD_LIKED_RATIO = 0.5  # Minimum 50% liked recipes
 QUALITY_THRESHOLD_MACRO_DEVIATION = 0.2  # Maximum 20% macro deviation
+# Below this many total ratings there isn't enough signal for the liked-ratio
+# gate to mean anything (a brand-new user has liked_ratio=0 by construction),
+# so it's skipped and only macro_deviation is enforced. Matches the rating
+# count that used to gate whether the solver ran at all.
+MIN_RATINGS_FOR_LIKED_RATIO_GATE = 10
+
+
+def _wants_cheap_tier(budget_range: Optional[str]) -> bool:
+    """Whether a budget_range value means 'restrict to the cheap cost tier'."""
+    if not budget_range:
+        return False
+    lower = str(budget_range).lower()
+    return "budget" in lower or "cheap" in lower
 
 
 def _normalize_token(value: str) -> str:
@@ -181,7 +195,8 @@ def _filter_recipes_for_solver(
     db: Session,
     preference: Preference,
     disliked_ids: Set[UUID],
-    last_week_ids: Set[UUID]
+    last_week_ids: Set[UUID],
+    enforce_budget: bool = True,
 ) -> pd.DataFrame:
     """
     Pre-filter recipes to valid candidates (300-500 recipes).
@@ -190,7 +205,10 @@ def _filter_recipes_for_solver(
     - Dietary restrictions (hard constraint)
     - Exclude disliked recipes
     - Exclude last week's recipes
-    - Soft filters: budget, cooking time (relaxed if too few recipes)
+    - Budget: hard filter to the cheap tier when requested, unless the caller
+      passes enforce_budget=False to retry with it relaxed (e.g. after the
+      constrained pool proved infeasible).
+    - Cooking time (relaxed if it eliminates all options)
     """
     # Start with active recipes
     stmt = select(Recipe).where(Recipe.is_active.is_(True))
@@ -284,19 +302,18 @@ def _filter_recipes_for_solver(
     if df.empty:
         return df
 
-    # Soft filters: budget (relaxed if too few recipes)
-    # Cooking time is enforced but dropped if it eliminates all options.
     initial_count = len(df)
 
-    # Budget filter (soft)
+    # Budget filter (hard, but the caller can pass enforce_budget=False to
+    # retry with it relaxed rather than silently ignoring budget_range).
     budget_range = preference.budget_range
-    if budget_range and budget_range != "no_limit" and "cost_category" in df.columns:
+    if enforce_budget and budget_range and budget_range != "no_limit" and "cost_category" in df.columns:
         df["cost_category"] = df["cost_category"].astype(str).str.lower()
         budget_lower = str(budget_range).lower()
         if "budget" in budget_lower or "cheap" in budget_lower:
-            budget_filtered = df[df["cost_category"] == "cheap"]
-            if len(budget_filtered) >= 100:  # Keep if we have enough
-                df = budget_filtered
+            df = df[df["cost_category"] == "cheap"]
+
+    # Cooking time filter (enforced, but dropped if it eliminates all options).
 
     # Cooking time filter (enforced, but dropped if it yields no matches)
     if preference.cooking_time_preference:
@@ -377,19 +394,25 @@ def _build_solver_model(
     # Create optimization problem
     prob = LpProblem("MealPlan", LpMaximize)
 
+    # Precompute a recipe_id -> row lookup once. The old code re-scanned the
+    # whole DataFrame (df[df["id"] == recipe_id]) for every LP variable in
+    # the macro constraints below, which is O(n) per lookup and dominates
+    # build time once the solver runs for every plan, not just ~10% of them.
+    recipes_by_id: Dict[Any, Dict[str, Any]] = df.set_index("id").to_dict("index")
+
     # Decision variables: x[recipe_id, day, meal_type] = 1 if recipe selected
     recipe_vars = {}
     meal_slots = _build_meal_slots(meals_per_day)
 
     for day in WEEK_DAYS:
         for meal_type in meal_slots:
-            for _, recipe in df.iterrows():
+            for recipe_id, recipe in recipes_by_id.items():
                 # Only create variables for appropriate meal types
                 if not _is_appropriate_meal_type(recipe["meal_type"], meal_type):
                     continue
 
-                var_name = f"x_{recipe['id']}_{day}_{meal_type}"
-                recipe_vars[(recipe["id"], day, meal_type)] = LpVariable(
+                var_name = f"x_{recipe_id}_{day}_{meal_type}"
+                recipe_vars[(recipe_id, day, meal_type)] = LpVariable(
                     var_name, cat="Binary"
                 )
 
@@ -402,13 +425,21 @@ def _build_solver_model(
 
     prob += lpSum(objective)
 
+    # Group variables by (day, meal_type), by day, and by recipe_id once
+    # instead of rescanning all of recipe_vars for every constraint below
+    # (that rescan was itself O(len(recipe_vars)) per day/slot/recipe).
+    vars_by_day_slot: Dict[Tuple[str, str], List[LpVariable]] = defaultdict(list)
+    vars_by_day: Dict[str, List[Tuple[Any, LpVariable]]] = defaultdict(list)
+    vars_by_recipe: Dict[Any, List[LpVariable]] = defaultdict(list)
+    for (recipe_id, day, meal_type), var in recipe_vars.items():
+        vars_by_day_slot[(day, meal_type)].append(var)
+        vars_by_day[day].append((recipe_id, var))
+        vars_by_recipe[recipe_id].append(var)
+
     # Constraint 1: Exactly one recipe per meal slot
     for day in WEEK_DAYS:
         for meal_type in meal_slots:
-            slot_vars = [
-                var for (rid, d, mt), var in recipe_vars.items()
-                if d == day and mt == meal_type
-            ]
+            slot_vars = vars_by_day_slot.get((day, meal_type), [])
             if slot_vars:
                 prob += lpSum(slot_vars) == 1
 
@@ -417,11 +448,8 @@ def _build_solver_model(
     total_meals = len(WEEK_DAYS) * len(meal_slots)
     unique_recipes = len(df)
 
-    for recipe_id in df["id"]:
-        recipe_uses = [
-            var for (rid, day, meal_type), var in recipe_vars.items()
-            if rid == recipe_id
-        ]
+    for recipe_id in recipes_by_id:
+        recipe_uses = vars_by_recipe.get(recipe_id, [])
         if recipe_uses:
             if unique_recipes >= total_meals:
                 # Enough recipes - enforce uniqueness
@@ -434,48 +462,25 @@ def _build_solver_model(
     tolerance = MACRO_TOLERANCE
 
     for day in WEEK_DAYS:
-        day_vars = [
-            (rid, var) for (rid, d, mt), var in recipe_vars.items()
-            if d == day
-        ]
-
-        # Calories
-        day_calories = []
-        for recipe_id, var in day_vars:
-            recipe = df[df["id"] == recipe_id].iloc[0]
-            day_calories.append(recipe["calories"] * var)
+        day_vars = vars_by_day.get(day, [])
 
         target_cal = macro_targets.get("calories", 2000)
+        day_calories = [recipes_by_id[rid]["calories"] * var for rid, var in day_vars]
         prob += lpSum(day_calories) >= target_cal * (1 - tolerance)
         prob += lpSum(day_calories) <= target_cal * (1 + tolerance)
 
-        # Protein
-        day_protein = []
-        for recipe_id, var in day_vars:
-            recipe = df[df["id"] == recipe_id].iloc[0]
-            day_protein.append(recipe["protein"] * var)
-
         target_protein = macro_targets.get("protein", 150)
+        day_protein = [recipes_by_id[rid]["protein"] * var for rid, var in day_vars]
         prob += lpSum(day_protein) >= target_protein * (1 - tolerance)
         prob += lpSum(day_protein) <= target_protein * (1 + tolerance)
 
-        # Carbs
-        day_carbs = []
-        for recipe_id, var in day_vars:
-            recipe = df[df["id"] == recipe_id].iloc[0]
-            day_carbs.append(recipe["carbs"] * var)
-
         target_carbs = macro_targets.get("carbs", 200)
+        day_carbs = [recipes_by_id[rid]["carbs"] * var for rid, var in day_vars]
         prob += lpSum(day_carbs) >= target_carbs * (1 - tolerance)
         prob += lpSum(day_carbs) <= target_carbs * (1 + tolerance)
 
-        # Fat
-        day_fat = []
-        for recipe_id, var in day_vars:
-            recipe = df[df["id"] == recipe_id].iloc[0]
-            day_fat.append(recipe["fat"] * var)
-
         target_fat = macro_targets.get("fat", 65)
+        day_fat = [recipes_by_id[rid]["fat"] * var for rid, var in day_vars]
         prob += lpSum(day_fat) >= target_fat * (1 - tolerance)
         prob += lpSum(day_fat) <= target_fat * (1 + tolerance)
 
@@ -530,28 +535,34 @@ def _extract_solution(
     """
     solution = {}
 
+    # Precompute lookups once instead of rescanning the DataFrame and all of
+    # recipe_vars for every (day, meal_type) slot (same fix as _build_solver_model).
+    recipes_by_id: Dict[Any, Dict[str, Any]] = df.set_index("id").to_dict("index")
+    vars_by_day_slot: Dict[Tuple[str, str], List[Tuple[Any, LpVariable]]] = defaultdict(list)
+    for (recipe_id, d, mt), var in recipe_vars.items():
+        vars_by_day_slot[(d, mt)].append((recipe_id, var))
+
     for day in WEEK_DAYS:
         day_meals = []
 
         for meal_type in meal_slots:
             # Find which recipe was selected for this slot
-            for (recipe_id, d, mt), var in recipe_vars.items():
-                if d == day and mt == meal_type:
-                    if var.varValue == 1:
-                        recipe = df[df["id"] == recipe_id].iloc[0]
-                        day_meals.append({
-                            "id": str(recipe["id"]),
-                            "name": recipe["title"],
-                            "meal_type": meal_type,
-                            "calories": float(recipe["calories"]),
-                            "protein": float(recipe["protein"]),
-                            "carbs": float(recipe["carbs"]),
-                            "fat": float(recipe["fat"]),
-                            "ingredients": recipe["ingredients"],
-                            "instructions": recipe["instructions"],
-                            "tags": recipe["tags"],
-                        })
-                        break
+            for recipe_id, var in vars_by_day_slot.get((day, meal_type), []):
+                if var.varValue == 1:
+                    recipe = recipes_by_id[recipe_id]
+                    day_meals.append({
+                        "id": str(recipe_id),
+                        "name": recipe["title"],
+                        "meal_type": meal_type,
+                        "calories": float(recipe["calories"]),
+                        "protein": float(recipe["protein"]),
+                        "carbs": float(recipe["carbs"]),
+                        "fat": float(recipe["fat"]),
+                        "ingredients": recipe["ingredients"],
+                        "instructions": recipe["instructions"],
+                        "tags": recipe["tags"],
+                    })
+                    break
 
         solution[day] = day_meals
 
@@ -605,6 +616,20 @@ def _calculate_quality_metrics(
         "liked_ratio": liked_ratio,
         "macro_deviation": max_deviation,
     }
+
+
+def _quality_gate_failed(metrics: Dict[str, float], rating_count: int) -> bool:
+    """Whether a solved plan is below the quality bar and should fall back.
+
+    liked_ratio is meaningless with too few ratings (a brand-new user's
+    liked_ratio is always 0 by construction), so it's only enforced once
+    there's enough rating signal to trust it. macro_deviation is always
+    enforced regardless of rating count.
+    """
+    liked_ratio_applies = rating_count >= MIN_RATINGS_FOR_LIKED_RATIO_GATE
+    return metrics["macro_deviation"] > QUALITY_THRESHOLD_MACRO_DEVIATION or (
+        liked_ratio_applies and metrics["liked_ratio"] < QUALITY_THRESHOLD_LIKED_RATIO
+    )
 
 
 def _format_plan_output(
@@ -763,80 +788,117 @@ def generate_personalized_plan(
         }
 
         meals_per_day = preference.meals_per_day or 3
+        rating_count = len(liked_ids) + len(disliked_ids)
 
-        # Step 4: Filter recipes
-        df = _filter_recipes_for_solver(db, preference, disliked_ids, last_week_ids)
+        # Budget is a hard filter, but if the cheap-tier pool can't fill the
+        # week (impossible constraints) or makes the LP infeasible, retry once
+        # with it relaxed rather than falling straight through to the OpenAI
+        # fallback. Only attempt the relaxed pass when budget_range actually
+        # requested the cheap tier in the first place.
+        wants_cheap = _wants_cheap_tier(preference.budget_range)
+        budget_attempts = [True, False] if wants_cheap else [False]
 
-        # Step 5: Check for impossible constraints
-        impossible_error = _check_impossible_constraints(df, macro_targets, meals_per_day)
-        if impossible_error:
-            return {
-                "plan": None,
-                "error": impossible_error,
-                "fallback_reason": None,  # Not a fallback - truly impossible
-                "quality_metrics": None,
-            }
+        impossible_error: Optional[str] = None
+        for attempt_index, enforce_budget in enumerate(budget_attempts):
+            is_last_attempt = attempt_index == len(budget_attempts) - 1
 
-        # Step 6: Build and solve optimization model
-        logger.info(f"Building solver model with {len(df)} recipes")
-        prob, recipe_vars, meal_slots = _build_solver_model(
-            df, liked_ids, macro_targets, meals_per_day, timeout_seconds
-        )
-
-        # Solve with timeout
-        logger.info("Solving optimization problem")
-        prob.solve(timeLimit=timeout_seconds)
-
-        status = LpStatus[prob.status]
-        logger.info(f"Solver status: {status}")
-
-        if status not in ["Optimal", "Not Solved"]:
-            return {
-                "plan": None,
-                "error": None,
-                "fallback_reason": "constraints_infeasible",
-                "quality_metrics": None,
-            }
-
-        # Check if we got a solution (even if not optimal, if time limit hit)
-        if not any(var.varValue == 1 for var in recipe_vars.values()):
-            return {
-                "plan": None,
-                "error": None,
-                "fallback_reason": "timeout",
-                "quality_metrics": None,
-            }
-
-        # Step 7: Extract solution
-        solution = _extract_solution(prob, df, recipe_vars, meal_slots)
-
-        # Step 8: Calculate quality metrics
-        metrics = _calculate_quality_metrics(solution, liked_ids, macro_targets)
-        logger.info(f"Quality metrics: {metrics}")
-
-        # Step 9: Quality threshold check
-        if (metrics["liked_ratio"] < QUALITY_THRESHOLD_LIKED_RATIO or
-            metrics["macro_deviation"] > QUALITY_THRESHOLD_MACRO_DEVIATION):
-            logger.warning(
-                f"Solution below quality threshold: "
-                f"liked={metrics['liked_ratio']:.2f}, "
-                f"macro_dev={metrics['macro_deviation']:.2f}"
+            # Step 4: Filter recipes
+            df = _filter_recipes_for_solver(
+                db, preference, disliked_ids, last_week_ids, enforce_budget=enforce_budget
             )
+
+            # Step 5: Check for impossible constraints
+            impossible_error = _check_impossible_constraints(df, macro_targets, meals_per_day)
+            if impossible_error:
+                if not is_last_attempt:
+                    logger.info("Budget-constrained pool infeasible; retrying with budget relaxed.")
+                    continue
+                return {
+                    "plan": None,
+                    "error": impossible_error,
+                    "fallback_reason": None,  # Not a fallback - truly impossible
+                    "quality_metrics": None,
+                }
+
+            # Step 6: Build and solve optimization model
+            logger.info(f"Building solver model with {len(df)} recipes (budget enforced={enforce_budget})")
+            prob, recipe_vars, meal_slots = _build_solver_model(
+                df, liked_ids, macro_targets, meals_per_day, timeout_seconds
+            )
+
+            # Solve with timeout. The time limit has to be configured on the
+            # solver command object itself (PULP_CBC_CMD(timeLimit=...)); it
+            # is not a kwarg LpProblem.solve() forwards to CBC. Passing it as
+            # prob.solve(timeLimit=...) raises TypeError, which the broad
+            # except below silently turned into a permanent fallback to
+            # OpenAI for every call that reached this line.
+            logger.info("Solving optimization problem")
+            prob.solve(PULP_CBC_CMD(msg=False, timeLimit=timeout_seconds))
+
+            status = LpStatus[prob.status]
+            logger.info(f"Solver status: {status}")
+
+            if status not in ["Optimal", "Not Solved"]:
+                if not is_last_attempt:
+                    logger.info("Budget-constrained LP infeasible; retrying with budget relaxed.")
+                    continue
+                return {
+                    "plan": None,
+                    "error": None,
+                    "fallback_reason": "constraints_infeasible",
+                    "quality_metrics": None,
+                }
+
+            # Check if we got a solution (even if not optimal, if time limit hit)
+            if not any(var.varValue == 1 for var in recipe_vars.values()):
+                return {
+                    "plan": None,
+                    "error": None,
+                    "fallback_reason": "timeout",
+                    "quality_metrics": None,
+                }
+
+            budget_relaxed = wants_cheap and not enforce_budget
+
+            # Step 7: Extract solution
+            solution = _extract_solution(prob, df, recipe_vars, meal_slots)
+
+            # Step 8: Calculate quality metrics
+            metrics = _calculate_quality_metrics(solution, liked_ids, macro_targets)
+            logger.info(f"Quality metrics: {metrics}")
+
+            # Step 9: Quality threshold check.
+            if _quality_gate_failed(metrics, rating_count):
+                logger.warning(
+                    f"Solution below quality threshold: "
+                    f"liked={metrics['liked_ratio']:.2f}, "
+                    f"macro_dev={metrics['macro_deviation']:.2f}"
+                )
+                return {
+                    "plan": None,
+                    "error": None,
+                    "fallback_reason": "quality_threshold",
+                    "quality_metrics": metrics,
+                }
+
+            # Step 10: Format output
+            plan = _format_plan_output(solution, macro_targets)
+
             return {
-                "plan": None,
+                "plan": plan,
                 "error": None,
-                "fallback_reason": "quality_threshold",
+                "fallback_reason": None,
                 "quality_metrics": metrics,
+                "budget_relaxed": budget_relaxed,
             }
 
-        # Step 10: Format output
-        plan = _format_plan_output(solution, macro_targets)
-
+        # Unreachable: the loop above always returns on its last attempt, but
+        # keep a defensive fallback in case budget_attempts is ever empty.
         return {
-            "plan": plan,
-            "error": None,
+            "plan": None,
+            "error": impossible_error or "Unable to generate a plan.",
             "fallback_reason": None,
-            "quality_metrics": metrics,
+            "quality_metrics": None,
         }
 
     except Exception as e:

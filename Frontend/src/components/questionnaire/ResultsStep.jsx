@@ -3,7 +3,7 @@ import { motion as Motion } from 'framer-motion';
 import {
   CheckCircle, RefreshCw, ChevronLeft, ChevronRight,
   Shuffle, ThumbsUp, ThumbsDown, MoreHorizontal, Sun, Coffee, Utensils, Moon,
-  Info, ChevronDown, ChevronUp, X, Sparkles, Wand2
+  Info, ChevronDown, ChevronUp, X, Sparkles, Wand2, Wallet
 } from 'lucide-react';
 import { useAuth } from '@clerk/clerk-react';
 import { useLanguage } from '@/i18n/useLanguage';
@@ -110,6 +110,20 @@ const GenerationBadge = memo(function GenerationBadge({ source, t }) {
       <span className="hidden sm:inline text-muted-foreground">
         — {description}
       </span>
+    </div>
+  );
+});
+
+const BudgetRelaxedBadge = memo(function BudgetRelaxedBadge({ t }) {
+  const translate = t || ((v) => v);
+
+  return (
+    <div
+      className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200"
+      title={translate('Not enough budget-friendly recipes to fill every slot this week, so some meals go over your budget tier.')}
+    >
+      <Wallet className="w-3.5 h-3.5" />
+      <span>{translate('Budget stretched this week')}</span>
     </div>
   );
 });
@@ -606,6 +620,7 @@ export default function ResultsStep({
   generationStage: currentGenerationStage = null,
   generationSource = null,
   recommendationReasons = null,
+  budgetRelaxed = false,
   errorMessage,
   onRegenerate,
   regenerateDisabled = false,
@@ -779,9 +794,10 @@ export default function ResultsStep({
           )}
         </h1>
 
-        {isReady && generationSource && (
-          <div className="mt-4 flex justify-center">
+        {isReady && (generationSource || budgetRelaxed) && (
+          <div className="mt-4 flex flex-wrap justify-center gap-2">
             <GenerationBadge source={generationSource} t={t} />
+            {budgetRelaxed && <BudgetRelaxedBadge t={t} />}
           </div>
         )}
 

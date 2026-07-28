@@ -364,6 +364,9 @@ export const translations = {
     '{mealType} option': '{mealType} alternativ',
     'Personalized Plan': 'Personlig plan',
     'Optimized based on your ratings': 'Optimalisert basert p\u00e5 dine vurderinger',
+    'Budget stretched this week': 'Budsjettet strukket denne uken',
+    'Not enough budget-friendly recipes to fill every slot this week, so some meals go over your budget tier.':
+      'Ikke nok rimelige oppskrifter til \u00e5 fylle alle m\u00e5ltider denne uken, s\u00e5 enkelte m\u00e5ltider overstiger budsjettniv\u00e5et ditt.',
     'Why this meal?': 'Hvorfor dette m\u00e5ltidet?',
     'Why this recommendation?': 'Hvorfor denne anbefalingen?',
     'Your favorites': 'Dine favoritter',

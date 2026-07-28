@@ -767,14 +767,6 @@ def log_activity(
             session.close()
 
 
-def _should_use_solver(db: Session, user_id: UUID) -> bool:
-    """Check if user has enough ratings for solver-based generation."""
-    rating_count = db.scalar(
-        select(func.count(Rating.id)).where(Rating.user_id == user_id)
-    ) or 0
-    return rating_count >= 10  # Personalization threshold
-
-
 def _is_impossible_constraint(preference: Preference, macro_goal: Dict[str, Any]) -> Optional[str]:
     """
     Check if user's constraints are mathematically impossible.
@@ -1816,7 +1808,12 @@ def _generate_plan_in_background(pref_id: int) -> None:
             return
 
         user_id = preference.user_id
-        use_solver = bool(user_id and _should_use_solver(db, user_id))
+        # The solver now runs for every user with an account, regardless of
+        # rating count; ratings only shape its objective (liked-recipe
+        # weighting) via the quality gate inside generate_personalized_plan.
+        # Anonymous submissions (no user_id) still use the hybrid/AI path
+        # directly since the solver needs a user_id to load ratings/history.
+        use_solver = bool(user_id)
 
         macro_response = generate_daily_macro_goal(preference)
         macro_goal = macro_response.get("goal")
@@ -1991,8 +1988,10 @@ def get_preferences(
     raw_plan_text = generated_plan.get("raw_text") if isinstance(generated_plan, dict) else None
     plan_error = generated_plan.get("error") if isinstance(generated_plan, dict) else None
     generation_source = None
+    budget_relaxed = False
     if isinstance(generated_plan, dict):
         generation_source = generated_plan.get("generation_source")
+        budget_relaxed = bool(generated_plan.get("budget_relaxed"))
     if generated_plan is None:
         plan_status = "pending"
     elif plan_payload:
@@ -2092,6 +2091,7 @@ def get_preferences(
         "raw_plan": raw_plan_text,
         "error": plan_error,
         "generation_source": generation_source,
+        "budget_relaxed": budget_relaxed,
         "recommendation_reasons": recommendation_reasons,
         "translation_status": translation_status,
         "translation_error": translation_error,

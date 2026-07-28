@@ -821,10 +821,19 @@ def _format_list_values(value: Any) -> List[str]:
     return [extracted] if extracted else []
 
 
+def _wants_cheap_tier(budget_range: Optional[str]) -> bool:
+    """Whether a budget_range value means 'restrict to the cheap cost tier'."""
+    if not budget_range:
+        return False
+    lower = str(budget_range).lower()
+    return "budget" in lower or "cheap" in lower
+
+
 def query_candidate_recipes(
     db: Session,
     dto: PreferenceDTO,
     exclude_names: Optional[Set[str]] = None,
+    enforce_budget: bool = True,
 ) -> Dict[str, List[Dict[str, Any]]]:
     """Query DB for recipe candidates matching user preferences.
 
@@ -835,9 +844,14 @@ def query_candidate_recipes(
         "dinner": [...],
         "snack": [...]
     }
+
+    `enforce_budget` gates the cheap-tier filter so callers can retry with it
+    relaxed when the constrained pool can't fill the week's meal slots.
     """
     if exclude_names is None:
         exclude_names = set()
+
+    wants_cheap = enforce_budget and _wants_cheap_tier(dto.budget_range)
 
     # Build base query
     query = select(Recipe).where(Recipe.is_active == True)
@@ -855,6 +869,9 @@ def query_candidate_recipes(
                 (Recipe.dietary_flags["is_vegan"].astext == "true") |
                 (Recipe.dietary_flags["is_vegetarian"].astext == "true")
             )
+        # Allergen-based restrictions (gluten/dairy/nut) can't be expressed as a
+        # simple column predicate against the allergens array, so they're
+        # enforced below in the per-recipe loop via _violates_allergen_restriction.
 
     # Apply preferred cuisines filter
     allowed_cuisines = _normalize_cuisine_list(dto.preferred_cuisines)
@@ -887,6 +904,33 @@ def query_candidate_recipes(
     for recipe in recipes:
         # Skip excluded recipes
         if recipe.title in exclude_names:
+            continue
+
+        # Allergen-based restrictions (fail-closed: missing allergen data is
+        # treated as unsafe), mirroring solver.py's _filter_recipes_for_solver.
+        allergens = _normalize_allergens(recipe.allergens)
+        restriction_blocked = False
+        for restriction in dietary_restrictions:
+            if restriction in ("none", "vegan", "vegetarian"):
+                continue
+            if restriction == "gluten_free" or "gluten" in restriction:
+                if _violates_allergen_restriction(allergens, "gluten"):
+                    restriction_blocked = True
+                    break
+            elif restriction == "dairy_free" or "dairy" in restriction:
+                if _violates_allergen_restriction(allergens, "dairy"):
+                    restriction_blocked = True
+                    break
+            elif restriction == "nut_free" or "nut" in restriction:
+                if _violates_allergen_restriction(allergens, "nut"):
+                    restriction_blocked = True
+                    break
+        if restriction_blocked:
+            continue
+
+        # Budget: hard filter to the cheap tier, relaxable by the caller via
+        # enforce_budget when the constrained pool can't fill the week.
+        if wants_cheap and str(recipe.cost_category or "").lower() != "cheap":
             continue
 
         # Extract nutrition data
@@ -1059,6 +1103,8 @@ def match_recipes_to_macro_goal(
     # Phase 1: Try DB recipes (hybrid approach)
     db_meals: List[Dict[str, Any]] = []
     unfilled_slots = meal_slots  # default: all slots unfilled
+    budget_relaxed = False
+    wants_cheap = _wants_cheap_tier(dto.budget_range)
 
     if db is not None:
         try:
@@ -1066,12 +1112,30 @@ def match_recipes_to_macro_goal(
             db_meals, unfilled_slots = select_db_recipes_for_day(
                 candidates, meal_slots, targets, set(avoid_names)
             )
+
+            # Budget is a hard filter, but relax it if the cheap-tier pool
+            # can't fill the remaining slots rather than falling straight
+            # through to AI (which has no cost-tier awareness at all).
+            if wants_cheap and unfilled_slots:
+                already_picked = set(avoid_names) | {r["title"] for r in db_meals}
+                relaxed_candidates = query_candidate_recipes(
+                    db, dto, exclude_names=already_picked, enforce_budget=False
+                )
+                extra_meals, still_unfilled = select_db_recipes_for_day(
+                    relaxed_candidates, unfilled_slots, targets, already_picked
+                )
+                if extra_meals:
+                    budget_relaxed = True
+                    db_meals = db_meals + extra_meals
+                    unfilled_slots = still_unfilled
+
             # Convert DB recipes to meal format
             db_meals = [_format_db_recipe_as_meal(recipe) for recipe in db_meals]
         except Exception as exc:
             logger.warning("DB recipe query failed, falling back to full AI generation: %s", exc)
             db_meals = []
             unfilled_slots = meal_slots
+            budget_relaxed = False
 
     # Phase 2: AI fills gaps
     ai_meals: List[Dict[str, Any]] = []
@@ -1101,6 +1165,7 @@ def match_recipes_to_macro_goal(
                     "error": None,
                     "db_recipe_count": len(db_meals),
                     "ai_recipe_count": 0,
+                    "budget_relaxed": budget_relaxed,
                 }
             # Otherwise, propagate the error
             return {"meals": [], "totals": None, "error": meal_result["error"]}
@@ -1117,6 +1182,7 @@ def match_recipes_to_macro_goal(
         "error": None,
         "db_recipe_count": len(db_meals),
         "ai_recipe_count": len(ai_meals),
+        "budget_relaxed": budget_relaxed,
     }
 
 
@@ -1356,6 +1422,7 @@ def generate_daily_plan(pref: Any, translate: bool = False, db: Optional[Session
     used_names: List[str] = []
     total_db_recipes = 0
     total_ai_recipes = 0
+    budget_relaxed = False
 
     for day in WEEK_DAYS:
         recipe_match = match_recipes_to_macro_goal(
@@ -1371,6 +1438,7 @@ def generate_daily_plan(pref: Any, translate: bool = False, db: Optional[Session
         # Track recipe source counts
         total_db_recipes += recipe_match.get("db_recipe_count", 0)
         total_ai_recipes += recipe_match.get("ai_recipe_count", 0)
+        budget_relaxed = budget_relaxed or bool(recipe_match.get("budget_relaxed"))
 
         day_plan = _build_day_plan(day, meals_for_day, recipe_match.get("totals") or {})
         days.append(day_plan)
@@ -1401,6 +1469,7 @@ def generate_daily_plan(pref: Any, translate: bool = False, db: Optional[Session
             "generation_source": generation_source,
             "db_recipe_count": total_db_recipes,
             "ai_recipe_count": total_ai_recipes,
+            "budget_relaxed": budget_relaxed,
         }
     return {
         "plan": plan_payload,
@@ -1410,6 +1479,7 @@ def generate_daily_plan(pref: Any, translate: bool = False, db: Optional[Session
         "generation_source": generation_source,
         "db_recipe_count": total_db_recipes,
         "ai_recipe_count": total_ai_recipes,
+        "budget_relaxed": budget_relaxed,
     }
 
 
