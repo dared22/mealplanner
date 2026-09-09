@@ -33,6 +33,7 @@ from planner import (
     generate_daily_plan_for_preference,
 )
 from recipe_translator import PlanTranslator
+from ingestion import create_recipe_import_router
 
 ENSURE_SCHEMA_ON_STARTUP = os.getenv("ENSURE_SCHEMA_ON_STARTUP", "").lower() in {"1", "true", "yes"}
 
@@ -383,6 +384,7 @@ def admin_user_dependency(
 
 
 app = FastAPI(title="Meal Planner API")
+app.include_router(create_recipe_import_router(admin_user_dependency))
 
 
 @app.exception_handler(Exception)

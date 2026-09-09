@@ -129,6 +129,18 @@ class Recipe(Base):
     title: Mapped[str] = mapped_column(Text, nullable=False)
     slug: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
     source_url: Mapped[Optional[str]] = mapped_column(Text)
+    source_kind: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="legacy_matprat",
+        server_default="legacy_matprat",
+    )
+    creator_id: Mapped[Optional[UUID]] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("recipe_creators.id")
+    )
+    source_post_id: Mapped[Optional[UUID]] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("recipe_source_posts.id")
+    )
     image_url: Mapped[Optional[str]] = mapped_column(Text)
     description: Mapped[Optional[str]] = mapped_column(Text)
     instructions: Mapped[Optional[List[Any]]] = mapped_column(JSONB)
@@ -137,6 +149,8 @@ class Recipe(Base):
     cook_time_minutes: Mapped[Optional[int]] = mapped_column(Integer)
     total_time_minutes: Mapped[Optional[int]] = mapped_column(Integer)
     portions: Mapped[Optional[int]] = mapped_column(Integer)
+    storage_guidance: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB)
+    attribution: Mapped[Optional[str]] = mapped_column(Text)
     cuisine: Mapped[Optional[str]] = mapped_column(Text)
     meal_type: Mapped[Optional[str]] = mapped_column(Text)
     dish_type: Mapped[Optional[str]] = mapped_column(Text)

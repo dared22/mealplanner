@@ -1,6 +1,7 @@
 fastapi==0.111.0
 uvicorn[standard]==0.30.1
 SQLAlchemy==2.0.29
+alembic==1.13.2
 psycopg[binary]==3.1.18
 PyJWT==2.8.0
 cryptography==42.0.8

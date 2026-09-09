@@ -555,7 +555,7 @@ const DayCarousel = memo(function DayCarousel({ days, selectedIndex, onSelect, t
 });
 
 // Swap Modal
-const SwapModal = memo(function SwapModal({ isOpen, onClose, alternatives, loading, onSelect, currentMeal, t }) {
+const SwapModal = memo(function SwapModal({ isOpen, onClose, alternatives, loading, onSelect, t }) {
   const translate = t || ((v) => v);
 
   if (!isOpen) return null;

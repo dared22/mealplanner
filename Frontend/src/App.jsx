@@ -15,8 +15,14 @@ import AdminRecipeEditor from '@/Pages/AdminRecipeEditor'
 import AdminLogs from '@/Pages/AdminLogs'
 import AdminUserDetails from '@/Pages/AdminUserDetails'
 import Forbidden from '@/Pages/Forbidden'
+import RecipeImportsLayout from '@/Pages/RecipeImportsLayout'
+import RecipeImportCreators from '@/Pages/RecipeImportCreators'
+import RecipeImportJobs from '@/Pages/RecipeImportJobs'
+import RecipeImportCandidates from '@/Pages/RecipeImportCandidates'
+import RecipeImportCandidateEditor from '@/Pages/RecipeImportCandidateEditor'
+import RecipeImportE2EHarness from '@/test/RecipeImportE2EHarness'
 
-function AppRoutes() {
+function AuthenticatedAppRoutes() {
   const { user } = useUser()
   const normalizedUser = user
     ? { id: user.id, email: user.primaryEmailAddress?.emailAddress || '' }
@@ -34,6 +40,13 @@ function AppRoutes() {
             <Route path="recipes/new" element={<AdminRecipeEditor />} />
             <Route path="recipes/:recipeId/edit" element={<AdminRecipeEditor />} />
             <Route path="logs" element={<AdminLogs />} />
+            <Route path="recipe-imports" element={<RecipeImportsLayout />}>
+              <Route index element={<Navigate to="creators" replace />} />
+              <Route path="creators" element={<RecipeImportCreators />} />
+              <Route path="jobs" element={<RecipeImportJobs />} />
+              <Route path="candidates" element={<RecipeImportCandidates />} />
+              <Route path="candidates/:candidateId" element={<RecipeImportCandidateEditor />} />
+            </Route>
           </Route>
           <Route path="/forbidden" element={<Forbidden />} />
           <Route path="/" element={<Navigate to="/planner" replace />} />
@@ -55,7 +68,7 @@ export default function App() {
   return (
     <LanguageProvider>
       <Router>
-        <AppRoutes />
+        {import.meta.env.MODE === 'e2e' ? <RecipeImportE2EHarness /> : <AuthenticatedAppRoutes />}
       </Router>
     </LanguageProvider>
   )

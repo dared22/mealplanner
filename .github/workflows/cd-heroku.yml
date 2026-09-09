@@ -57,6 +57,33 @@ jobs:
       - name: Login to Heroku Container Registry
         run: heroku container:login
 
+      - name: Validate backend runtime configuration
+        run: |
+          required=(DATABASE_URL OPENAI_API_KEY INSTAGRAM_IMPORTS_ENABLED)
+          importer_enabled="$(heroku config:get INSTAGRAM_IMPORTS_ENABLED -a "$HEROKU_APP_BACKEND")"
+          case "${importer_enabled,,}" in
+            1|true|yes)
+              required+=(
+                META_ACCESS_TOKEN
+                META_IG_USER_ID
+                CLOUDINARY_CLOUD_NAME
+                CLOUDINARY_API_KEY
+                CLOUDINARY_API_SECRET
+              )
+              ;;
+          esac
+
+          missing=()
+          for key in "${required[@]}"; do
+            if [[ -z "$(heroku config:get "$key" -a "$HEROKU_APP_BACKEND")" ]]; then
+              missing+=("$key")
+            fi
+          done
+          if (( ${#missing[@]} )); then
+            printf 'Missing backend config vars: %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
+
       # ---------- Backend ----------
       - name: Set container stack (backend)
         run: heroku stack:set container -a "$HEROKU_APP_BACKEND" 
@@ -69,13 +96,31 @@ jobs:
             Backend/fastapi_app
 
       - name: Push backend image
-        run: docker push registry.heroku.com/$HEROKU_APP_BACKEND/web
+        run: |
+          docker push registry.heroku.com/$HEROKU_APP_BACKEND/web
+          docker tag \
+            registry.heroku.com/$HEROKU_APP_BACKEND/web \
+            registry.heroku.com/$HEROKU_APP_BACKEND/worker
+          docker tag \
+            registry.heroku.com/$HEROKU_APP_BACKEND/web \
+            registry.heroku.com/$HEROKU_APP_BACKEND/release
+          docker push registry.heroku.com/$HEROKU_APP_BACKEND/worker
+          docker push registry.heroku.com/$HEROKU_APP_BACKEND/release
 
       - name: Release backend
-        run: heroku container:release web -a $HEROKU_APP_BACKEND
+        run: heroku container:release web worker release -a $HEROKU_APP_BACKEND
 
-      - name: Run Alembic migrations
-        run: heroku run "alembic upgrade head" -a $HEROKU_APP_BACKEND
+      - name: Clear one-time schema adoption flag
+        run: heroku config:unset ALEMBIC_ADOPT_EXISTING_SCHEMA -a "$HEROKU_APP_BACKEND" || true
+
+      - name: Scale importer worker
+        run: heroku ps:scale worker=1 -a "$HEROKU_APP_BACKEND"
+
+      - name: Verify backend health
+        run: |
+          curl --fail --silent --show-error \
+            --retry 8 --retry-delay 5 --retry-all-errors \
+            "https://${HEROKU_APP_BACKEND}.herokuapp.com/health"
 
       # ---------- Frontend ----------
       - name: Build frontend image

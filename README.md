@@ -47,6 +47,9 @@ custom meal plans that you can save, translate, and reuse.
 - Docker support
 - Heroku hosting
 
+See the [recipe importer deployment guide](docs/howto/deploy-recipe-importer.md)
+for the worker, provider credentials, and one-time Alembic adoption procedure.
+
 ## Using the app
 
 The easiest way to use this app is through the live demo. If you want to run

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Users, BookOpen, ScrollText } from 'lucide-react';
+import { LayoutDashboard, Users, BookOpen, ScrollText, Import } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export default function AdminSidebar() {
@@ -13,6 +13,7 @@ export default function AdminSidebar() {
     if (path.startsWith('/admin/users')) return 'users';
     if (path.startsWith('/admin/recipes')) return 'recipes';
     if (path.startsWith('/admin/logs')) return 'logs';
+    if (path.startsWith('/admin/recipe-imports')) return 'recipe-imports';
     return '';
   };
 
@@ -36,6 +37,12 @@ export default function AdminSidebar() {
       label: 'Recipe Database',
       icon: BookOpen,
       path: '/admin/recipes',
+    },
+    {
+      id: 'recipe-imports',
+      label: 'Recipe Imports',
+      icon: Import,
+      path: '/admin/recipe-imports/creators',
     },
     {
       id: 'logs',
