@@ -59,7 +59,13 @@ jobs:
 
       - name: Validate backend runtime configuration
         run: |
-          required=(DATABASE_URL OPENAI_API_KEY INSTAGRAM_IMPORTS_ENABLED)
+          required=(
+            DATABASE_URL
+            OPENAI_API_KEY
+            INSTAGRAM_IMPORTS_ENABLED
+            CLERK_JWKS_URL
+            CLERK_JWT_ISSUER
+          )
           importer_enabled="$(heroku config:get INSTAGRAM_IMPORTS_ENABLED -a "$HEROKU_APP_BACKEND")"
           case "${importer_enabled,,}" in
             1|true|yes)
@@ -81,6 +87,12 @@ jobs:
           done
           if (( ${#missing[@]} )); then
             printf 'Missing backend config vars: %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
+          clerk_audience="$(heroku config:get CLERK_AUDIENCE -a "$HEROKU_APP_BACKEND")"
+          clerk_parties="$(heroku config:get CLERK_AUTHORIZED_PARTIES -a "$HEROKU_APP_BACKEND")"
+          if [[ -z "$clerk_audience" && -z "$clerk_parties" ]]; then
+            echo 'Set CLERK_AUDIENCE or CLERK_AUTHORIZED_PARTIES.' >&2
             exit 1
           fi
 
@@ -111,7 +123,9 @@ jobs:
         run: heroku container:release web worker release -a $HEROKU_APP_BACKEND
 
       - name: Clear one-time schema adoption flag
-        run: heroku config:unset ALEMBIC_ADOPT_EXISTING_SCHEMA -a "$HEROKU_APP_BACKEND" || true
+        run: |
+          heroku config:unset ALEMBIC_ADOPT_EXISTING_SCHEMA -a "$HEROKU_APP_BACKEND"
+          test -z "$(heroku config:get ALEMBIC_ADOPT_EXISTING_SCHEMA -a "$HEROKU_APP_BACKEND")"
 
       - name: Scale importer worker
         run: heroku ps:scale worker=1 -a "$HEROKU_APP_BACKEND"

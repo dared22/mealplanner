@@ -12,6 +12,11 @@ class FoodDatabase:
         return self.matches.get(name)
 
 
+class UnavailableFoodDatabase:
+    def find(self, _name):
+        raise RuntimeError("provider unavailable")
+
+
 def match(name, source):
     return FoodMatch(
         name=name,
@@ -63,3 +68,32 @@ def test_nutrition_does_not_publish_partial_or_guessed_calculations():
 
     assert recipe.nutrition_calculation.complete is False
     assert recipe.nutrition_per_serving.calories is None
+
+
+def test_nutrition_provider_failure_preserves_creator_macros():
+    recipe = CandidateRecipeData(
+        title="Bowls",
+        portions=2,
+        ingredients=[{"name": "chicken", "quantity": 200, "unit": "g"}],
+        nutrition_per_serving={
+            "calories": 500,
+            "protein_g": 40,
+            "carbs_g": 50,
+            "fat_g": 12,
+            "source": "creator",
+        },
+    )
+
+    NutritionCalculator(
+        UnavailableFoodDatabase(), UnavailableFoodDatabase()
+    ).enrich(recipe)
+
+    assert recipe.nutrition_per_serving.calories == 500
+    assert recipe.nutrition_per_serving.source == "creator"
+    assert recipe.nutrition_calculation.complete is False
+    assert recipe.nutrition_calculation.sources == [
+        {
+            "ingredient": "chicken",
+            "warning": "nutrition_lookup_unavailable",
+        }
+    ]

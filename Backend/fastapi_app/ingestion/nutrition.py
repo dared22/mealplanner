@@ -173,6 +173,13 @@ class NutritionCalculator:
         self.primary = primary or MatvaretabellenClient()
         self.fallback = fallback or USDAFoodDataCentralClient()
 
+    @staticmethod
+    def _find_safely(database: FoodDatabase, name: str) -> tuple[FoodMatch | None, bool]:
+        try:
+            return database.find(name), False
+        except (httpx.HTTPError, KeyError, TypeError, ValueError, RuntimeError):
+            return None, True
+
     def enrich(self, recipe: CandidateRecipeData) -> None:
         if not recipe.portions or not recipe.ingredients:
             return
@@ -181,10 +188,23 @@ class NutritionCalculator:
         for ingredient in recipe.ingredients:
             if ingredient.quantity is None:
                 return
-            match = self.primary.find(ingredient.name)
+            match, primary_failed = self._find_safely(
+                self.primary, ingredient.name
+            )
             if match is None:
-                match = self.fallback.find(ingredient.name)
+                match, fallback_failed = self._find_safely(
+                    self.fallback, ingredient.name
+                )
+            else:
+                fallback_failed = False
             if match is None:
+                if primary_failed or fallback_failed:
+                    recipe.nutrition_calculation.sources.append(
+                        {
+                            "ingredient": ingredient.name,
+                            "warning": "nutrition_lookup_unavailable",
+                        }
+                    )
                 return
             grams = _grams(ingredient.quantity, ingredient.unit, match)
             if grams is None:

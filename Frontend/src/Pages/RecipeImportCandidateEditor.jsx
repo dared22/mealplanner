@@ -90,8 +90,10 @@ export default function RecipeImportCandidateEditor() {
   }, [candidateId]);
 
   const checks = useMemo(() => (data ? approvalChecks(data) : []), [data]);
-  const blockers = checks.filter(([, complete]) => !complete);
   const dirty = data ? JSON.stringify(data) !== savedSnapshot : false;
+  const localBlockers = checks.filter(([, complete]) => !complete).map(([label]) => label);
+  const serverBlockers = dirty ? [] : (candidate?.blockers || []);
+  const blockers = [...new Set([...localBlockers, ...serverBlockers])];
   const reviewed = ['approved', 'rejected'].includes(candidate?.status);
 
   const patch = (key, value) => setData((current) => ({ ...current, [key]: value }));
@@ -419,6 +421,12 @@ export default function RecipeImportCandidateEditor() {
                   <span className="h-4 w-4 shrink-0 rounded-full border border-amber-400 bg-white" />
                 )}
                 <span className={complete ? 'text-[#566052]' : 'font-medium text-[#6d4c2f]'}>{label}</span>
+              </div>
+            ))}
+            {serverBlockers.map((blocker) => (
+              <div key={`server-${blocker}`} className="flex items-center gap-2 text-sm font-medium text-[#6d4c2f]">
+                <AlertTriangle className="h-4 w-4 shrink-0 text-amber-700" />
+                Server check: {blocker.replaceAll('_', ' ')}
               </div>
             ))}
           </div>

@@ -85,6 +85,19 @@ Complete a smoke test before you enable new import jobs.
 5. Add one permitted creator, scan a small batch, review a candidate, and
    confirm that the published recipe appears in the expected planner meal pool.
 
+## Run locally with Docker Compose
+
+`docker compose up` runs the migration service before it starts the API and
+worker. For an existing local database that predates Alembic, create a backup
+and adopt the baseline once:
+
+```bash
+ALEMBIC_ADOPT_EXISTING_SCHEMA=true docker compose run --rm migrate
+docker compose up
+```
+
+Leave `ALEMBIC_ADOPT_EXISTING_SCHEMA=false` for all later starts.
+
 ## Pause imports
 
 Turn off the feature flag to stop workers from claiming queued jobs. Existing

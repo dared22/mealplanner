@@ -109,4 +109,31 @@ describe('RecipeImportCandidateEditor', () => {
     expect(screen.getByText('licensed Cloudinary thumbnail')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Approve & publish' })).toBeDisabled();
   });
+
+  it('uses saved server blockers as the authoritative publication gate', async () => {
+    recipeImportsApi.candidate.mockResolvedValue({
+      ...candidate,
+      status: 'ready_for_review',
+      blockers: ['thumbnail'],
+      data: {
+        ...candidate.data,
+        ingredients: [{ ...candidate.data.ingredients[0], quantity: 400 }],
+        thumbnail_url: 'https://res.cloudinary.com/other/image/upload/example.jpg',
+        food_safety_confirmed: true,
+      },
+    });
+
+    render(
+      <RecipeImportsContext.Provider value={{ getToken: vi.fn() }}>
+        <MemoryRouter initialEntries={[`/candidate/${candidate.id}`]}>
+          <Routes>
+            <Route path="/candidate/:candidateId" element={<RecipeImportCandidateEditor />} />
+          </Routes>
+        </MemoryRouter>
+      </RecipeImportsContext.Provider>,
+    );
+
+    expect(await screen.findByText('Server check: thumbnail')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Approve & publish' })).toBeDisabled();
+  });
 });

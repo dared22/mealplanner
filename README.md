@@ -106,8 +106,9 @@ Before running the backend, you need to:
    ```bash
    export DATABASE_URL="your-neon-connection-string"  # From Neon dashboard
    export OPENAI_API_KEY="your-openai-api-key"
-   export CLERK_JWKS_URL="https://api.clerk.com/v1/jwks"
+   export CLERK_JWKS_URL="https://your-clerk-domain/.well-known/jwks.json"
    export CLERK_JWT_ISSUER="https://your-clerk-instance.clerk.accounts.dev"
+   export CLERK_AUTHORIZED_PARTIES="http://localhost:5173"
    ```
 
 5. Start the development server:
@@ -174,6 +175,8 @@ production database or API keys.
   calculation
 - `CLERK_JWKS_URL` (required): Clerk JWKS endpoint for authentication
 - `CLERK_JWT_ISSUER` (required): Your Clerk issuer URL
+- `CLERK_AUDIENCE` or `CLERK_AUTHORIZED_PARTIES` (required): Token audience or
+  permitted frontend origins
 
 ### Frontend
 

@@ -21,23 +21,23 @@ logger = logging.getLogger(__name__)
 
 
 def _keep_lease_alive(
-    worker_id: str, job_id, stop_event: threading.Event
+    worker_id: str, job_id, lease_token, stop_event: threading.Event
 ) -> None:
     while not stop_event.wait(30):
         try:
             with SessionLocal() as session:
                 repository = RecipeImportRepository(session)
-                job = repository.get_job(job_id)
-                if job is None or job.lease_owner != worker_id:
+                if not repository.renew_lease(job_id, worker_id, lease_token):
+                    logger.warning("Recipe-import lease lost for job %s", job_id)
+                    stop_event.set()
                     return
-                repository.heartbeat(job)
                 repository.worker_heartbeat(worker_id, job_id)
         except Exception:
             logger.exception("Failed to renew recipe-import job lease")
 
 
 def claim_next_job(worker_id: str):
-    """Return one claimed job ID, or None while imports are paused."""
+    """Return a fenced ``(job_id, lease_token)`` claim when work is available."""
     with SessionLocal() as session:
         repository = RecipeImportRepository(session)
         repository.worker_heartbeat(worker_id)
@@ -46,9 +46,9 @@ def claim_next_job(worker_id: str):
         job = repository.claim_job(worker_id)
         if job is None:
             return None
-        job_id = job.id
-        repository.worker_heartbeat(worker_id, job_id)
-        return job_id
+        claim = (job.id, job.lease_token)
+        repository.worker_heartbeat(worker_id, job.id)
+        return claim
 
 
 def run() -> None:
@@ -62,17 +62,18 @@ def run() -> None:
     )
     logger.info("Recipe-import worker started as %s", worker_id)
     while True:
-        job_id = claim_next_job(worker_id)
-        if job_id:
+        claim = claim_next_job(worker_id)
+        if claim:
+            job_id, lease_token = claim
             stop_event = threading.Event()
             lease_thread = threading.Thread(
                 target=_keep_lease_alive,
-                args=(worker_id, job_id, stop_event),
+                args=(worker_id, job_id, lease_token, stop_event),
                 daemon=True,
             )
             lease_thread.start()
             try:
-                pipeline.process_job(job_id)
+                pipeline.process_job(job_id, lease_token)
             except Exception:
                 logger.exception("Unexpected recipe-import worker failure for %s", job_id)
             finally:

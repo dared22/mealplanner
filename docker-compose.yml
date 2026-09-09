@@ -1,4 +1,13 @@
 services:
+  migrate:
+    build:
+      context: ./Backend/fastapi_app
+    command: ["python", "-m", "ingestion.migrate"]
+    restart: "no"
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      ALEMBIC_ADOPT_EXISTING_SCHEMA: ${ALEMBIC_ADOPT_EXISTING_SCHEMA:-false}
+
   backend:
     build:
       context: ./Backend/fastapi_app
@@ -24,6 +33,9 @@ services:
       - ./Backend/fastapi_app:/app
     ports:
       - "8000:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
 
   worker:
     build:
@@ -47,7 +59,10 @@ services:
       RECIPE_IMPORT_POST_CONCURRENCY: ${RECIPE_IMPORT_POST_CONCURRENCY:-3}
       RECIPE_IMPORT_POLL_SECONDS: ${RECIPE_IMPORT_POLL_SECONDS:-3}
     depends_on:
-      - backend
+      migrate:
+        condition: service_completed_successfully
+      backend:
+        condition: service_started
 
   frontend:
     build:

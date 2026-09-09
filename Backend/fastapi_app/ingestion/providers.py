@@ -2,16 +2,18 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import http.client
 import ipaddress
 import os
 import re
 import socket
+import ssl
 import subprocess
 import tempfile
 import time
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import httpx
 from openai import OpenAI
@@ -76,15 +78,27 @@ class MetaInstagramClient:
         return posts, next_cursor
 
 
-def _validate_public_https_url(url: str, allowed_domains: list[str]) -> None:
+def _validate_public_https_url(
+    url: str, allowed_domains: list[str]
+) -> tuple[Any, str]:
     parsed = urlparse(url)
-    hostname = (parsed.hostname or "").lower()
-    if parsed.scheme != "https" or hostname not in set(allowed_domains):
+    try:
+        hostname = (parsed.hostname or "").lower()
+        port = parsed.port
+    except ValueError as exc:
+        raise ProviderError("Linked page URL is invalid") from exc
+    if (
+        parsed.scheme != "https"
+        or hostname not in set(allowed_domains)
+        or port not in {None, 443}
+    ):
         raise ProviderError("Linked page is outside the creator's HTTPS allowlist")
     try:
         addresses = socket.getaddrinfo(hostname, 443, type=socket.SOCK_STREAM)
     except socket.gaierror as exc:
         raise ProviderError("Linked page hostname could not be resolved") from exc
+    if not addresses:
+        raise ProviderError("Linked page hostname could not be resolved")
     for address in addresses:
         ip = ipaddress.ip_address(address[4][0])
         if (
@@ -95,41 +109,74 @@ def _validate_public_https_url(url: str, allowed_domains: list[str]) -> None:
             or ip.is_multicast
         ):
             raise ProviderError("Linked page resolved to a non-public address")
+    return parsed, addresses[0][4][0]
+
+
+class _PinnedHTTPSConnection(http.client.HTTPSConnection):
+    """Connect to a validated address while retaining hostname TLS checks."""
+
+    def __init__(self, hostname: str, address: str, *, timeout: float):
+        super().__init__(
+            hostname,
+            port=443,
+            timeout=timeout,
+            context=ssl.create_default_context(),
+        )
+        self._validated_address = address
+
+    def connect(self) -> None:
+        self.sock = socket.create_connection(
+            (self._validated_address, self.port),
+            self.timeout,
+            self.source_address,
+        )
+        self.sock = self._context.wrap_socket(
+            self.sock,
+            server_hostname=self.host,
+        )
 
 
 def fetch_allowlisted_page(url: str, allowed_domains: list[str]) -> str:
     current = url
-    with httpx.Client(
-        follow_redirects=False,
-        timeout=15,
-        trust_env=False,
-        headers={"User-Agent": "MealplannerRecipeImporter/1.0"},
-    ) as client:
-        for _ in range(4):
-            _validate_public_https_url(current, allowed_domains)
-            with client.stream("GET", current) as response:
-                if response.status_code in {301, 302, 303, 307, 308}:
-                    location = response.headers.get("location")
-                    if not location:
-                        raise ProviderError("Linked page redirect has no location")
-                    current = str(response.url.join(location))
-                    continue
-                if response.status_code >= 400:
-                    raise ProviderError("Linked page request failed")
-                content_type = response.headers.get("content-type", "")
-                if (
-                    "text/html" not in content_type
-                    and "text/plain" not in content_type
-                ):
-                    raise ProviderError("Linked page is not HTML or plain text")
-                content = bytearray()
-                for chunk in response.iter_bytes():
-                    content.extend(chunk)
-                    if len(content) > 500_000:
-                        raise ProviderError("Linked page exceeds 500 KB")
-                return content.decode(
-                    response.encoding or "utf-8", errors="replace"
-                )
+    for _ in range(4):
+        parsed, address = _validate_public_https_url(current, allowed_domains)
+        connection = _PinnedHTTPSConnection(
+            parsed.hostname or "", address, timeout=15
+        )
+        target = parsed.path or "/"
+        if parsed.params:
+            target += f";{parsed.params}"
+        if parsed.query:
+            target += f"?{parsed.query}"
+        try:
+            connection.request(
+                "GET",
+                target,
+                headers={"User-Agent": "MealplannerRecipeImporter/1.0"},
+            )
+            response = connection.getresponse()
+            if response.status in {301, 302, 303, 307, 308}:
+                location = response.getheader("location")
+                if not location:
+                    raise ProviderError("Linked page redirect has no location")
+                current = urljoin(current, location)
+                continue
+            if response.status >= 400:
+                raise ProviderError("Linked page request failed")
+            content_type = response.getheader("content-type", "")
+            if "text/html" not in content_type and "text/plain" not in content_type:
+                raise ProviderError("Linked page is not HTML or plain text")
+            content = bytearray()
+            while chunk := response.read(64 * 1024):
+                content.extend(chunk)
+                if len(content) > 500_000:
+                    raise ProviderError("Linked page exceeds 500 KB")
+            encoding = response.headers.get_content_charset() or "utf-8"
+            return content.decode(encoding, errors="replace")
+        except (OSError, http.client.HTTPException) as exc:
+            raise ProviderError("Linked page request failed") from exc
+        finally:
+            connection.close()
     raise ProviderError("Linked page redirected too many times")
 
 

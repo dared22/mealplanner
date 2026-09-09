@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ChefHat,
   Flame,
@@ -43,6 +43,48 @@ const CALORIES_STEP = 20;
 const PROTEIN_MAX = 80;
 const PROTEIN_STEP = 5;
 const valueToPercent = (value, min, max) => ((value - min) / (max - min)) * 100;
+
+const normalizeRecipe = (recipe) => {
+  const name = recipe?.name || recipe?.title || 'Untitled recipe';
+  const tags = Array.isArray(recipe?.tags) ? recipe.tags.map(String) : [];
+  const ingredientsRaw = recipe?.ingredients;
+  const ingredients = Array.isArray(ingredientsRaw)
+    ? ingredientsRaw
+        .map((ingredient) => {
+          if (typeof ingredient === 'string') return ingredient;
+          if (ingredient && typeof ingredient === 'object') {
+            return ingredient.original_text || ingredient.name || '';
+          }
+          return '';
+        })
+        .filter(Boolean)
+    : [];
+  const nutrition = recipe?.nutrition && typeof recipe.nutrition === 'object' ? recipe.nutrition : {};
+  const calories = nutrition.calories ?? nutrition.calories_kcal;
+  const protein = nutrition.protein_g;
+  const mealType = (recipe?.meal_type || '').toLowerCase();
+  const isBreakfast = recipe?.is_breakfast ?? mealType === 'breakfast';
+  const isLunch = recipe?.is_lunch ?? mealType === 'lunch';
+  const prepTime = recipe?.prep_time_minutes ?? null;
+  const cookTime = recipe?.cook_time_minutes ?? null;
+  const totalTime = recipe?.total_time_minutes ?? (prepTime && cookTime ? prepTime + cookTime : null);
+
+  return {
+    ...recipe,
+    name,
+    tags,
+    ingredients,
+    nutrition,
+    image: recipe?.image || recipe?.image_url || recipe?.images?.[0],
+    calories,
+    protein,
+    is_breakfast: isBreakfast,
+    is_lunch: isLunch,
+    prep_time_minutes: prepTime,
+    cook_time_minutes: cookTime,
+    total_time_minutes: totalTime,
+  };
+};
 
 function TabPill({ active, label, onClick }) {
   return (
@@ -162,47 +204,7 @@ export default function Recipes() {
   const [error, setError] = useState(null);
   const [visibleCount, setVisibleCount] = useState(6);
 
-  const normalizeRecipe = (recipe) => {
-    const name = recipe?.name || recipe?.title || 'Untitled recipe';
-    const tags = Array.isArray(recipe?.tags) ? recipe.tags.map(String) : [];
-    const ingredientsRaw = recipe?.ingredients;
-    const ingredients = Array.isArray(ingredientsRaw)
-      ? ingredientsRaw
-          .map((i) => {
-            if (typeof i === 'string') return i;
-            if (i && typeof i === 'object') return i.original_text || i.name || '';
-            return '';
-          })
-          .filter(Boolean)
-      : [];
-    const nutrition = recipe?.nutrition && typeof recipe.nutrition === 'object' ? recipe.nutrition : {};
-    const calories = nutrition.calories ?? nutrition.calories_kcal;
-    const protein = nutrition.protein_g;
-    const mealType = (recipe?.meal_type || '').toLowerCase();
-    const isBreakfast = recipe?.is_breakfast ?? mealType === 'breakfast';
-    const isLunch = recipe?.is_lunch ?? mealType === 'lunch';
-    const prepTime = recipe?.prep_time_minutes ?? null;
-    const cookTime = recipe?.cook_time_minutes ?? null;
-    const totalTime = recipe?.total_time_minutes ?? (prepTime && cookTime ? prepTime + cookTime : null);
-
-    return {
-      ...recipe,
-      name,
-      tags,
-      ingredients,
-      nutrition: nutrition || {},
-      image: recipe?.image || recipe?.image_url || recipe?.images?.[0],
-      calories,
-      protein,
-      is_breakfast: isBreakfast,
-      is_lunch: isLunch,
-      prep_time_minutes: prepTime,
-      cook_time_minutes: cookTime,
-      total_time_minutes: totalTime,
-    };
-  };
-
-  const fetchRecipes = async () => {
+  const fetchRecipes = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -214,11 +216,11 @@ export default function Recipes() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchRecipes();
-  }, []);
+  }, [fetchRecipes]);
 
   const applyFilters = () => {
     setCalories({ ...caloriesDraft });

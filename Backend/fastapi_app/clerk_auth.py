@@ -8,7 +8,7 @@ from jwt import PyJWKClient
 
 logger = logging.getLogger(__name__)
 
-CLERK_JWKS_URL = os.getenv("CLERK_JWKS_URL") or "https://api.clerk.com/v1/jwks"
+CLERK_JWKS_URL = os.getenv("CLERK_JWKS_URL")
 CLERK_JWT_ISSUER = os.getenv("CLERK_JWT_ISSUER")
 CLERK_AUDIENCE = os.getenv("CLERK_AUDIENCE")
 CLERK_AUTHORIZED_PARTIES = [
@@ -17,10 +17,27 @@ CLERK_AUTHORIZED_PARTIES = [
     if value.strip()
 ]
 
-_jwks_client = PyJWKClient(CLERK_JWKS_URL)
+_jwks_client = PyJWKClient(CLERK_JWKS_URL) if CLERK_JWKS_URL else None
 
-if not CLERK_JWT_ISSUER:
-    logger.warning("CLERK_JWT_ISSUER is not set; issuer validation is disabled.")
+
+def _configuration_error() -> str | None:
+    missing = [
+        name
+        for name, value in (
+            ("CLERK_JWKS_URL", CLERK_JWKS_URL),
+            ("CLERK_JWT_ISSUER", CLERK_JWT_ISSUER),
+        )
+        if not value
+    ]
+    if missing:
+        return f"Missing {', '.join(missing)}"
+    if not CLERK_AUDIENCE and not CLERK_AUTHORIZED_PARTIES:
+        return "Set CLERK_AUDIENCE or CLERK_AUTHORIZED_PARTIES"
+    return None
+
+
+if auth_error := _configuration_error():
+    logger.error("Clerk authentication is disabled: %s", auth_error)
 
 
 def get_session_token(request: Request) -> Optional[str]:
@@ -35,6 +52,11 @@ def get_session_token(request: Request) -> Optional[str]:
 def verify_session_token(token: str) -> Dict[str, Any]:
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing session token")
+    if _configuration_error() or _jwks_client is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service is not configured",
+        )
 
     try:
         signing_key = _jwks_client.get_signing_key_from_jwt(token)
@@ -43,7 +65,7 @@ def verify_session_token(token: str) -> Dict[str, Any]:
             token,
             signing_key.key,
             algorithms=["RS256"],
-            issuer=CLERK_JWT_ISSUER if CLERK_JWT_ISSUER else None,
+            issuer=CLERK_JWT_ISSUER,
             audience=CLERK_AUDIENCE if CLERK_AUDIENCE else None,
             options=options,
         )

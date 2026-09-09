@@ -90,6 +90,7 @@ def upgrade() -> None:
         sa.Column("cancel_requested", sa.Boolean(), nullable=False, server_default="false"),
         sa.Column("error_summary", sa.Text()),
         sa.Column("lease_owner", sa.String(255)),
+        sa.Column("lease_token", postgresql.UUID(as_uuid=True)),
         sa.Column("lease_expires_at", sa.DateTime(timezone=True)),
         sa.Column("heartbeat_at", sa.DateTime(timezone=True)),
         sa.Column(
@@ -300,31 +301,17 @@ def upgrade() -> None:
     )
     op.add_column("recipes", sa.Column("storage_guidance", postgresql.JSONB()))
     op.add_column("recipes", sa.Column("attribution", sa.Text()))
-    op.drop_constraint("recipes_source_url_key", "recipes", type_="unique")
+    # Legacy databases created through SQLAlchemy never had this constraint,
+    # while fresh databases created by the baseline do. Support both paths.
+    op.execute(
+        "ALTER TABLE recipes DROP CONSTRAINT IF EXISTS recipes_source_url_key"
+    )
     op.create_index("ix_recipes_source_url", "recipes", ["source_url"])
     op.create_index("ix_recipes_creator_id", "recipes", ["creator_id"])
 
 
 def downgrade() -> None:
-    op.drop_index("ix_recipes_creator_id", table_name="recipes")
-    op.drop_index("ix_recipes_source_url", table_name="recipes")
-    op.create_unique_constraint(
-        "recipes_source_url_key", "recipes", ["source_url"]
+    raise RuntimeError(
+        "The Instagram importer migration is irreversible because one source "
+        "post can publish multiple recipes. Restore a database backup instead."
     )
-    for column in (
-        "attribution",
-        "storage_guidance",
-        "source_post_id",
-        "creator_id",
-        "source_kind",
-    ):
-        op.drop_column("recipes", column)
-    for table in (
-        "recipe_import_worker_heartbeats",
-        "recipe_candidate_extractions",
-        "recipe_candidates",
-        "recipe_source_posts",
-        "recipe_import_jobs",
-        "recipe_creators",
-    ):
-        op.drop_table(table)

@@ -1,4 +1,6 @@
 from types import SimpleNamespace
+from importlib import util
+from pathlib import Path
 
 import pytest
 
@@ -44,3 +46,44 @@ def test_adoption_stamps_baseline_before_upgrading(monkeypatch):
         ("stamp", migrate_module.BASELINE_REVISION),
         ("upgrade", "head"),
     ]
+
+
+def test_importer_migration_tolerates_a_legacy_non_unique_source_url():
+    migration_path = (
+        Path(__file__).parents[1]
+        / "alembic"
+        / "versions"
+        / "0002_instagram_recipe_imports.py"
+    )
+    spec = util.spec_from_file_location("instagram_import_migration", migration_path)
+    migration = util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(migration)
+
+    class RecordingOperations:
+        def __init__(self):
+            self.executed = []
+            self.dropped_constraints = []
+
+        def execute(self, statement):
+            self.executed.append(str(statement))
+
+        def drop_constraint(self, *args, **kwargs):
+            self.dropped_constraints.append((args, kwargs))
+
+        def __getattr__(self, _name):
+            return lambda *_args, **_kwargs: None
+
+    operations = RecordingOperations()
+    migration.op = operations
+
+    migration.upgrade()
+
+    assert operations.dropped_constraints == []
+    assert any(
+        "DROP CONSTRAINT IF EXISTS recipes_source_url_key" in statement
+        for statement in operations.executed
+    )
+
+    with pytest.raises(RuntimeError, match="irreversible"):
+        migration.downgrade()

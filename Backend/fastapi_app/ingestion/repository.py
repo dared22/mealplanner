@@ -58,6 +58,10 @@ def canonical_instagram_post_url(value: str) -> str:
     return value.strip().split("?", 1)[0].rstrip("/")
 
 
+class LostLeaseError(RuntimeError):
+    """Raised when a stale worker attempts to mutate an import job."""
+
+
 class RecipeImportRepository:
     """All transaction boundaries for the recipe-import module."""
 
@@ -244,6 +248,26 @@ class RecipeImportRepository:
     def get_source_post(self, source_post_id: UUID) -> RecipeSourcePost | None:
         return self.session.get(RecipeSourcePost, source_post_id)
 
+    def require_lease(
+        self, job_id: UUID, lease_token: UUID
+    ) -> RecipeImportJob:
+        job = self.session.scalar(
+            select(RecipeImportJob)
+            .where(
+                RecipeImportJob.id == job_id,
+                RecipeImportJob.lease_token == lease_token,
+            )
+            .with_for_update()
+        )
+        if job is None:
+            self.session.rollback()
+            raise LostLeaseError(f"Recipe-import lease was lost for job {job_id}")
+        return job
+
+    def commit_if_owned(self, job_id: UUID, lease_token: UUID) -> None:
+        self.require_lease(job_id, lease_token)
+        self.session.commit()
+
     def pending_source_ids(self, job_id: UUID) -> list[UUID]:
         return list(
             self.session.scalars(
@@ -254,7 +278,10 @@ class RecipeImportRepository:
             )
         )
 
-    def refresh_job_counts(self, job: RecipeImportJob) -> None:
+    def refresh_job_counts(
+        self, job: RecipeImportJob, lease_token: UUID
+    ) -> None:
+        job = self.require_lease(job.id, lease_token)
         statuses = list(
             self.session.execute(
                 select(RecipeSourcePost.id, RecipeSourcePost.status).where(
@@ -411,7 +438,16 @@ class RecipeImportRepository:
         *,
         model_name: str,
         input_snapshot: dict[str, Any],
+        job_id: UUID,
+        lease_token: UUID,
     ) -> RecipeCandidate:
+        self.require_lease(job_id, lease_token)
+        locked_candidate = self.get_candidate(candidate.id, for_update=True)
+        if locked_candidate is None:
+            raise ValueError("Candidate is unavailable")
+        if locked_candidate.status in {"approved", "rejected"}:
+            raise ValueError("Reviewed candidates cannot be overwritten by a retry")
+        candidate = locked_candidate
         candidate.extraction_version += 1
         if data is not None:
             candidate.data = data.model_dump(mode="json")
@@ -440,7 +476,14 @@ class RecipeImportRepository:
         self.session.refresh(candidate)
         return candidate
 
-    def approve_candidate(self, candidate: RecipeCandidate, actor: Any) -> UUID:
+    def approve_candidate(
+        self,
+        candidate: RecipeCandidate,
+        actor: Any,
+        *,
+        source: RecipeSourcePost,
+        creator: RecipeCreator,
+    ) -> UUID:
         # The service fetches this row FOR UPDATE. Re-checking the link makes
         # retries safe if a client repeats the approval request.
         if candidate.approved_recipe_id:
@@ -459,10 +502,10 @@ class RecipeImportRepository:
             id=uuid4(),
             title=data.title or "Untitled recipe",
             slug=slug,
-            source_url=data.source_url,
+            source_url=source.source_url,
             source_kind="instagram",
-            creator_id=candidate.creator_id,
-            source_post_id=candidate.source_post_id,
+            creator_id=creator.id,
+            source_post_id=source.id,
             image_url=data.thumbnail_url,
             description=data.description,
             instructions=data.instructions,
@@ -487,8 +530,8 @@ class RecipeImportRepository:
                 "fat": nutrition.get("fat_g"),
             },
             storage_guidance=data.storage.model_dump(exclude_none=True),
-            attribution=data.attribution,
-            author=data.attribution,
+            attribution=f"@{creator.instagram_username}",
+            author=f"@{creator.instagram_username}",
             language="en",
             tags=sorted(set([*data.tags, "meal-prep"])),
             category="meal_prep",
@@ -506,7 +549,7 @@ class RecipeImportRepository:
             {
                 "candidate_id": str(candidate.id),
                 "recipe_id": str(recipe.id),
-                "source_url": data.source_url,
+                "source_url": source.source_url,
             },
         )
         self.session.commit()
@@ -538,6 +581,7 @@ class RecipeImportRepository:
             self.session.rollback()
             return None
         job.lease_owner = worker_id
+        job.lease_token = uuid4()
         job.lease_expires_at = now + timedelta(seconds=lease_seconds)
         job.heartbeat_at = now
         job.status = "discovering" if job.status == "queued" else job.status
@@ -568,11 +612,28 @@ class RecipeImportRepository:
         heartbeat.current_job_id = current_job_id
         self.session.commit()
 
-    def heartbeat(self, job: RecipeImportJob, lease_seconds: int = 120) -> None:
+    def renew_lease(
+        self,
+        job_id: UUID,
+        worker_id: str,
+        lease_token: UUID,
+        lease_seconds: int = 120,
+    ) -> bool:
         now = _now()
-        job.heartbeat_at = now
-        job.lease_expires_at = now + timedelta(seconds=lease_seconds)
+        result = self.session.execute(
+            update(RecipeImportJob)
+            .where(
+                RecipeImportJob.id == job_id,
+                RecipeImportJob.lease_owner == worker_id,
+                RecipeImportJob.lease_token == lease_token,
+            )
+            .values(
+                heartbeat_at=now,
+                lease_expires_at=now + timedelta(seconds=lease_seconds),
+            )
+        )
         self.session.commit()
+        return result.rowcount == 1
 
     def save_source_post(
         self, job: RecipeImportJob, post: dict[str, Any]
@@ -588,6 +649,9 @@ class RecipeImportRepository:
             )
         )
         if existing:
+            if existing.status == "discovered":
+                existing.job_id = job.id
+                return existing
             return None
         source = RecipeSourcePost(
             creator_id=job.creator_id,
@@ -616,8 +680,7 @@ class RecipeImportRepository:
             },
         )
         self.session.add(source)
-        self.session.commit()
-        self.session.refresh(source)
+        self.session.flush()
         return source
 
     def create_candidates(
@@ -627,7 +690,10 @@ class RecipeImportRepository:
         *,
         model_name: str,
         input_snapshot: dict[str, Any],
+        job_id: UUID,
+        lease_token: UUID,
     ) -> list[RecipeCandidate]:
+        self.require_lease(job_id, lease_token)
         candidates: list[RecipeCandidate] = []
         for recipe_data in recipes:
             duplicate_ids = self._near_duplicate_ids(recipe_data)
@@ -714,16 +780,27 @@ class RecipeImportRepository:
         job: RecipeImportJob,
         *,
         status: str,
+        lease_token: UUID,
         error_summary: str | None = None,
     ) -> None:
+        job = self.require_lease(job.id, lease_token)
         job.status = status
         job.error_summary = error_summary
         job.finished_at = _now()
         job.lease_owner = None
+        job.lease_token = None
         job.lease_expires_at = None
         self.session.commit()
 
-    def mark_source_failed(self, source: RecipeSourcePost, detail: str) -> None:
+    def mark_source_failed(
+        self,
+        source: RecipeSourcePost,
+        detail: str,
+        *,
+        job_id: UUID,
+        lease_token: UUID,
+    ) -> None:
+        self.require_lease(job_id, lease_token)
         source.status = "failed"
         source.error_detail = detail[:2000]
         self.session.commit()

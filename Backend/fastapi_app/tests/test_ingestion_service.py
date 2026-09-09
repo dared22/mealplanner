@@ -40,12 +40,25 @@ def complete_candidate_data():
 
 class FakeRepository:
     def __init__(self, data):
+        creator_id = uuid4()
+        source_post_id = uuid4()
         self.candidate = SimpleNamespace(
             id=uuid4(),
-            creator_id=uuid4(),
+            creator_id=creator_id,
+            source_post_id=source_post_id,
             status="ready_for_review",
             data=data.model_dump(mode="json"),
             approved_recipe_id=None,
+        )
+        self.creator = SimpleNamespace(
+            id=creator_id,
+            status="active",
+            instagram_username="mealprepchef",
+        )
+        self.source = SimpleNamespace(
+            id=source_post_id,
+            creator_id=creator_id,
+            source_url="https://www.instagram.com/p/example",
         )
         self.recipe_id = uuid4()
         self.approve_calls = 0
@@ -54,9 +67,12 @@ class FakeRepository:
         return self.candidate
 
     def get_creator(self, creator_id, for_update=False):
-        return SimpleNamespace(id=creator_id, status="active")
+        return self.creator
 
-    def approve_candidate(self, candidate, actor):
+    def get_source_post(self, source_post_id):
+        return self.source if source_post_id == self.source.id else None
+
+    def approve_candidate(self, candidate, actor, **_kwargs):
         self.approve_calls += 1
         candidate.status = "approved"
         candidate.approved_recipe_id = self.recipe_id
@@ -117,6 +133,32 @@ def test_approval_rejects_a_thumbnail_from_another_cloudinary_account(monkeypatc
 
     assert exc.value.status_code == 409
     assert "thumbnail" in exc.value.detail["blockers"]
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("source_url", "https://www.instagram.com/p/different/"),
+        ("attribution", "@differentcreator"),
+    ],
+)
+def test_approval_rejects_provenance_that_does_not_match_source_record(
+    monkeypatch, field, value
+):
+    monkeypatch.setenv("CLOUDINARY_CLOUD_NAME", "demo")
+    data = complete_candidate_data()
+    setattr(data, field, value)
+    repository = FakeRepository(data)
+    service = RecipeImportService(repository, enabled=True)
+
+    with pytest.raises(HTTPException) as exc:
+        service.approve_candidate(
+            repository.candidate.id,
+            SimpleNamespace(id=uuid4(), email="admin@example.com"),
+        )
+
+    assert exc.value.status_code == 409
+    assert "source_provenance" in exc.value.detail["blockers"]
 
 
 def test_admin_can_cancel_queued_work_while_imports_are_disabled():

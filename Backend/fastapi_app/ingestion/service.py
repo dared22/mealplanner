@@ -8,7 +8,7 @@ from uuid import UUID, uuid4
 from fastapi import HTTPException, status
 
 from .config import imports_enabled
-from .repository import RecipeImportRepository
+from .repository import RecipeImportRepository, canonical_instagram_post_url
 from .providers import CloudinaryThumbnailStore, ProviderError
 from .schemas import (
     CandidateRecipeData,
@@ -213,9 +213,34 @@ class RecipeImportService:
     def cancel_job(self, job_id: UUID, actor: Any):
         return self.repository.request_cancel(self.get_job(job_id), actor)
 
-    @staticmethod
-    def candidate_response(candidate: Any) -> CandidateResponse:
+    def _provenance_matches(
+        self,
+        candidate: Any,
+        data: CandidateRecipeData,
+        *,
+        source: Any | None = None,
+        creator: Any | None = None,
+    ) -> bool:
+        source = source or self.repository.get_source_post(candidate.source_post_id)
+        creator = creator or self.repository.get_creator(candidate.creator_id)
+        if source is None or creator is None:
+            return False
+        return (
+            source.creator_id == candidate.creator_id == creator.id
+            and canonical_instagram_post_url(data.source_url or "")
+            == canonical_instagram_post_url(source.source_url)
+            and (data.attribution or "").strip().lower()
+            == f"@{creator.instagram_username}".lower()
+        )
+
+    def candidate_response(self, candidate: Any) -> CandidateResponse:
         data = CandidateRecipeData.model_validate(candidate.data)
+        blockers = approval_blockers(
+            data,
+            cloudinary_cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
+        )
+        if not self._provenance_matches(candidate, data):
+            blockers.append("source_provenance")
         return CandidateResponse(
             id=candidate.id,
             source_post_id=candidate.source_post_id,
@@ -225,10 +250,7 @@ class RecipeImportService:
             extraction_version=candidate.extraction_version,
             confidence=candidate.confidence,
             duplicate_recipe_ids=candidate.duplicate_recipe_ids or [],
-            blockers=approval_blockers(
-                data,
-                cloudinary_cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
-            ),
+            blockers=blockers,
             approved_recipe_id=candidate.approved_recipe_id,
             rejection_reason=candidate.rejection_reason,
             created_at=candidate.created_at,
@@ -256,7 +278,7 @@ class RecipeImportService:
         self, candidate_id: UUID, payload: CandidateUpdate, actor: Any
     ) -> CandidateResponse:
         self._require_enabled()
-        candidate = self.repository.get_candidate(candidate_id)
+        candidate = self.repository.get_candidate(candidate_id, for_update=True)
         if candidate is None:
             raise HTTPException(status_code=404, detail="Candidate not found")
         if candidate.status in {"approved", "rejected"}:
@@ -283,11 +305,21 @@ class RecipeImportService:
             )
         if candidate.status == "rejected":
             raise HTTPException(status_code=409, detail="Candidate was rejected")
+        source = self.repository.get_source_post(candidate.source_post_id)
+        data = CandidateRecipeData.model_validate(candidate.data)
+        provenance_matches = self._provenance_matches(
+            candidate,
+            data,
+            source=source,
+            creator=creator,
+        )
         cloudinary_cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME")
         blockers = approval_blockers(
-            CandidateRecipeData.model_validate(candidate.data),
+            data,
             cloudinary_cloud_name=cloudinary_cloud_name,
         )
+        if not provenance_matches:
+            blockers.append("source_provenance")
         if blockers:
             raise HTTPException(
                 status_code=409,
@@ -301,11 +333,16 @@ class RecipeImportService:
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Cloudinary is not configured for recipe publication",
             )
-        return self.repository.approve_candidate(candidate, actor)
+        return self.repository.approve_candidate(
+            candidate,
+            actor,
+            source=source,
+            creator=creator,
+        )
 
     def retry_candidate(self, candidate_id: UUID, actor: Any):
         self._require_enabled()
-        candidate = self.repository.get_candidate(candidate_id)
+        candidate = self.repository.get_candidate(candidate_id, for_update=True)
         if candidate is None:
             raise HTTPException(status_code=404, detail="Candidate not found")
         if candidate.status == "approved":
@@ -329,7 +366,7 @@ class RecipeImportService:
         self, candidate_id: UUID, payload: RejectCandidate, actor: Any
     ) -> CandidateResponse:
         self._require_enabled()
-        candidate = self.repository.get_candidate(candidate_id)
+        candidate = self.repository.get_candidate(candidate_id, for_update=True)
         if candidate is None:
             raise HTTPException(status_code=404, detail="Candidate not found")
         try:
