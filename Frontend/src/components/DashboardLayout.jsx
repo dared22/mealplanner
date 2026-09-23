@@ -1,7 +1,7 @@
 import React, { useState, useEffect, memo } from 'react';
 import { Link } from 'react-router-dom';
 import { SignedIn, SignedOut, UserButton } from '@clerk/clerk-react';
-import { BookOpen, Calendar, Moon, ShoppingCart, Sun, User, Search } from 'lucide-react';
+import { BookOpen, Calendar, Moon, Sun, User } from 'lucide-react';
 import { useLanguage } from '@/i18n/useLanguage';
 import { LogoInline } from './Logo';
 
@@ -9,24 +9,11 @@ const DashboardHeader = memo(function DashboardHeader({ lang, setLang, isDarkMod
   return (
     <header className="header dashboard-header">
       <div className="dashboard-nav-container">
-        {/* Left section: Logo and Search */}
+        {/* Left section: Logo */}
         <div className="nav-section-left">
           <Link to="/planner" className="dashboard-logo" aria-label="Preppr Home">
             <LogoInline />
           </Link>
-
-          {/* Search bar */}
-          <div className="nav-search-wrapper">
-            <div className="nav-search">
-              <Search className="w-4 h-4 text-muted-foreground shrink-0" />
-              <input
-                className="nav-search-input"
-                type="text"
-                placeholder={t('Search for meals or nutrients...')}
-                aria-label={t('Search for meals or nutrients')}
-              />
-            </div>
-          </div>
         </div>
 
         {/* Center section: Main navigation */}
@@ -38,10 +25,6 @@ const DashboardHeader = memo(function DashboardHeader({ lang, setLang, isDarkMod
           <Link to="/recipes" className="nav-link-item">
             <BookOpen className="nav-link-icon" />
             <span className="nav-link-text">{t('Recipes')}</span>
-          </Link>
-          <Link to="/groceries" className="nav-link-item">
-            <ShoppingCart className="nav-link-icon" />
-            <span className="nav-link-text">{t('Groceries')}</span>
           </Link>
         </nav>
 

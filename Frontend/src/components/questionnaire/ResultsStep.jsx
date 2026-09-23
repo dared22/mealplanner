@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState, memo } from '
 import { motion as Motion } from 'framer-motion';
 import {
   CheckCircle, RefreshCw, ChevronLeft, ChevronRight,
-  Shuffle, ThumbsUp, ThumbsDown, MoreHorizontal, Sun, Coffee, Utensils, Moon,
+  Shuffle, ThumbsUp, ThumbsDown, Sun, Coffee, Utensils, Moon,
   Info, ChevronDown, ChevronUp, X, Sparkles, Wand2
 } from 'lucide-react';
 import { useAuth } from '@clerk/clerk-react';
@@ -853,9 +853,6 @@ export default function ResultsStep({
                 <span className="section-subtitle">{t('Week Overview')}</span>
                 <h2 className="section-title">{t('Your Weekly Plan')}</h2>
               </div>
-              <button className="btn-icon">
-                <MoreHorizontal className="w-5 h-5" />
-              </button>
             </div>
 
             <DayCarousel

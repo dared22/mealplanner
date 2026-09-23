@@ -2,13 +2,7 @@ export const translations = {
   no: {
     // Navigation
     Recipes: 'Oppskrifter',
-    'Meal Tips': 'M\u00e5ltidstips',
-    'Weekly Plan': 'Ukeplan',
-    More: 'Mer',
-    'Search for meals or nutrients...': 'S\u00f8k etter m\u00e5ltider eller n\u00e6ringsstoffer...',
-    'Search for meals or nutrients': 'S\u00f8k etter m\u00e5ltider eller n\u00e6ringsstoffer',
     Planner: 'Planlegger',
-    Groceries: 'Handleliste',
     Profile: 'Profil',
     'Log In': 'Logg inn',
     'Toggle theme': 'Bytt tema',
@@ -33,11 +27,6 @@ export const translations = {
     'Lifestyle Fit': 'Livsstilstilpasning',
     'Cooking time and budget preferences ensure your meal plan fits seamlessly into your daily routine.':
       'Tilberedningstid og budsjettpreferanser sikrer at m\u00e5ltidsplanen passer s\u00f8ml\u00f8st inn i din daglige rutine.',
-
-    // Footer
-    'Your data is encrypted and used solely for nutritional analysis.':
-      'Dine data er kryptert og brukes kun til ern\u00e6ringsanalyse.',
-    'View Privacy Policy': 'Se personvernregler',
 
     // Results page
     Your: 'Din',
@@ -436,13 +425,5 @@ export const translations = {
     Gluten: 'Gluten',
     Egg: 'Egg',
 
-    // Under construction pages
-    'Under construction...': 'Under arbeid...',
-    'This page is coming soon with delicious recipe recommendations tailored to your preferences.':
-      'Denne siden kommer snart med deilige oppskriftsanbefalinger tilpasset dine preferanser.',
-    'This page is coming soon with helpful tips and tricks for healthy eating and meal preparation.':
-      'Denne siden kommer snart med nyttige tips og triks for sunn spising og m\u00e5ltidsforberedelse.',
-    'This page is coming soon with additional features and settings.':
-      'Denne siden kommer snart med flere funksjoner og innstillinger.',
   },
 };

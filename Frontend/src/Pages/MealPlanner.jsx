@@ -1,11 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState, memo } from 'react';
-import { Link } from 'react-router-dom';
-import { SignedIn, SignedOut, UserButton, useAuth } from '@clerk/clerk-react';
+import { useAuth } from '@clerk/clerk-react';
 import { AnimatePresence, motion as Motion } from 'framer-motion';
-import { ArrowLeft, ArrowRight, BookOpen, Calendar, Lock, Moon, Search, ShoppingCart, Sun, TrendingUp, User } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Moon, Sun, TrendingUp } from 'lucide-react';
 import { UserPreferences } from '@/Entities/UserPreferences';
 import { useLanguage } from '@/i18n/useLanguage';
-import { LogoInline } from '@/components/Logo';
+import DashboardLayout from '@/components/DashboardLayout';
 
 import ProgressBar from '@/components/questionnaire/ProgressBar';
 import PersonalInfoStep from '@/components/questionnaire/PersonalInfoStep';
@@ -87,96 +86,7 @@ const STEP_META = [
 ];
 
 // Header with logo, step dots, and controls
-const Header = memo(function Header({ currentStep, totalSteps, lang, setLang, isDarkMode, setIsDarkMode, t }) {
-  if (currentStep === 7) {
-    return (
-      <header className="header dashboard-header">
-        <div className="dashboard-nav-container">
-          {/* Left section: Logo and Search */}
-          <div className="nav-section-left">
-            <Link to="/planner" className="dashboard-logo" aria-label="Preppr Home">
-              <LogoInline />
-            </Link>
-
-            {/* Search bar */}
-            <div className="nav-search-wrapper">
-              <div className="nav-search">
-                <Search className="w-4 h-4 text-muted-foreground shrink-0" />
-                <input
-                  className="nav-search-input"
-                  type="text"
-                  placeholder={t('Search for meals or nutrients...')}
-                  aria-label={t('Search for meals or nutrients')}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Center section: Main navigation */}
-          <nav className="nav-section-center" aria-label="Main navigation">
-            <Link to="/planner" className="nav-link-item">
-              <Calendar className="nav-link-icon" />
-              <span className="nav-link-text">{t('Planner')}</span>
-            </Link>
-            <Link to="/recipes" className="nav-link-item">
-              <BookOpen className="nav-link-icon" />
-              <span className="nav-link-text">{t('Recipes')}</span>
-            </Link>
-            <Link to="/groceries" className="nav-link-item">
-              <ShoppingCart className="nav-link-icon" />
-              <span className="nav-link-text">{t('Groceries')}</span>
-            </Link>
-          </nav>
-
-          {/* Right section: User controls */}
-          <div className="nav-section-right">
-            {/* User Profile */}
-            <SignedIn>
-              <div className="nav-user-wrapper">
-                <UserButton
-                  appearance={{
-                    elements: {
-                      userButtonAvatarBox: 'w-9 h-9',
-                      userButtonBox: 'hover:opacity-80 transition-opacity'
-                    }
-                  }}
-                />
-              </div>
-            </SignedIn>
-            <SignedOut>
-              <Link to="/login" className="nav-control-btn" aria-label={t('Log In')}>
-                <User className="w-5 h-5" />
-              </Link>
-            </SignedOut>
-
-            {/* Divider */}
-            <div className="nav-separator" role="separator" />
-
-            {/* Language Toggle */}
-            <button
-              onClick={() => setLang(lang === 'en' ? 'no' : 'en')}
-              className="nav-lang-toggle"
-              type="button"
-              aria-label={`Switch to ${lang === 'en' ? 'Norwegian' : 'English'}`}
-            >
-              {lang === 'en' ? 'NO' : 'EN'}
-            </button>
-
-            {/* Theme Toggle */}
-            <button
-              onClick={() => setIsDarkMode(p => !p)}
-              className="nav-control-btn"
-              type="button"
-              aria-label={t('Toggle theme')}
-            >
-              {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-            </button>
-          </div>
-        </div>
-      </header>
-    );
-  }
-
+const Header = memo(function Header({ currentStep, totalSteps, lang, setLang, isDarkMode, setIsDarkMode }) {
   return (
     <header className="header">
       <div className="header-inner">
@@ -188,17 +98,14 @@ const Header = memo(function Header({ currentStep, totalSteps, lang, setLang, is
           <span className="logo-text">Preppr</span>
         </div>
 
-        {/* Step dots - only show on onboarding */}
-        {currentStep < 7 && (
-          <div className="step-dots">
-            {Array.from({ length: totalSteps - 1 }).map((_, i) => (
-              <div
-                key={i}
-                className={`step-dot ${i + 1 === currentStep ? 'active' : ''} ${i + 1 < currentStep ? 'completed' : ''}`}
-              />
-            ))}
-          </div>
-        )}
+        <div className="step-dots">
+          {Array.from({ length: totalSteps - 1 }).map((_, i) => (
+            <div
+              key={i}
+              className={`step-dot ${i + 1 === currentStep ? 'active' : ''} ${i + 1 < currentStep ? 'completed' : ''}`}
+            />
+          ))}
+        </div>
 
         {/* Controls */}
         <div className="flex items-center gap-3">
@@ -273,25 +180,6 @@ const LeftPanel = memo(function LeftPanel({ currentStep, t }) {
         </Motion.div>
       </div>
     </div>
-  );
-});
-
-// Footer with privacy note
-const Footer = memo(function Footer({ t }) {
-  return (
-    <footer className="footer">
-      <div className="footer-inner">
-        <div className="flex items-center gap-2 text-muted-foreground">
-          <Lock className="w-4 h-4" />
-          <span className="footer-text">
-            {t('Your data is encrypted and used solely for nutritional analysis.')}
-          </span>
-        </div>
-        <button className="footer-link font-semibold">
-          {t('View Privacy Policy')}
-        </button>
-      </div>
-    </footer>
   );
 });
 
@@ -555,14 +443,9 @@ export default function MealPlanner({ user }) {
   // Dashboard layout for results
   if (currentStep === 7) {
     return (
-      <div className="min-h-screen bg-background">
-        <Header currentStep={currentStep} totalSteps={TOTAL_STEPS} lang={lang} setLang={setLang} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} t={t} />
-        <main className="pt-32 pb-12 px-4 md:px-8">
-          <div className="max-w-6xl mx-auto">
-            <AnimatePresence mode="wait">{renderStep()}</AnimatePresence>
-          </div>
-        </main>
-      </div>
+      <DashboardLayout>
+        <AnimatePresence mode="wait">{renderStep()}</AnimatePresence>
+      </DashboardLayout>
     );
   }
 
@@ -574,7 +457,7 @@ export default function MealPlanner({ user }) {
 
       {/* Right form panel */}
       <div className="onboarding-right">
-        <Header currentStep={currentStep} totalSteps={TOTAL_STEPS} lang={lang} setLang={setLang} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} t={t} />
+        <Header currentStep={currentStep} totalSteps={TOTAL_STEPS} lang={lang} setLang={setLang} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
 
         <main className="flex-1 flex flex-col pt-24 pb-8 px-6 md:px-12 lg:px-16">
           <div className="flex-1 max-w-xl mx-auto w-full">
@@ -601,8 +484,6 @@ export default function MealPlanner({ user }) {
             )}
           </div>
         </main>
-
-        <Footer t={t} />
       </div>
     </div>
   );

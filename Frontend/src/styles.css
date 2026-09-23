@@ -1,6 +1,5 @@
-/* --- Tailwind v4 core + plugin --- */
+/* --- Tailwind v4 core --- */
 @import "tailwindcss";
-@plugin "tailwindcss-animate";
 
 /* Dark variant helper */
 @custom-variant dark (&:is(.dark *));
@@ -423,7 +422,7 @@
 
   /* ===== SECTION LAYOUTS ===== */
 
-  /* Left section: Logo and Search */
+  /* Left section: Logo */
   .nav-section-left {
     @apply flex items-center justify-start gap-6;
   }
@@ -469,27 +468,6 @@
   /* Navigation link text */
   .nav-link-text {
     @apply hidden lg:inline;
-  }
-
-  /* ===== SEARCH BAR ===== */
-
-  /* Search wrapper */
-  .nav-search-wrapper {
-    @apply hidden md:flex items-center;
-  }
-
-  /* Search bar container */
-  .nav-search {
-    @apply flex items-center gap-3 px-4 py-2 rounded-lg
-           bg-accent/50 border border-border/40
-           w-96 transition-all duration-200
-           focus-within:bg-accent focus-within:border-primary/30;
-  }
-
-  /* Search input */
-  .nav-search-input {
-    @apply bg-transparent text-sm text-foreground placeholder:text-muted-foreground
-           outline-none w-full;
   }
 
   /* ===== USER CONTROLS ===== */
@@ -772,28 +750,6 @@
 
   .macro-target {
     @apply text-xs text-muted-foreground;
-  }
-
-  /* ===== FOOTER ===== */
-
-  .footer {
-    @apply mt-auto py-6 border-t border-border;
-  }
-
-  .footer-inner {
-    @apply max-w-7xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-4;
-  }
-
-  .footer-text {
-    @apply text-xs text-muted-foreground;
-  }
-
-  .footer-links {
-    @apply flex items-center gap-6;
-  }
-
-  .footer-link {
-    @apply text-xs font-medium text-muted-foreground hover:text-primary transition-colors;
   }
 
   /* ===== UTILITIES ===== */
