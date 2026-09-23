@@ -10,7 +10,67 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  quality:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: mealplanner_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d mealplanner_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install backend dependencies
+        run: python -m pip install -r Backend/fastapi_app/requirements-dev.txt
+
+      - name: Compile backend
+        run: python -m compileall -q Backend/fastapi_app
+
+      - name: Test backend guardrails
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/mealplanner_test
+        run: pytest Backend/fastapi_app/tests
+
+      - name: Bootstrap a fresh database with Alembic
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/mealplanner_test
+        working-directory: Backend/fastapi_app
+        run: |
+          alembic upgrade head
+          alembic current --verbose
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: Frontend/package-lock.json
+
+      - name: Verify frontend
+        working-directory: Frontend
+        run: |
+          npm ci
+          npm run lint
+          npm run build
+
   deploy:
+    needs: quality
     runs-on: ubuntu-latest
     env:
       HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}

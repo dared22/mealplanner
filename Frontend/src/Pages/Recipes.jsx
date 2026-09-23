@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ChefHat,
   Flame,
@@ -162,7 +162,7 @@ export default function Recipes() {
   const [error, setError] = useState(null);
   const [visibleCount, setVisibleCount] = useState(6);
 
-  const normalizeRecipe = (recipe) => {
+  const normalizeRecipe = useCallback((recipe) => {
     const name = recipe?.name || recipe?.title || 'Untitled recipe';
     const tags = Array.isArray(recipe?.tags) ? recipe.tags.map(String) : [];
     const ingredientsRaw = recipe?.ingredients;
@@ -200,9 +200,9 @@ export default function Recipes() {
       cook_time_minutes: cookTime,
       total_time_minutes: totalTime,
     };
-  };
+  }, []);
 
-  const fetchRecipes = async () => {
+  const fetchRecipes = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -214,11 +214,11 @@ export default function Recipes() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [normalizeRecipe]);
 
   useEffect(() => {
     fetchRecipes();
-  }, []);
+  }, [fetchRecipes]);
 
   const applyFilters = () => {
     setCalories({ ...caloriesDraft });
