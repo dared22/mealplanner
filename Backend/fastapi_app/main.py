@@ -23,7 +23,7 @@ from clerk_auth import (
     get_session_token,
     verify_session_token,
 )
-from database import Base, SessionLocal, engine, get_session
+from database import SessionLocal, get_session
 from models import ActivityLog, Preference, Rating, Recipe, User, PlanRecipe
 from planner import (
     _format_list_values,
@@ -33,8 +33,6 @@ from planner import (
     generate_daily_plan_for_preference,
 )
 from recipe_translator import PlanTranslator
-
-ENSURE_SCHEMA_ON_STARTUP = os.getenv("ENSURE_SCHEMA_ON_STARTUP", "").lower() in {"1", "true", "yes"}
 
 logger = logging.getLogger(__name__)
 PLAN_GENERATION_TIMEOUT = int(os.getenv("PLAN_GENERATION_TIMEOUT", "180"))
@@ -1916,12 +1914,6 @@ app.add_middleware(
 @app.get("/health")
 def health_check() -> Dict[str, str]:
     return {"status": "ok"}
-
-
-@app.on_event("startup")
-def on_startup() -> None:
-    if ENSURE_SCHEMA_ON_STARTUP:
-        Base.metadata.create_all(bind=engine)
 
 
 @app.post("/preferences")

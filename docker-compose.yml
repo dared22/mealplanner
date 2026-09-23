@@ -13,7 +13,6 @@ services:
       CLERK_JWT_ISSUER: ${CLERK_JWT_ISSUER:-}
       CLERK_AUDIENCE: ${CLERK_AUDIENCE:-}
       CLERK_AUTHORIZED_PARTIES: ${CLERK_AUTHORIZED_PARTIES:-}
-      ENSURE_SCHEMA_ON_STARTUP: "false"
     volumes:
       - ./Backend/fastapi_app:/app
     ports:

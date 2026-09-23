@@ -60,7 +60,7 @@ with recipe data, and configure your own API keys.
 - Python 3.9 or higher
 - Node.js 18 or higher
 - Your own Neon PostgreSQL database
-- Recipe dataset (see Database setup below)
+- Recipe CSV for the admin importer (see Database setup below)
 - OpenAI API key
 - Clerk account for authentication
 
@@ -69,13 +69,15 @@ with recipe data, and configure your own API keys.
 
 ### Database setup
 
-Before running the backend, you need to:
+Before running the backend, complete the following setup:
 
 1. Create a Neon PostgreSQL database
-2. Set up the database schema (users, preferences, recipes tables)
-3. Load recipe data from `recipes.csv` into your recipes table
-4. The recipe data must include nutrition information, tags, and meal type
-   classifications for the optimization algorithm to work
+2. Complete the backend setup below to configure the database connection and
+   create the schema
+3. Import your recipe CSV from the admin recipe screen after completing the
+   one-time admin bootstrap below
+4. Include nutrition information, tags, and meal type classifications in your
+   recipe data for the optimization algorithm to work
 
 ### Backend setup
 
@@ -107,7 +109,13 @@ Before running the backend, you need to:
    export CLERK_JWT_ISSUER="https://your-clerk-instance.clerk.accounts.dev"
    ```
 
-5. Start the development server:
+5. Create the database schema:
+
+   ```bash
+   alembic upgrade head
+   ```
+
+6. Start the development server:
 
    ```bash
    uvicorn main:app --reload --port 8000
@@ -143,6 +151,23 @@ The API will be available at http://localhost:8000.
    ```
 
 The app will be available at http://localhost:5173.
+
+### Admin bootstrap
+
+The first user must be promoted to an administrator before importing recipes.
+After you start both applications, sign in, and open `/admin` once. The first
+visit returns an admin-access error but creates the local user record. Then use
+your own Neon SQL console to run the following statement with that user's Clerk
+ID:
+
+```sql
+UPDATE users
+SET is_admin = TRUE
+WHERE clerk_user_id = '<your-clerk-user-id>';
+```
+
+You can then open the admin recipe screen and import your CSV. Do not run this
+statement against the production database.
 
 ### Docker setup
 
@@ -321,7 +346,7 @@ The app uses Neon (serverless PostgreSQL) with three main tables:
 
 - **users:** User accounts (synced with Clerk)
 - **preferences:** User preferences and generated meal plans
-- **recipes:** Recipe database loaded from `recipes.csv`
+- **recipes:** Recipe database populated through the admin CSV importer
 
 The custom optimization algorithm queries the recipes table to build meal plans
 that match your nutrition targets and preferences. Generated meal plans and
