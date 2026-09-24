@@ -1,5 +1,4 @@
 import ast
-import copy
 import json
 import logging
 import os
@@ -11,11 +10,20 @@ from uuid import UUID
 
 import httpx
 from openai import OpenAI, OpenAIError
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from models import PlanRecipe, Preference, Rating, Recipe
-from recipe_translator import RecipeTranslator
+from models import PlanRecipe, Preference, Recipe
+from planning_policy import (
+    cooking_time_bounds,
+    matches_cooking_time,
+    matches_dietary_restrictions,
+    matches_preferred_cuisines,
+    meal_slots_for_day,
+    normalize_cuisine_list,
+    normalize_meal_slot,
+    normalize_nutrition,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -106,22 +114,6 @@ MEAL_TAG_KEYWORDS = {
     "dinner": ["middag", "middagsrett", "dinner", "ovnsretter", "gryter", "panneretter"],
 }
 
-_COOKING_TIME_MAP = {
-    "under_15_min": (None, 15),
-    "under15": (None, 15),
-    "<15": (None, 15),
-    "15_30_min": (15, 30),
-    "15-30": (15, 30),
-    "15_30": (15, 30),
-    "30_60_min": (30, 60),
-    "30-60": (30, 60),
-    "30_60": (30, 60),
-    "over_60_min": (60, None),
-    "60_plus": (60, None),
-    ">60": (60, None),
-}
-
-
 @dataclass(frozen=True)
 class PreferenceDTO:
     age: Optional[int]
@@ -175,75 +167,6 @@ def _normalize_preference(pref: Any) -> PreferenceDTO:
     )
 
 
-def _normalize_token(value: str) -> str:
-    normalized = re.sub(r"[^a-z0-9]+", "_", str(value).strip().lower())
-    return normalized.strip("_")
-
-
-def _normalize_cuisine_list(values: List[str]) -> Set[str]:
-    return {token for token in (_normalize_token(v) for v in values) if token}
-
-
-def _recipe_matches_preferred_cuisines(recipe_cuisine: Any, allowed: Set[str]) -> bool:
-    if not allowed:
-        return True
-    if not recipe_cuisine:
-        return False
-    parts = re.split(r"[,/;|]+", str(recipe_cuisine))
-    for part in parts:
-        if _normalize_token(part) in allowed:
-            return True
-    return False
-
-
-def _normalize_allergens(value: Any) -> Set[str]:
-    if not value:
-        return set()
-    if isinstance(value, (list, tuple, set)):
-        return {str(item).strip().lower() for item in value if item}
-    return {str(value).strip().lower()}
-
-
-def _dietary_flag_truthy(flags: Any, key: str) -> bool:
-    if not isinstance(flags, dict):
-        return False
-    keys = (key, key.lower(), key.removeprefix("is_"), key.lower().removeprefix("is_"))
-    for candidate in keys:
-        value = flags.get(candidate)
-        if value is None:
-            continue
-        if isinstance(value, bool):
-            return value
-        return str(value).strip().lower() in {"true", "1", "yes", "y"}
-    return False
-
-
-def _violates_allergen_restriction(allergens: Set[str], keyword: str) -> bool:
-    """Check if allergen data violates a restriction.
-
-    Returns True if allergen info is missing (fail-closed for safety)
-    or if any allergen contains the given keyword.
-    """
-    if not allergens:
-        return True
-    return any(keyword in allergen for allergen in allergens)
-
-
-def _cooking_time_bounds(value: Any) -> Tuple[Optional[int], Optional[int]]:
-    if value is None:
-        return None, None
-    normalized = str(value).strip().lower()
-    if normalized in _COOKING_TIME_MAP:
-        return _COOKING_TIME_MAP[normalized]
-    if "quick" in normalized or "fast" in normalized:
-        return None, 30
-    if "moderate" in normalized or "medium" in normalized:
-        return 30, 60
-    if "slow" in normalized or "long" in normalized:
-        return 60, None
-    return None, None
-
-
 def _request_with_chat(
     messages: List[Dict[str, str]],
     temperature: float = 0.2,
@@ -268,15 +191,6 @@ def _request_with_chat(
         response = client.chat.completions.create(**request_kwargs)
     content = response.choices[0].message.content if response.choices else ""
     return content.strip() if content else ""
-
-
-def _is_english(value: Optional[str]) -> bool:
-    if not value:
-        return False
-    normalized = str(value).strip().lower()
-    if normalized in {"en", "eng", "english"}:
-        return True
-    return normalized.startswith("en-") or normalized.startswith("en_")
 
 
 def _normalize_language(value: Optional[str]) -> Optional[str]:
@@ -321,7 +235,7 @@ def _extract_json(raw_text: str) -> Optional[Dict[str, Any]]:
 
 
 def _format_cooking_time_preference(value: Optional[str]) -> str:
-    min_minutes, max_minutes = _cooking_time_bounds(value)
+    min_minutes, max_minutes = cooking_time_bounds(value)
     if min_minutes is None and max_minutes is None:
         return "no limit"
     if min_minutes is None:
@@ -363,14 +277,12 @@ def _validate_meal_entry(meal: Dict[str, Any], dto: PreferenceDTO) -> Optional[s
 
     Returns an error message if validation fails, or None if valid.
     """
-    allowed_cuisines = _normalize_cuisine_list(dto.preferred_cuisines)
-    dietary_restrictions = [str(r).lower() for r in (dto.dietary_restrictions or []) if r]
-    min_minutes, max_minutes = _cooking_time_bounds(dto.cooking_time_preference)
+    allowed_cuisines = normalize_cuisine_list(dto.preferred_cuisines)
 
     # Check cuisine
     cuisine = meal.get("cuisine")
     if allowed_cuisines and cuisine:
-        if not _recipe_matches_preferred_cuisines(cuisine, allowed_cuisines):
+        if not matches_preferred_cuisines(cuisine, allowed_cuisines):
             # Relaxed: keep the meal but drop the mismatched cuisine to avoid hard failures.
             logger.warning(
                 "Meal cuisine '%s' outside preferred cuisines %s; allowing meal without cuisine.",
@@ -381,39 +293,20 @@ def _validate_meal_entry(meal: Dict[str, Any], dto: PreferenceDTO) -> Optional[s
 
     # Check cooking time
     cook_time = meal.get("cook_time_minutes")
-    if min_minutes is not None or max_minutes is not None:
+    if not matches_cooking_time(cook_time, dto.cooking_time_preference):
         if cook_time is None:
             return "Missing cook_time_minutes for cooking time preference."
         try:
-            cook_time_value = float(cook_time)
+            float(cook_time)
         except (TypeError, ValueError):
             return "Invalid cook_time_minutes value."
-        if min_minutes is not None and cook_time_value < min_minutes:
-            return "Meal cook_time_minutes is below the preferred range."
-        if max_minutes is not None and cook_time_value > max_minutes:
-            return "Meal cook_time_minutes exceeds the preferred range."
+        return "Meal cook_time_minutes is outside the preferred range."
 
     # Check dietary restrictions
-    flags = meal.get("dietary_flags", {}) if isinstance(meal.get("dietary_flags"), dict) else {}
-    allergens = _normalize_allergens(meal.get("allergens"))
-    for restriction in dietary_restrictions:
-        if restriction == "none":
-            continue
-        if restriction == "vegan":
-            if not _dietary_flag_truthy(flags, "is_vegan"):
-                return "Meal violates vegan restriction."
-        elif restriction == "vegetarian":
-            if not (_dietary_flag_truthy(flags, "is_vegan") or _dietary_flag_truthy(flags, "is_vegetarian")):
-                return "Meal violates vegetarian restriction."
-        elif "gluten" in restriction:
-            if _violates_allergen_restriction(allergens, "gluten"):
-                return "Meal contains gluten."
-        elif "dairy" in restriction:
-            if _violates_allergen_restriction(allergens, "dairy"):
-                return "Meal contains dairy."
-        elif "nut" in restriction:
-            if _violates_allergen_restriction(allergens, "nut"):
-                return "Meal contains nuts."
+    if not matches_dietary_restrictions(
+        meal.get("dietary_flags"), meal.get("allergens"), dto.dietary_restrictions
+    ):
+        return "Meal violates dietary restrictions."
 
     return None
 
@@ -647,52 +540,22 @@ def _get_user_id(pref: Any) -> Optional[UUID]:
     return getattr(pref, "user_id", None)
 
 
-def _get_user_ratings(db: Session, user_id: UUID) -> Tuple[Set[UUID], Set[UUID]]:
-    stmt = select(Rating.recipe_id, Rating.is_liked).where(Rating.user_id == user_id)
-    result = db.execute(stmt)
-
-    liked_ids: Set[UUID] = set()
-    disliked_ids: Set[UUID] = set()
-    for recipe_id, is_liked in result:
-        if is_liked:
-            liked_ids.add(recipe_id)
-        else:
-            disliked_ids.add(recipe_id)
-    return liked_ids, disliked_ids
-
-
 def _get_last_week_recipes(db: Session, user_id: UUID) -> Set[UUID]:
     stmt = (
         select(Preference)
-        .where(
-            Preference.user_id == user_id,
-            Preference.raw_data["plan_status"].astext == "success",
-        )
+        .where(Preference.user_id == user_id)
         .order_by(Preference.submitted_at.desc())
-        .limit(1)
     )
-    result = db.execute(stmt)
-    last_pref = result.scalar_one_or_none()
-    if not last_pref:
-        return set()
-    stmt = select(PlanRecipe.recipe_id).where(PlanRecipe.preference_id == last_pref.id)
-    result = db.execute(stmt)
-    return {recipe_id for (recipe_id,) in result}
-
-
-def _build_meal_slots(meals_per_day: int) -> List[str]:
-    slots = ["breakfast", "lunch", "dinner"]
-    extra = max(meals_per_day - 3, 0)
-    slots.extend(["snack"] * extra)
-    slots = slots[: max(meals_per_day, 1)]
-    if "dinner" not in slots:
-        if slots:
-            slots[-1] = "dinner"
-        else:
-            slots = ["dinner"]
-    return slots
-
-
+    for previous_preference in db.execute(stmt).scalars().all():
+        raw_data = previous_preference.raw_data if isinstance(previous_preference.raw_data, dict) else {}
+        generated_plan = raw_data.get("generated_plan") if isinstance(raw_data, dict) else None
+        if not isinstance(generated_plan, dict) or not generated_plan.get("plan"):
+            continue
+        recipe_ids = db.execute(
+            select(PlanRecipe.recipe_id).where(PlanRecipe.preference_id == previous_preference.id)
+        )
+        return {recipe_id for (recipe_id,) in recipe_ids}
+    return set()
 
 
 def _jsonify_value(value: Any) -> Any:
@@ -825,6 +688,7 @@ def query_candidate_recipes(
     db: Session,
     dto: PreferenceDTO,
     exclude_names: Optional[Set[str]] = None,
+    exclude_recipe_ids: Optional[Set[UUID]] = None,
 ) -> Dict[str, List[Dict[str, Any]]]:
     """Query DB for recipe candidates matching user preferences.
 
@@ -838,48 +702,15 @@ def query_candidate_recipes(
     """
     if exclude_names is None:
         exclude_names = set()
+    if exclude_recipe_ids is None:
+        exclude_recipe_ids = set()
 
     # Build base query
     query = select(Recipe).where(Recipe.is_active == True)
 
-    # Apply dietary restrictions
-    dietary_restrictions = [str(r).lower() for r in (dto.dietary_restrictions or []) if r]
-    for restriction in dietary_restrictions:
-        if restriction == "none":
-            continue
-        if restriction == "vegan":
-            query = query.where(
-                (Recipe.dietary_flags["vegan"].astext == "true")
-                | (Recipe.dietary_flags["is_vegan"].astext == "true")
-            )
-        elif restriction == "vegetarian":
-            # Vegetarian means vegan OR vegetarian
-            query = query.where(
-                (Recipe.dietary_flags["vegan"].astext == "true")
-                | (Recipe.dietary_flags["is_vegan"].astext == "true")
-                | (Recipe.dietary_flags["vegetarian"].astext == "true")
-                | (Recipe.dietary_flags["is_vegetarian"].astext == "true")
-            )
-
-    # Apply preferred cuisines filter
-    allowed_cuisines = _normalize_cuisine_list(dto.preferred_cuisines)
-    if allowed_cuisines:
-        # Recipe cuisine should match at least one preferred cuisine
-        cuisine_filters = []
-        for cuisine_token in allowed_cuisines:
-            cuisine_filters.append(Recipe.cuisine.ilike(f"%{cuisine_token}%"))
-        if cuisine_filters:
-            query = query.where(or_(*cuisine_filters))
-
-    # Apply cooking time bounds
-    min_minutes, max_minutes = _cooking_time_bounds(dto.cooking_time_preference)
-    if min_minutes is not None:
-        query = query.where(Recipe.total_time_minutes >= min_minutes)
-    if max_minutes is not None:
-        query = query.where(Recipe.total_time_minutes <= max_minutes)
-
     # Execute query
     recipes = db.execute(query).scalars().all()
+    allowed_cuisines = normalize_cuisine_list(dto.preferred_cuisines)
 
     # Group by meal type
     candidates: Dict[str, List[Dict[str, Any]]] = {
@@ -891,26 +722,30 @@ def query_candidate_recipes(
 
     for recipe in recipes:
         # Skip excluded recipes
-        if recipe.title in exclude_names:
+        if recipe.title in exclude_names or recipe.id in exclude_recipe_ids:
+            continue
+        if not matches_dietary_restrictions(
+            recipe.dietary_flags, recipe.allergens, dto.dietary_restrictions
+        ):
+            continue
+        if not matches_preferred_cuisines(recipe.cuisine, allowed_cuisines):
+            continue
+        if not matches_cooking_time(recipe.total_time_minutes, dto.cooking_time_preference):
             continue
 
         # Extract nutrition data
-        nutrition = recipe.nutrition or {}
-        calories = float(nutrition.get("calories") or nutrition.get("calories_kcal") or 0)
-        protein = float(nutrition.get("protein_g") or nutrition.get("protein") or 0)
-        carbs = float(
-            nutrition.get("carbs_g") or nutrition.get("carbs") or nutrition.get("carbohydrates") or 0
-        )
-        fat = float(nutrition.get("fat_g") or nutrition.get("fat") or 0)
+        nutrition = normalize_nutrition(recipe.nutrition)
+        calories = nutrition.get("calories", 0.0)
+        protein = nutrition.get("protein", 0.0)
+        carbs = nutrition.get("carbs", 0.0)
+        fat = nutrition.get("fat", 0.0)
 
         # Skip recipes with missing nutrition data
         if calories == 0:
             continue
 
         # Determine meal type
-        meal_type = (recipe.meal_type or "").lower()
-        if meal_type not in candidates:
-            meal_type = "snack"
+        meal_type = normalize_meal_slot(recipe.meal_type)
 
         # Build candidate dict
         candidate = {
@@ -1055,7 +890,7 @@ def match_recipes_to_macro_goal(
 
     dto = _normalize_preference(pref)
 
-    meal_slots = _build_meal_slots(dto.meals_per_day or 3)
+    meal_slots = meal_slots_for_day(dto.meals_per_day)
 
     targets = _extract_targets(macro_goal)
 
@@ -1069,7 +904,16 @@ def match_recipes_to_macro_goal(
 
     if db is not None:
         try:
-            candidates = query_candidate_recipes(db, dto, exclude_names=set(avoid_names))
+            previous_recipe_ids: Set[UUID] = set()
+            user_id = _get_user_id(pref)
+            if user_id is not None:
+                previous_recipe_ids = _get_last_week_recipes(db, user_id)
+            candidates = query_candidate_recipes(
+                db,
+                dto,
+                exclude_names=set(avoid_names),
+                exclude_recipe_ids=previous_recipe_ids,
+            )
             db_meals, unfilled_slots = select_db_recipes_for_day(
                 candidates, meal_slots, targets, set(avoid_names)
             )
@@ -1174,9 +1018,7 @@ def _build_day_plan(day_name: str, recipes: List[Dict[str, Any]], totals: Dict[s
         "snack": [],
     }
     for meal in recipes:
-        meal_type = str(meal.get("meal_type", "snack")).lower()
-        if meal_type not in meal_map:
-            meal_type = "snack"
+        meal_type = normalize_meal_slot(meal.get("meal_type"))
         meal_map[meal_type].append(meal)
 
     meals_payload = {
@@ -1237,7 +1079,7 @@ def fill_missing_meals(
             if isinstance(meal, dict) and meal.get("name"):
                 used_names.append(str(meal["name"]))
 
-    meal_slots = _build_meal_slots(dto.meals_per_day or 3)
+    meal_slots = meal_slots_for_day(dto.meals_per_day)
     snack_slots = [slot for slot in meal_slots if slot == "snack"]
 
     for day in plan.get("days", []):
@@ -1312,52 +1154,13 @@ def fill_missing_meals(
     return {"plan": plan, "error": None}
 
 
-def translate_plan(plan: Dict[str, Any], language: Optional[str]) -> Dict[str, Any]:
-    """Translate a meal plan to the target language.
-
-    Currently only translates Norwegian plans to English when language is 'en'.
-    """
-    if not plan:
-        return {"plan": plan, "error": None}
-
-    # Only translate if English is requested (Norwegian is the base language)
-    if not _is_english(language):
-        return {"plan": plan, "error": None}
-
-    translator = RecipeTranslator(target_language="English")
-    if translator.client is None:
-        return {"plan": plan, "error": "Translation disabled: googletrans not configured."}
-
-    translated_plan = copy.deepcopy(plan)
-    failures = 0
-    days = translated_plan.get("days", [])
-    if isinstance(days, list):
-        for day in days:
-            meals = day.get("meals") if isinstance(day, dict) else None
-            if not isinstance(meals, dict):
-                continue
-            for meal_key, meal in meals.items():
-                if not isinstance(meal, dict):
-                    continue
-                result = translator.translate_recipe(meal)
-                if result.error is None:
-                    meals[meal_key] = result.data
-                else:
-                    failures += 1
-
-    error = None
-    if failures:
-        error = f"Failed to translate {failures} meal(s)."
-    return {"plan": translated_plan, "error": error}
-
-
-def generate_daily_plan(pref: Any, translate: bool = False, db: Optional[Session] = None) -> Dict[str, Any]:
-    macro_response = generate_daily_macro_goal(pref)
-    if macro_response.get("error"):
-        return {"plan": None, "error": macro_response["error"]}
-
-    macro_goal = macro_response.get("goal")
-    dto = _normalize_preference(pref)
+def generate_daily_plan(
+    pref: Any,
+    macro_goal: Dict[str, Any],
+    db: Optional[Session] = None,
+) -> Dict[str, Any]:
+    if not macro_goal:
+        return {"plan": None, "error": "Missing macro targets."}
 
     days: List[Dict[str, Any]] = []
     used_names: List[str] = []
@@ -1388,7 +1191,7 @@ def generate_daily_plan(pref: Any, translate: bool = False, db: Optional[Session
 
     plan_payload = _build_weekly_plan(macro_goal, days)
     base_language = _normalize_language(PLAN_BASE_LANGUAGE) or "no"
-    plan_language = "en" if translate and _is_english(dto.language) else base_language
+    plan_language = base_language
 
     # Determine generation source based on recipe counts
     if total_db_recipes > 0 and total_ai_recipes > 0:
@@ -1398,16 +1201,6 @@ def generate_daily_plan(pref: Any, translate: bool = False, db: Optional[Session
     else:
         generation_source = "openai"
 
-    if translate and _is_english(dto.language):
-        translation = translate_plan(plan_payload, dto.language)
-        return {
-            "plan": translation["plan"],
-            "error": translation["error"],
-            "language": "en",
-            "generation_source": generation_source,
-            "db_recipe_count": total_db_recipes,
-            "ai_recipe_count": total_ai_recipes,
-        }
     return {
         "plan": plan_payload,
         "error": None,
@@ -1416,10 +1209,3 @@ def generate_daily_plan(pref: Any, translate: bool = False, db: Optional[Session
         "db_recipe_count": total_db_recipes,
         "ai_recipe_count": total_ai_recipes,
     }
-
-
-def generate_daily_plan_for_preference(db: Session, pref_id: int) -> Dict[str, Any]:
-    pref = db.get(Preference, pref_id)
-    if pref is None:
-        raise ValueError(f"Preference {pref_id} not found")
-    return generate_daily_plan(pref, translate=False, db=db)

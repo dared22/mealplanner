@@ -7,7 +7,6 @@ and respecting dietary restrictions.
 """
 
 import logging
-import re
 from typing import Any, Dict, List, Optional, Set, Tuple
 from uuid import UUID
 
@@ -17,7 +16,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from models import PlanRecipe, Preference, Rating, Recipe
-from planner import generate_daily_macro_goal
+from planning_policy import (
+    matches_cooking_time,
+    matches_dietary_restrictions,
+    matches_preferred_cuisines,
+    meal_slots_for_day,
+    normalize_cuisine_list,
+    normalize_nutrition,
+    recipe_matches_meal_slot,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -28,101 +35,14 @@ QUALITY_THRESHOLD_LIKED_RATIO = 0.5  # Minimum 50% liked recipes
 QUALITY_THRESHOLD_MACRO_DEVIATION = 0.2  # Maximum 20% macro deviation
 
 
-def _normalize_token(value: str) -> str:
-    """Normalize text to a comparable token (lowercase, underscores, alnum only)."""
-    normalized = re.sub(r"[^a-z0-9]+", "_", str(value).strip().lower())
-    return normalized.strip("_")
-
-
-def _normalize_cuisine_list(values: Optional[List[str]]) -> Set[str]:
-    if not values:
-        return set()
-    return {token for token in (_normalize_token(v) for v in values) if token}
-
-
-def _recipe_matches_preferred_cuisines(recipe_cuisine: Optional[str], allowed: Set[str]) -> bool:
-    if not allowed:
-        return True
-    if not recipe_cuisine:
-        return False
-    # Split on common separators to support multi-cuisine strings.
-    parts = re.split(r"[,/;|]+", str(recipe_cuisine))
-    for part in parts:
-        if _normalize_token(part) in allowed:
-            return True
-    return False
-
-
-def _normalize_allergens(allergens: Any) -> Set[str]:
-    if not allergens:
-        return set()
-    if isinstance(allergens, (list, tuple, set)):
-        return {str(item).strip().lower() for item in allergens if item}
-    return {str(allergens).strip().lower()}
-
-
-def _dietary_flag_truthy(flags: Any, key: str) -> bool:
-    if not isinstance(flags, dict):
-        return False
-    keys = (key, key.lower(), key.removeprefix("is_"), key.lower().removeprefix("is_"))
-    for candidate in keys:
-        value = flags.get(candidate)
-        if value is None:
-            continue
-        if isinstance(value, bool):
-            return value
-        return str(value).strip().lower() in {"true", "1", "yes", "y"}
-    return False
-
-
-def _violates_allergen_restriction(allergens: Set[str], restriction: str) -> bool:
-    if not allergens:
-        # If allergens are missing, treat as unsafe for allergen-based restrictions.
-        return True
-    if "gluten" in restriction:
-        return any("gluten" in allergen for allergen in allergens)
-    if "dairy" in restriction:
-        return any("dairy" in allergen for allergen in allergens)
-    if "nut" in restriction:
-        return any("nut" in allergen for allergen in allergens)
-    return False
-
-
-def _cooking_time_bounds(value: Any) -> Tuple[Optional[int], Optional[int]]:
-    if value is None:
-        return None, None
-    normalized = str(value).strip().lower()
-    if normalized in {"under_15_min", "under15", "<15"}:
-        return None, 15
-    if normalized in {"15_30_min", "15-30", "15_30"}:
-        return 15, 30
-    if normalized in {"30_60_min", "30-60", "30_60"}:
-        return 30, 60
-    if normalized in {"over_60_min", "60_plus", ">60"}:
-        return 60, None
-    if "quick" in normalized or "fast" in normalized:
-        return None, 30
-    if "moderate" in normalized or "medium" in normalized:
-        return 30, 60
-    if "slow" in normalized or "long" in normalized:
-        return 60, None
-    return None, None
-
-
 def _apply_cooking_time_filter(df: pd.DataFrame, preference: Preference) -> pd.DataFrame:
     if df.empty or "total_time_minutes" not in df.columns:
         return df
-    min_minutes, max_minutes = _cooking_time_bounds(preference.cooking_time_preference)
-    if min_minutes is None and max_minutes is None:
-        return df
-
-    series = pd.to_numeric(df["total_time_minutes"], errors="coerce")
-    mask = series.notna()
-    if min_minutes is not None:
-        mask &= series >= min_minutes
-    if max_minutes is not None:
-        mask &= series <= max_minutes
-    return df[mask]
+    return df[
+        df["total_time_minutes"].map(
+            lambda value: matches_cooking_time(value, preference.cooking_time_preference)
+        )
+    ]
 
 
 def _get_user_ratings(db: Session, user_id: UUID) -> Tuple[Set[UUID], Set[UUID]]:
@@ -157,24 +77,19 @@ def _get_last_week_recipes(db: Session, user_id: UUID) -> Set[UUID]:
     # Find most recent successful preference
     stmt = (
         select(Preference)
-        .where(
-            Preference.user_id == user_id,
-            Preference.raw_data["plan_status"].astext == "success"
-        )
+        .where(Preference.user_id == user_id)
         .order_by(Preference.submitted_at.desc())
-        .limit(1)
     )
-    result = db.execute(stmt)
-    last_pref = result.scalar_one_or_none()
-
-    if not last_pref:
-        return set()
-
-    # Get all recipes from that plan
-    stmt = select(PlanRecipe.recipe_id).where(PlanRecipe.preference_id == last_pref.id)
-    result = db.execute(stmt)
-
-    return {recipe_id for (recipe_id,) in result}
+    for previous_preference in db.execute(stmt).scalars().all():
+        raw_data = previous_preference.raw_data if isinstance(previous_preference.raw_data, dict) else {}
+        generated_plan = raw_data.get("generated_plan") if isinstance(raw_data, dict) else None
+        if not isinstance(generated_plan, dict) or not generated_plan.get("plan"):
+            continue
+        recipe_ids = db.execute(
+            select(PlanRecipe.recipe_id).where(PlanRecipe.preference_id == previous_preference.id)
+        )
+        return {recipe_id for (recipe_id,) in recipe_ids}
+    return set()
 
 
 def _filter_recipes_for_solver(
@@ -195,31 +110,11 @@ def _filter_recipes_for_solver(
     # Start with active recipes
     stmt = select(Recipe).where(Recipe.is_active.is_(True))
 
-    # Apply dietary restrictions (hard constraint)
-    dietary_restrictions = preference.dietary_restrictions or []
-    for restriction in dietary_restrictions:
-        if not restriction:
-            continue
-        restriction_lower = str(restriction).lower()
-
-        if restriction_lower == "vegan":
-            stmt = stmt.where(
-                (Recipe.dietary_flags["vegan"].astext == "true")
-                | (Recipe.dietary_flags["is_vegan"].astext == "true")
-            )
-        elif restriction_lower == "vegetarian":
-            # Vegetarian includes vegan recipes
-            stmt = stmt.where(
-                (Recipe.dietary_flags["vegetarian"].astext == "true")
-                | (Recipe.dietary_flags["is_vegetarian"].astext == "true")
-                | (Recipe.dietary_flags["vegan"].astext == "true")
-                | (Recipe.dietary_flags["is_vegan"].astext == "true")
-            )
-
     result = db.execute(stmt)
     recipes = result.scalars().all()
 
-    allowed_cuisines = _normalize_cuisine_list(preference.preferred_cuisines)
+    allowed_cuisines = normalize_cuisine_list(preference.preferred_cuisines or [])
+    dietary_restrictions = preference.dietary_restrictions or []
 
     # Convert to DataFrame
     recipe_data = []
@@ -227,52 +122,24 @@ def _filter_recipes_for_solver(
         # Skip disliked and last week's recipes
         if recipe.id in disliked_ids or recipe.id in last_week_ids:
             continue
-        if not _recipe_matches_preferred_cuisines(recipe.cuisine, allowed_cuisines):
+        if not matches_dietary_restrictions(
+            recipe.dietary_flags, recipe.allergens, dietary_restrictions
+        ):
             continue
-
-        restriction_blocked = False
-        flags = recipe.dietary_flags or {}
-        allergens = _normalize_allergens(recipe.allergens)
-        for restriction in dietary_restrictions:
-            if not restriction:
-                continue
-            restriction_lower = str(restriction).lower()
-            if restriction_lower == "none":
-                continue
-            if restriction_lower == "vegan":
-                if not _dietary_flag_truthy(flags, "is_vegan"):
-                    restriction_blocked = True
-                    break
-            elif restriction_lower == "vegetarian":
-                if not (_dietary_flag_truthy(flags, "is_vegetarian") or _dietary_flag_truthy(flags, "is_vegan")):
-                    restriction_blocked = True
-                    break
-            elif restriction_lower == "gluten_free" or "gluten" in restriction_lower:
-                if _violates_allergen_restriction(allergens, "gluten"):
-                    restriction_blocked = True
-                    break
-            elif restriction_lower == "dairy_free" or "dairy" in restriction_lower:
-                if _violates_allergen_restriction(allergens, "dairy"):
-                    restriction_blocked = True
-                    break
-            elif restriction_lower == "nut_free" or "nut" in restriction_lower:
-                if _violates_allergen_restriction(allergens, "nut"):
-                    restriction_blocked = True
-                    break
-        if restriction_blocked:
+        if not matches_preferred_cuisines(recipe.cuisine, allowed_cuisines):
             continue
 
         # Extract nutrition data
-        nutrition = recipe.nutrition or {}
-        calories = nutrition.get("calories_kcal") or nutrition.get("calories") or 0
-        protein = nutrition.get("protein_g") or 0
-        carbs = nutrition.get("carbs_g") or 0
-        fat = nutrition.get("fat_g") or 0
+        nutrition = normalize_nutrition(recipe.nutrition)
+        calories = nutrition.get("calories", 0.0)
+        protein = nutrition.get("protein", 0.0)
+        carbs = nutrition.get("carbs", 0.0)
+        fat = nutrition.get("fat", 0.0)
 
         recipe_data.append({
             "id": recipe.id,
             "title": recipe.title,
-            "meal_type": recipe.meal_type.lower() if recipe.meal_type else None,
+            "meal_type": recipe.meal_type,
             "calories": float(calories),
             "protein": float(protein),
             "carbs": float(carbs),
@@ -384,13 +251,13 @@ def _build_solver_model(
 
     # Decision variables: x[recipe_id, day, meal_type] = 1 if recipe selected
     recipe_vars = {}
-    meal_slots = _build_meal_slots(meals_per_day)
+    meal_slots = meal_slots_for_day(meals_per_day)
 
     for day in WEEK_DAYS:
         for meal_type in meal_slots:
             for _, recipe in df.iterrows():
                 # Only create variables for appropriate meal types
-                if not _is_appropriate_meal_type(recipe["meal_type"], meal_type):
+                if not recipe_matches_meal_slot(recipe["meal_type"], meal_type):
                     continue
 
                 var_name = f"x_{recipe['id']}_{day}_{meal_type}"
@@ -485,40 +352,6 @@ def _build_solver_model(
         prob += lpSum(day_fat) <= target_fat * (1 + tolerance)
 
     return prob, recipe_vars, meal_slots
-
-
-def _build_meal_slots(meals_per_day: int) -> List[str]:
-    """Build list of meal slots based on meals per day."""
-    slots = ["breakfast", "lunch", "dinner"]
-    extra = max(meals_per_day - 3, 0)
-    slots.extend(["snack"] * extra)
-    slots = slots[:max(meals_per_day, 1)]
-    if "dinner" not in slots:
-        if slots:
-            slots[-1] = "dinner"
-        else:
-            slots = ["dinner"]
-    return slots
-
-
-def _is_appropriate_meal_type(recipe_meal_type: Optional[str], slot_meal_type: str) -> bool:
-    """Check if a recipe is appropriate for a meal slot."""
-    if not recipe_meal_type:
-        # Recipes without meal_type can fill any slot (except breakfast)
-        return slot_meal_type != "breakfast"
-
-    recipe_type_lower = recipe_meal_type.lower()
-
-    if slot_meal_type == "breakfast":
-        return recipe_type_lower == "breakfast"
-    elif slot_meal_type == "lunch":
-        return recipe_type_lower in ["lunch", "breakfast"]  # Breakfast can be lunch
-    elif slot_meal_type == "dinner":
-        return recipe_type_lower in ["dinner", "lunch"]  # Lunch can be dinner
-    elif slot_meal_type == "snack":
-        return True  # Any recipe can be a snack
-
-    return True
 
 
 def _extract_solution(
@@ -722,6 +555,7 @@ def generate_personalized_plan(
     db: Session,
     user_id: UUID,
     preference: Preference,
+    macro_goal: Dict[str, Any],
     timeout_seconds: int = 10,
 ) -> Dict[str, Any]:
     """
@@ -749,17 +583,14 @@ def generate_personalized_plan(
         last_week_ids = _get_last_week_recipes(db, user_id)
         logger.info(f"User {user_id}: {len(last_week_ids)} recipes from last week")
 
-        # Step 3: Generate macro targets
-        macro_response = generate_daily_macro_goal(preference)
-        if macro_response.get("error"):
+        # Step 3: Use the macro targets generated by the orchestration layer.
+        if not macro_goal:
             return {
                 "plan": None,
-                "error": macro_response["error"],
+                "error": "Missing macro targets.",
                 "fallback_reason": "macro_generation_failed",
                 "quality_metrics": None,
             }
-
-        macro_goal = macro_response.get("goal")
         macro_targets = {
             "calories": float(macro_goal.get("calorieTarget", 2000)),
             "protein": float(macro_goal.get("macroTargets", {}).get("protein", 150)),

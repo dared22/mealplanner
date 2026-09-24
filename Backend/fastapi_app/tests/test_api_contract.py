@@ -38,10 +38,9 @@ from main import (
 from models import Recipe
 from planner import (
     PreferenceDTO,
-    _dietary_flag_truthy as planner_dietary_flag_truthy,
     query_candidate_recipes,
 )
-from solver import _dietary_flag_truthy as solver_dietary_flag_truthy
+from planning_policy import dietary_flag_truthy
 
 
 class FakeSession:
@@ -271,11 +270,10 @@ def test_recipe_import_normalizes_legacy_nutrition_and_dietary_aliases():
     assert normalized["dietary_flags"] == {"vegan": True, "gluten_free": False}
 
 
-@pytest.mark.parametrize("checker", [planner_dietary_flag_truthy, solver_dietary_flag_truthy])
-def test_planning_accepts_canonical_and_legacy_dietary_flags(checker):
-    assert checker({"vegan": True}, "is_vegan")
-    assert checker({"is_vegan": "true"}, "is_vegan")
-    assert not checker({"vegan": False}, "is_vegan")
+def test_planning_accepts_canonical_and_legacy_dietary_flags():
+    assert dietary_flag_truthy({"vegan": True}, "is_vegan")
+    assert dietary_flag_truthy({"is_vegan": "true"}, "is_vegan")
+    assert not dietary_flag_truthy({"vegan": False}, "is_vegan")
 
 
 def test_hybrid_planner_reads_canonical_import_nutrition():
@@ -287,6 +285,8 @@ def test_hybrid_planner_reads_canonical_import_nutrition():
         ingredients=[],
         instructions=[],
         cuisine=None,
+        dietary_flags=None,
+        allergens=None,
         tags=[],
         cost_category=None,
         total_time_minutes=30,
@@ -328,6 +328,8 @@ def test_hybrid_planner_reads_canonical_import_nutrition():
         "total_time_minutes": 30,
         "url": None,
     }
+
+    assert query_candidate_recipes(session, dto, exclude_recipe_ids={recipe.id})["dinner"] == []
 
 
 def test_admin_recipe_crud_models_expose_only_editor_fields():

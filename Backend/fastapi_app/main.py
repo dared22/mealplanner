@@ -1,5 +1,4 @@
 import ast
-import concurrent.futures
 import io
 import json
 import logging
@@ -25,19 +24,20 @@ from clerk_auth import (
 )
 from database import SessionLocal, get_session
 from models import ActivityLog, Preference, Rating, Recipe, User, PlanRecipe
+from planning_policy import (
+    matches_dietary_restrictions,
+    meal_slots_for_day,
+    normalize_nutrition,
+)
 from planner import (
     _format_list_values,
     fill_missing_meals,
     generate_daily_macro_goal,
     generate_daily_plan,
-    generate_daily_plan_for_preference,
 )
 from recipe_translator import PlanTranslator
 
 logger = logging.getLogger(__name__)
-PLAN_GENERATION_TIMEOUT = int(os.getenv("PLAN_GENERATION_TIMEOUT", "180"))
-
-
 class AdminSessionResponse(BaseModel):
     user_id: UUID
     clerk_user_id: str
@@ -798,20 +798,17 @@ def _is_impossible_constraint(preference: Preference, macro_goal: Dict[str, Any]
     return None
 
 
-def _generate_solver_plan(db: Session, user_id: UUID, preference: Preference) -> Dict[str, Any]:
+def _generate_solver_plan(
+    db: Session,
+    user_id: UUID,
+    preference: Preference,
+    macro_goal: Dict[str, Any],
+) -> Dict[str, Any]:
     """Generate plan using solver with automatic OpenAI fallback."""
     from solver import generate_personalized_plan
 
     def _plan_has_missing_meals(plan: Dict[str, Any], meals_per_day: int) -> bool:
-        slots = ["breakfast", "lunch", "dinner"]
-        extra = max((meals_per_day or 3) - 3, 0)
-        slots.extend(["snack"] * extra)
-        slots = slots[: max(meals_per_day or 3, 1)]
-        if "dinner" not in slots:
-            if slots:
-                slots[-1] = "dinner"
-            else:
-                slots = ["dinner"]
+        slots = meal_slots_for_day(meals_per_day)
 
         days = plan.get("days") if isinstance(plan, dict) else None
         if not isinstance(days, list):
@@ -836,6 +833,7 @@ def _generate_solver_plan(db: Session, user_id: UUID, preference: Preference) ->
             db=db,
             user_id=user_id,
             preference=preference,
+            macro_goal=macro_goal,
             timeout_seconds=10,
         )
 
@@ -893,7 +891,7 @@ def _generate_solver_plan(db: Session, user_id: UUID, preference: Preference) ->
             metadata={"user_id": str(user_id), "exception": str(exc)},
         )
 
-    openai_result = generate_daily_plan(preference, translate=False, db=db)
+    openai_result = generate_daily_plan(preference, macro_goal=macro_goal, db=db)
     _update_generation_stage(db, preference.id, "finalizing")
     # Use generation_source from result, append _fallback to indicate solver fallback
     generation_source = openai_result.get("generation_source", "openai") + "_fallback"
@@ -1602,27 +1600,6 @@ def _translate_plan_in_background(pref_id: int, lang: str) -> None:
 
 
 def _generate_plan_in_background(pref_id: int) -> None:
-    def _generate_plan_for_pref(pref_id: int) -> Dict[str, Any]:
-        local_db = SessionLocal()
-        try:
-            return generate_daily_plan_for_preference(local_db, pref_id)
-        finally:
-            local_db.close()
-
-    def _run_with_timeout(fn, timeout_seconds: int) -> Dict[str, Any]:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(fn)
-            try:
-                return future.result(timeout=timeout_seconds)
-            except concurrent.futures.TimeoutError:
-                future.cancel()
-                return {
-                    "plan": None,
-                    "error": f"Plan generation timed out after {timeout_seconds} seconds.",
-                }
-            except Exception as exc:
-                return {"plan": None, "error": str(exc)}
-
     db = SessionLocal()
     try:
         _update_generation_stage(db, pref_id, "finding_recipes")
@@ -1635,6 +1612,21 @@ def _generate_plan_in_background(pref_id: int) -> None:
         use_solver = bool(user_id and _should_use_solver(db, user_id))
 
         macro_response = generate_daily_macro_goal(preference)
+        if macro_response.get("error"):
+            plan_result = {"plan": None, "error": macro_response["error"]}
+            source = "solver" if use_solver else "openai"
+            _update_generation_stage(db, pref_id, "finalizing")
+            _persist_plan_result(db, preference, plan_result, generation_source=source)
+            log_activity(
+                db,
+                actor_type="user",
+                actor_id=user_id,
+                action_type="plan_generation",
+                action_detail=macro_response["error"],
+                status="error",
+                metadata={"preference_id": pref_id, "reason": "macro_generation_failed"},
+            )
+            return
         macro_goal = macro_response.get("goal")
 
         _update_generation_stage(db, pref_id, "optimizing_nutrition")
@@ -1657,15 +1649,12 @@ def _generate_plan_in_background(pref_id: int) -> None:
             return
 
         if use_solver and user_id is not None:
-            plan_result = _generate_solver_plan(db, user_id, preference)
+            plan_result = _generate_solver_plan(db, user_id, preference, macro_goal)
         else:
-            plan_result = _run_with_timeout(
-                lambda: _generate_plan_for_pref(pref_id),
-                PLAN_GENERATION_TIMEOUT,
-            )
+            plan_result = generate_daily_plan(preference, macro_goal=macro_goal, db=db)
             if plan_result.get("plan") is None and plan_result.get("error"):
                 logger.warning(
-                    "Plan generation for %s failed/timeout: %s",
+                    "Plan generation for %s failed: %s",
                     pref_id,
                     plan_result.get("error"),
                 )
@@ -2689,40 +2678,20 @@ def get_recipe_alternatives(
     if disliked_ids:
         stmt = stmt.where(~Recipe.id.in_(disliked_ids))
 
-    # Apply dietary restrictions (same logic as solver)
-    for restriction in dietary_restrictions:
-        restriction_lower = restriction.lower()
-
-        if restriction_lower == "vegan":
-            stmt = stmt.where(
-                (Recipe.dietary_flags["vegan"].astext == "true")
-                | (Recipe.dietary_flags["is_vegan"].astext == "true")
-            )
-        elif restriction_lower == "vegetarian":
-            stmt = stmt.where(
-                (Recipe.dietary_flags["vegetarian"].astext == "true")
-                | (Recipe.dietary_flags["is_vegetarian"].astext == "true")
-                | (Recipe.dietary_flags["vegan"].astext == "true")
-                | (Recipe.dietary_flags["is_vegan"].astext == "true")
-            )
-        elif restriction_lower == "gluten_free" or "gluten" in restriction_lower:
-            stmt = stmt.where(~Recipe.allergens.any("gluten"))
-        elif restriction_lower == "dairy_free" or "dairy" in restriction_lower:
-            stmt = stmt.where(~Recipe.allergens.any("dairy"))
-        elif restriction_lower == "nut_free" or "nut" in restriction_lower:
-            stmt = stmt.where(
-                ~Recipe.allergens.any("nuts") &
-                ~Recipe.allergens.any("tree nuts")
-            )
-
     # Order by: liked first, then popularity, then random
-    # We'll fetch more than needed and sort in Python for liked priority
+    # Fetch extra because the shared compatibility policy filters in Python.
     stmt = stmt.order_by(
         Recipe.popularity_score.desc().nullslast(),
         func.random()
-    ).limit(limit * 3)  # Fetch extra to allow for liked sorting
+    ).limit(limit * 10)
 
-    candidates = db.scalars(stmt).all()
+    candidates = [
+        recipe
+        for recipe in db.scalars(stmt).all()
+        if matches_dietary_restrictions(
+            recipe.dietary_flags, recipe.allergens, dietary_restrictions
+        )
+    ]
 
     # Sort: liked recipes first, then rest
     liked_alternatives = [r for r in candidates if r.id in liked_ids]
@@ -2732,11 +2701,11 @@ def get_recipe_alternatives(
     # Build response
     alternatives = []
     for recipe in sorted_alternatives:
-        nutrition = recipe.nutrition or {}
-        calories = nutrition.get("calories_kcal") or nutrition.get("calories") or 0
-        protein = nutrition.get("protein_g") or 0
-        carbs = nutrition.get("carbs_g") or 0
-        fat = nutrition.get("fat_g") or 0
+        nutrition = normalize_nutrition(recipe.nutrition)
+        calories = nutrition.get("calories", 0.0)
+        protein = nutrition.get("protein", 0.0)
+        carbs = nutrition.get("carbs", 0.0)
+        fat = nutrition.get("fat", 0.0)
 
         # Format cook time
         cook_time = None
