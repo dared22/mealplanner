@@ -3,6 +3,7 @@
 .env.*
 Backend/.env
 Frontend/.env
+.firecrawl
 
 # Allow example env files
 !.env.example
