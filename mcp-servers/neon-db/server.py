@@ -16,13 +16,18 @@ from sqlalchemy import create_engine, text, inspect
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.engine import Engine
 
+from database_url import coerce_database_url
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("neon-db-mcp")
 
 # Get database URL from environment
-DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL:
+raw_database_url = os.getenv("DATABASE_URL")
+if not raw_database_url:
     raise ValueError("DATABASE_URL environment variable must be set")
+
+
+DATABASE_URL = coerce_database_url(raw_database_url)
 
 # Create engine and session factory
 engine: Engine = create_engine(DATABASE_URL, echo=False)

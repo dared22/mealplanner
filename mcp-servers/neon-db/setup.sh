@@ -28,5 +28,4 @@ python test_server.py
 echo ""
 echo "✓ Setup complete!"
 echo ""
-echo "The MCP server is configured at: ~/.config/claude/mcp.json"
-echo "Restart Claude Code to use the new MCP tools."
+echo "Configure your MCP client separately to run this server with DATABASE_URL set."

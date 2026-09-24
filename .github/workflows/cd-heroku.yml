@@ -106,14 +106,6 @@ jobs:
           EOF
           chmod 600 ~/.netrc
 
-      # Optional first run: verify case-sensitive paths on Linux runner
-      - name: Sanity check paths
-        run: |
-          pwd && ls -la
-          ls -la Backend || true
-          ls -la Backend/fastapi_app || true
-          ls -la Frontend || true
-
       - name: Login to Heroku Container Registry
         run: heroku container:login
 
@@ -121,12 +113,21 @@ jobs:
       - name: Set container stack (backend)
         run: heroku stack:set container -a "$HEROKU_APP_BACKEND" 
 
-      - name: Build backend image
+      - name: Build deployment images
+        env:
+          VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
         run: |
+          VITE_API_URL="https://$HEROKU_APP_BACKEND.herokuapp.com"
           docker build \
             -f Backend/fastapi_app/Dockerfile \
             -t registry.heroku.com/$HEROKU_APP_BACKEND/web \
             Backend/fastapi_app
+          docker build \
+            --build-arg VITE_API_URL=$VITE_API_URL \
+            --build-arg VITE_CLERK_PUBLISHABLE_KEY=$VITE_CLERK_PUBLISHABLE_KEY \
+            -f Frontend/Dockerfile \
+            -t registry.heroku.com/$HEROKU_APP_FRONTEND/web \
+            Frontend
 
       - name: Push backend image
         run: docker push registry.heroku.com/$HEROKU_APP_BACKEND/web
@@ -137,21 +138,19 @@ jobs:
       - name: Run Alembic migrations
         run: heroku run "alembic upgrade head" -a $HEROKU_APP_BACKEND
 
-      # ---------- Frontend ----------
-      - name: Build frontend image
-        env:
-          VITE_API_URL: https://mealplanner-backend-d6ab87c9c7b5.herokuapp.com
-          VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
+      - name: Verify backend health
         run: |
-          docker build \
-            --build-arg VITE_API_URL=$VITE_API_URL \
-            --build-arg VITE_CLERK_PUBLISHABLE_KEY=$VITE_CLERK_PUBLISHABLE_KEY \
-            -f Frontend/Dockerfile \
-            -t registry.heroku.com/$HEROKU_APP_FRONTEND/web \
-            Frontend
+          curl --fail --retry 5 --retry-connrefused --retry-delay 5 \
+            "https://$HEROKU_APP_BACKEND.herokuapp.com/health"
 
+      # ---------- Frontend ----------
       - name: Push frontend image
         run: docker push registry.heroku.com/$HEROKU_APP_FRONTEND/web
 
       - name: Release frontend
         run: heroku container:release web -a $HEROKU_APP_FRONTEND
+
+      - name: Verify frontend root
+        run: |
+          curl --fail --retry 5 --retry-connrefused --retry-delay 5 \
+            "https://$HEROKU_APP_FRONTEND.herokuapp.com/"
