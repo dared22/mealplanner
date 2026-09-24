@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useAuth } from '@clerk/clerk-react';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+import { API_URL, jsonHeaders, withAuthorization } from '@/Entities/api';
 
 export function useRatings() {
   const { getToken } = useAuth();
@@ -14,7 +13,7 @@ export function useRatings() {
     try {
       const token = await getToken();
       const res = await fetch(`${API_URL}/ratings/me?limit=100`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: withAuthorization(token)
       });
       if (res.ok) {
         const data = await res.json();
@@ -34,7 +33,7 @@ export function useRatings() {
     try {
       const token = await getToken();
       const res = await fetch(`${API_URL}/ratings/progress`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: withAuthorization(token)
       });
       if (res.ok) {
         const data = await res.json();
@@ -57,10 +56,7 @@ export function useRatings() {
       const token = await getToken();
       const res = await fetch(`${API_URL}/ratings`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
+        headers: jsonHeaders(token),
         body: JSON.stringify({ recipe_id: recipeId, is_liked: isLiked })
       });
       if (res.ok) {

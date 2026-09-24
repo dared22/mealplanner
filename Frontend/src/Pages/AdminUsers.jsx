@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@clerk/clerk-react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
-import { API_URL } from '@/Entities/api';
+import { API_URL, withAuthorization } from '@/Entities/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
@@ -100,7 +100,7 @@ export default function AdminUsers() {
       params.set('offset', String(pagination.offset));
 
       const response = await fetch(`${API_URL}/admin/users?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: withAuthorization(token),
       });
 
       if (!response.ok) {

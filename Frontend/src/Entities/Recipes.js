@@ -1,4 +1,4 @@
-import { API_URL } from './api';
+import { API_URL, withAuthorization } from './api';
 
 const buildQuery = (params = {}) => {
   const searchParams = new URLSearchParams();
@@ -14,7 +14,7 @@ export const RecipesApi = {
   async list({ search, tag, limit = 50, offset = 0, token } = {}) {
     const query = buildQuery({ search, tag, limit, offset });
     const response = await fetch(`${API_URL}/recipes${query}`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      headers: withAuthorization(token),
     });
 
     if (!response.ok) {

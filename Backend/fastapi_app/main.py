@@ -38,13 +38,6 @@ logger = logging.getLogger(__name__)
 PLAN_GENERATION_TIMEOUT = int(os.getenv("PLAN_GENERATION_TIMEOUT", "180"))
 
 
-class SessionResponse(BaseModel):
-    user_id: UUID
-    clerk_user_id: str
-    email: Optional[EmailStr] = None
-    username: str
-
-
 class AdminSessionResponse(BaseModel):
     user_id: UUID
     clerk_user_id: str
@@ -299,6 +292,39 @@ class AlternativesResponse(BaseModel):
     alternatives: list[AlternativeRecipe]
     source_recipe_id: UUID
     meal_type: str
+
+
+class PreferencePlanResponse(BaseModel):
+    plan_status: str
+    generation_stage: Optional[str] = None
+    plan: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+    generation_source: Optional[str] = None
+    recommendation_reasons: Optional[Dict[str, Any]] = None
+    translation_status: Optional[str] = None
+    translation_error: Optional[str] = None
+
+
+class RecipeNutritionResponse(BaseModel):
+    calories: Optional[float] = None
+    protein_g: Optional[float] = None
+    carbs_g: Optional[float] = None
+    fat_g: Optional[float] = None
+
+
+class RecipeSummaryResponse(BaseModel):
+    id: UUID
+    title: str
+    image_url: Optional[str] = None
+    meal_type: Optional[str] = None
+    tags: list[str]
+    ingredients: list[Any]
+    total_time_minutes: Optional[int] = None
+    nutrition: RecipeNutritionResponse
+
+
+class RecipeListResponse(BaseModel):
+    items: list[RecipeSummaryResponse]
 
 
 def optional_current_user(
@@ -949,6 +975,7 @@ def _persist_plan_result(
 
     # Add generation metadata
     plan_result_with_meta = dict(plan_result)
+    plan_result_with_meta.pop("raw_text", None)
     if not plan_result_with_meta.get("language"):
         base_language = _normalize_language(
             os.getenv("PLAN_BASE_LANGUAGE") or os.getenv("RECIPE_BASE_LANGUAGE") or "no"
@@ -1197,38 +1224,19 @@ def _normalize_ingredients_payload(value: Any) -> list[dict[str, Any]]:
 
 
 def _recipe_to_dict(recipe: Recipe) -> Dict[str, Any]:
-    """Normalize a Recipe ORM object into a JSON-serializable dict."""
+    """Serialize the public recipe contract from a Recipe ORM object."""
     nutrition = recipe.nutrition if isinstance(recipe.nutrition, dict) else {}
     calories = nutrition.get("calories") or nutrition.get("calories_kcal")
 
-    prep_time = recipe.prep_time_minutes
-    cook_time = recipe.cook_time_minutes
     total_time = recipe.total_time_minutes
-    if total_time is None and prep_time is not None and cook_time is not None:
-        total_time = prep_time + cook_time
-
-    primary_image = recipe.image_url
-    images = [recipe.image_url] if recipe.image_url else []
-
-    meal_type = (recipe.meal_type or "").lower()
-    is_breakfast = meal_type == "breakfast"
-    is_lunch = meal_type == "lunch"
 
     payload = {
         "id": recipe.id,
-        "name": recipe.title,
-        "url": recipe.source_url,
-        "source": recipe.author or "unknown",
-        "type": recipe.dish_type,
-        "price_tier": recipe.cost_category,
+        "title": recipe.title,
+        "image_url": recipe.image_url,
+        "meal_type": recipe.meal_type,
         "tags": recipe.tags or [],
         "ingredients": _flatten_ingredients(recipe.ingredients) if recipe.ingredients else [],
-        "instructions": recipe.instructions or [],
-        "images": images,
-        "local_images": [],
-        "image": primary_image,
-        "prep_time_minutes": prep_time,
-        "cook_time_minutes": cook_time,
         "total_time_minutes": total_time,
         "nutrition": {
             "calories": calories,
@@ -1236,8 +1244,6 @@ def _recipe_to_dict(recipe: Recipe) -> Dict[str, Any]:
             "carbs_g": nutrition.get("carbs_g"),
             "fat_g": nutrition.get("fat_g"),
         },
-        "is_breakfast": is_breakfast,
-        "is_lunch": is_lunch,
     }
     return _json_safe(payload)
 
@@ -1799,11 +1805,10 @@ def _generate_plan_in_background(pref_id: int) -> None:
                 future.cancel()
                 return {
                     "plan": None,
-                    "raw_text": None,
                     "error": f"Plan generation timed out after {timeout_seconds} seconds.",
                 }
             except Exception as exc:
-                return {"plan": None, "raw_text": None, "error": str(exc)}
+                return {"plan": None, "error": str(exc)}
 
     db = SessionLocal()
     try:
@@ -1823,7 +1828,7 @@ def _generate_plan_in_background(pref_id: int) -> None:
 
         impossible_error = _is_impossible_constraint(preference, macro_goal)
         if impossible_error:
-            plan_result = {"plan": None, "raw_text": None, "error": impossible_error}
+            plan_result = {"plan": None, "error": impossible_error}
             source = "solver" if use_solver else "openai"
             _update_generation_stage(db, pref_id, "finalizing")
             _persist_plan_result(db, preference, plan_result, generation_source=source)
@@ -1958,29 +1963,27 @@ def save_preferences(
 
     return {
         "id": preference.id,
-        "stored": True,
         "plan": None,
-        "raw_plan": None,
         "error": None,
         "plan_status": "pending",
     }
 
 
-@app.get("/preferences/{pref_id}")
+@app.get("/preferences/{pref_id}", response_model=PreferencePlanResponse)
 def get_preferences(
     pref_id: int,
     background_tasks: BackgroundTasks,
     lang: Optional[str] = None,
     db: Session = Depends(get_session),
+    current_user: User = Depends(current_user_dependency),
 ) -> Dict[str, Any]:
     entry = db.get(Preference, pref_id)
-    if entry is None:
+    if entry is None or entry.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Preferences not found")
 
     raw_data = entry.raw_data if isinstance(entry.raw_data, dict) else {}
     generated_plan = raw_data.get("generated_plan") if isinstance(raw_data, dict) else None
     plan_payload = generated_plan.get("plan") if isinstance(generated_plan, dict) else None
-    raw_plan_text = generated_plan.get("raw_text") if isinstance(generated_plan, dict) else None
     plan_error = generated_plan.get("error") if isinstance(generated_plan, dict) else None
     generation_source = None
     if isinstance(generated_plan, dict):
@@ -1995,10 +1998,8 @@ def get_preferences(
             plan_error = "Plan generation completed without a usable plan."
 
     generation_stage = None
-    generation_stage_updated_at = None
     if plan_status == "pending":
         generation_stage = raw_data.get("generation_stage", "finding_recipes")
-        generation_stage_updated_at = raw_data.get("generation_stage_updated_at")
 
     translation_status = None
     translation_error = None
@@ -2062,42 +2063,15 @@ def get_preferences(
         )
 
     return {
-        "id": entry.id,
-        "submitted_at": entry.submitted_at,
-        "age": entry.age,
-        "gender": entry.gender,
-        "height_cm": entry.height_cm,
-        "weight_kg": entry.weight_kg,
-        "activity_level": entry.activity_level,
-        "nutrition_goal": entry.nutrition_goal,
-        "meals_per_day": entry.meals_per_day,
-        "budget_range": entry.budget_range,
-        "cooking_time_preference": entry.cooking_time_preference,
-        "dietary_restrictions": entry.dietary_restrictions,
-        "preferred_cuisines": entry.preferred_cuisines,
-        "raw_data": entry.raw_data,
-        "user_id": entry.user_id,
         "plan_status": plan_status,
         "generation_stage": generation_stage,
-        "generation_stage_updated_at": generation_stage_updated_at,
         "plan": plan_payload,
-        "raw_plan": raw_plan_text,
         "error": plan_error,
         "generation_source": generation_source,
         "recommendation_reasons": recommendation_reasons,
         "translation_status": translation_status,
         "translation_error": translation_error,
     }
-
-
-@app.get("/auth/session", response_model=SessionResponse)
-def get_active_session(user: User = Depends(current_user_dependency)) -> SessionResponse:
-    return SessionResponse(
-        user_id=user.id,
-        clerk_user_id=user.clerk_user_id or "",
-        email=user.email,
-        username=user.username,
-    )
 
 
 @app.get("/admin/session", response_model=AdminSessionResponse)
@@ -2746,86 +2720,6 @@ def list_admin_activity_logs(
     )
 
 
-@app.get("/users/{user_id}/preferences")
-def list_user_preferences(
-    user_id: UUID,
-    db: Session = Depends(get_session),
-    current_user: User = Depends(current_user_dependency),
-) -> Dict[str, Any]:
-    if user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Cannot access another user's preferences")
-
-    entries = db.scalars(select(Preference).where(Preference.user_id == user_id)).all()
-    return {
-        "user_id": user_id,
-        "preferences": [
-            {
-                "id": entry.id,
-                "submitted_at": entry.submitted_at,
-                "raw_data": entry.raw_data,
-            }
-            for entry in entries
-        ],
-    }
-
-
-@app.get("/plans/history")
-def get_plan_history(
-    limit: int = Query(10, ge=1, le=100),
-    offset: int = Query(0, ge=0),
-    db: Session = Depends(get_session),
-    current_user: User = Depends(current_user_dependency),
-) -> Dict[str, Any]:
-    """Get user's meal plan history with recipe tracking."""
-    # Get total count
-    total = db.scalar(
-        select(func.count(Preference.id)).where(Preference.user_id == current_user.id)
-    ) or 0
-
-    # Get preferences with plan recipes
-    preferences = db.scalars(
-        select(Preference)
-        .where(Preference.user_id == current_user.id)
-        .order_by(Preference.id.desc())
-        .offset(offset)
-        .limit(limit)
-    ).all()
-
-    plans = []
-    for pref in preferences:
-        # Get PlanRecipe entries for this preference
-        plan_recipes = db.scalars(
-            select(PlanRecipe)
-            .where(PlanRecipe.preference_id == pref.id)
-            .order_by(PlanRecipe.created_at)
-        ).all()
-
-        plan_status = _plan_status_from_raw_data(pref.raw_data)
-
-        plans.append({
-            "preference_id": pref.id,
-            "submitted_at": pref.submitted_at,
-            "plan_status": plan_status,
-            "recipes": [
-                {
-                    "recipe_id": str(pr.recipe_id),
-                    "day_name": pr.day_name,
-                    "meal_type": pr.meal_type,
-                }
-                for pr in plan_recipes
-            ],
-        })
-
-    return {
-        "items": plans,
-        "pagination": {
-            "total": total,
-            "limit": limit,
-            "offset": offset,
-        },
-    }
-
-
 @app.post("/ratings", response_model=RatingResponse)
 def create_or_update_rating(
     payload: RatingCreate,
@@ -2962,14 +2856,14 @@ def get_rating_progress(
     )
 
 
-@app.get("/recipes")
+@app.get("/recipes", response_model=RecipeListResponse)
 def list_recipes(
     search: Optional[str] = Query(None, description="Case-insensitive name match"),
     tag: Optional[str] = Query(None, description="Filter by tag"),
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_session),
-    _user: Optional[User] = Depends(optional_current_user),
+    _user: User = Depends(current_user_dependency),
 ) -> Dict[str, Any]:
     """Return recipes from the database with lightweight filtering."""
     filters = []
@@ -2983,20 +2877,12 @@ def list_recipes(
     if filters:
         base_stmt = base_stmt.where(*filters)
 
-    count_stmt = select(func.count()).select_from(base_stmt.subquery())
-    total = db.scalar(count_stmt) or 0
-
     rows = db.scalars(
         base_stmt.order_by(Recipe.created_at.desc().nullslast(), Recipe.slug).offset(offset).limit(limit)
     ).all()
 
     return {
         "items": [_recipe_to_dict(row) for row in rows],
-        "pagination": {
-            "total": total,
-            "limit": limit,
-            "offset": offset,
-        },
     }
 
 

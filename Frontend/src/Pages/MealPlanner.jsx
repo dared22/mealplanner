@@ -196,7 +196,6 @@ export default function MealPlanner({ user }) {
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [planPayload, setPlanPayload] = useState(() => initialProgress?.planPayload ?? null);
-  const [rawPlanText, setRawPlanText] = useState(() => initialProgress?.rawPlanText ?? '');
   const [planStatus, setPlanStatus] = useState(() => initialProgress?.planStatus ?? 'idle');
   const [generationStage, setGenerationStage] = useState(() => initialProgress?.generationStage ?? null);
   const [generationSource, setGenerationSource] = useState(null);
@@ -226,7 +225,6 @@ export default function MealPlanner({ user }) {
     setCurrentStep(1);
     setFormData({});
     setPlanPayload(null);
-    setRawPlanText('');
     setPlanStatus('idle');
     setGenerationStage(null);
     setPlanError(null);
@@ -272,7 +270,6 @@ export default function MealPlanner({ user }) {
       const response = await UserPreferences.fetch(prefId, language, token);
       const status = response?.plan_status;
       const serverPlan = response?.plan ?? null;
-      const rawText = response?.raw_plan ?? '';
       const serverError = response?.error ?? '';
       const serverGenerationSource = response?.generation_source ?? null;
       const serverRecommendationReasons = response?.recommendation_reasons ?? null;
@@ -282,7 +279,6 @@ export default function MealPlanner({ user }) {
 
       if (translationStatus === 'pending') {
         setPlanPayload(null);
-        setRawPlanText('');
         setPlanStatus('loading');
         setPlanError(null);
         await new Promise((resolve) => setTimeout(resolve, delayMs));
@@ -297,7 +293,6 @@ export default function MealPlanner({ user }) {
 
       if (status === 'success' || serverPlan) {
         setPlanPayload(serverPlan);
-        setRawPlanText(rawText);
         setPlanStatus('success');
         setPlanError(null);
         setGenerationSource(serverGenerationSource);
@@ -324,13 +319,12 @@ export default function MealPlanner({ user }) {
       currentStep,
       formData,
       planPayload,
-      rawPlanText,
       planStatus,
       generationStage,
       planError,
       preferenceId
     });
-  }, [storageKey, currentStep, formData, planPayload, rawPlanText, planStatus, generationStage, planError, preferenceId]);
+  }, [storageKey, currentStep, formData, planPayload, planStatus, generationStage, planError, preferenceId]);
 
   useEffect(() => {
     if (!preferenceId || (planStatus !== 'loading' && planStatus !== 'pending')) return;
@@ -358,7 +352,6 @@ export default function MealPlanner({ user }) {
         }
         setGenerationStage(response?.generation_stage ?? null);
         setPlanPayload(response?.plan ?? null);
-        setRawPlanText(response?.raw_plan ?? '');
         setGenerationSource(response?.generation_source ?? null);
         setRecommendationReasons(response?.recommendation_reasons ?? null);
       } catch {
@@ -373,7 +366,6 @@ export default function MealPlanner({ user }) {
     if (!userId) return;
     setPlanError(null);
     setPlanPayload(null);
-    setRawPlanText('');
     setPlanStatus('loading');
     setGenerationStage('finding_recipes');
     setGenerationSource(null);
@@ -386,7 +378,6 @@ export default function MealPlanner({ user }) {
       const token = await getAuthToken();
       const response = await UserPreferences.create({ ...formData, language: lang }, token);
       const serverPlan = response?.plan ?? null;
-      const rawText = response?.raw_plan ?? '';
       const serverError = response?.error ?? '';
       const returnedId = response?.id ?? null;
 
@@ -394,7 +385,6 @@ export default function MealPlanner({ user }) {
 
       if (serverPlan) {
         setPlanPayload(serverPlan);
-        setRawPlanText(rawText);
         setPlanStatus('success');
       } else if (response?.plan_status === 'error') {
         setPlanStatus('error');
@@ -425,7 +415,6 @@ export default function MealPlanner({ user }) {
         <ResultsStep
           data={formData}
           plan={planPayload}
-          rawPlanText={rawPlanText}
           status={planStatus}
           generationStage={generationStage}
           generationSource={generationSource}

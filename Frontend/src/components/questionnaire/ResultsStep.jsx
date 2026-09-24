@@ -6,6 +6,7 @@ import {
   Info, ChevronDown, ChevronUp, X, Sparkles, Wand2
 } from 'lucide-react';
 import { useAuth } from '@clerk/clerk-react';
+import { API_URL, withAuthorization } from '@/Entities/api';
 import { useLanguage } from '@/i18n/useLanguage';
 import { useRatings } from '@/hooks/useRatings';
 
@@ -601,7 +602,6 @@ const SwapModal = memo(function SwapModal({ isOpen, onClose, alternatives, loadi
 export default function ResultsStep({
   data,
   plan,
-  rawPlanText,
   status = 'idle',
   generationStage: currentGenerationStage = null,
   generationSource = null,
@@ -689,10 +689,9 @@ export default function ResultsStep({
     setLoadingAlternatives(true);
     try {
       const token = await getToken();
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-      const url = `${apiUrl}/recipes/alternatives/${recipeId}?meal_type=${mealType.toLowerCase()}&limit=5`;
+      const url = `${API_URL}/recipes/alternatives/${recipeId}?meal_type=${mealType.toLowerCase()}&limit=5`;
       const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: withAuthorization(token)
       });
       if (res.ok) {
         const data = await res.json();
@@ -923,14 +922,6 @@ export default function ResultsStep({
                 <RatingProgress progress={progress} t={t} />
               </div>
             </div>
-          )}
-
-          {/* Raw Response (collapsible for debug) */}
-          {rawPlanText && (
-            <details className="p-4 rounded-2xl bg-secondary text-sm">
-              <summary className="cursor-pointer font-semibold text-foreground">{t('View AI Response')}</summary>
-              <pre className="mt-3 whitespace-pre-wrap text-xs text-muted-foreground overflow-auto max-h-64">{rawPlanText}</pre>
-            </details>
           )}
         </Motion.div>
       )}

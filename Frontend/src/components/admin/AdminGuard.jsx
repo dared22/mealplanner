@@ -3,7 +3,7 @@ import { Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '@clerk/clerk-react';
 import AdminLayout from './AdminLayout';
 import Forbidden from '@/Pages/Forbidden';
-import { API_URL } from '@/Entities/api';
+import { API_URL, withAuthorization } from '@/Entities/api';
 
 export default function AdminGuard() {
   const navigate = useNavigate();
@@ -22,9 +22,7 @@ export default function AdminGuard() {
         const token = await getToken();
 
         const response = await fetch(`${API_URL}/admin/session`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+        headers: withAuthorization(token),
         });
 
         if (!isMounted) return;

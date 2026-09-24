@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@clerk/clerk-react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
-import { API_URL } from '@/Entities/api';
+import { API_URL, withAuthorization } from '@/Entities/api';
 import { Button } from '@/components/ui/button';
 import { buttonVariants } from '@/components/ui/buttonVariants';
 import { Input } from '@/components/ui/input';
@@ -104,7 +104,7 @@ export default function AdminRecipes() {
       params.set('offset', String(pagination.offset));
 
       const response = await fetch(`${API_URL}/admin/recipes?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: withAuthorization(token),
       });
 
       if (!response.ok) {
@@ -145,7 +145,7 @@ export default function AdminRecipes() {
 
       const response = await fetch(`${API_URL}/admin/recipes/${recipeId}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
+        headers: withAuthorization(token),
       });
 
       if (!response.ok) {
@@ -186,7 +186,7 @@ export default function AdminRecipes() {
         const request = new XMLHttpRequest();
         request.open('POST', `${API_URL}/admin/recipes/import`);
         request.responseType = 'json';
-        request.setRequestHeader('Authorization', `Bearer ${token}`);
+        request.setRequestHeader('Authorization', withAuthorization(token).Authorization);
         request.setRequestHeader('Content-Type', contentType);
         request.setRequestHeader('X-File-Name', importFile.name);
 

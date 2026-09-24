@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useAuth } from '@clerk/clerk-react';
 import {
   ChefHat,
   Flame,
@@ -76,7 +77,7 @@ function FilterChip({ label, active, onToggle }) {
 
 function RecipeCard({ recipe, t }) {
   const nutrition = recipe.nutrition || {};
-  const calories = nutrition.calories ?? nutrition.calories_kcal;
+  const calories = nutrition.calories;
   const protein = nutrition.protein_g;
   const image = recipe.image || recipe.images?.[0];
   const [imgError, setImgError] = useState(false);
@@ -148,6 +149,7 @@ function RecipeCard({ recipe, t }) {
 
 export default function Recipes() {
   const { t } = useLanguage();
+  const { getToken } = useAuth();
   const [recipes, setRecipes] = useState([]);
   const [search, setSearch] = useState('');
   const [mealTab, setMealTab] = useState('all');
@@ -163,7 +165,7 @@ export default function Recipes() {
   const [visibleCount, setVisibleCount] = useState(6);
 
   const normalizeRecipe = useCallback((recipe) => {
-    const name = recipe?.name || recipe?.title || 'Untitled recipe';
+    const name = recipe?.title || 'Untitled recipe';
     const tags = Array.isArray(recipe?.tags) ? recipe.tags.map(String) : [];
     const ingredientsRaw = recipe?.ingredients;
     const ingredients = Array.isArray(ingredientsRaw)
@@ -176,14 +178,11 @@ export default function Recipes() {
           .filter(Boolean)
       : [];
     const nutrition = recipe?.nutrition && typeof recipe.nutrition === 'object' ? recipe.nutrition : {};
-    const calories = nutrition.calories ?? nutrition.calories_kcal;
+    const calories = nutrition.calories;
     const protein = nutrition.protein_g;
     const mealType = (recipe?.meal_type || '').toLowerCase();
-    const isBreakfast = recipe?.is_breakfast ?? mealType === 'breakfast';
-    const isLunch = recipe?.is_lunch ?? mealType === 'lunch';
-    const prepTime = recipe?.prep_time_minutes ?? null;
-    const cookTime = recipe?.cook_time_minutes ?? null;
-    const totalTime = recipe?.total_time_minutes ?? (prepTime && cookTime ? prepTime + cookTime : null);
+    const isBreakfast = mealType === 'breakfast';
+    const isLunch = mealType === 'lunch';
 
     return {
       ...recipe,
@@ -191,14 +190,12 @@ export default function Recipes() {
       tags,
       ingredients,
       nutrition: nutrition || {},
-      image: recipe?.image || recipe?.image_url || recipe?.images?.[0],
+      image: recipe?.image_url,
       calories,
       protein,
       is_breakfast: isBreakfast,
       is_lunch: isLunch,
-      prep_time_minutes: prepTime,
-      cook_time_minutes: cookTime,
-      total_time_minutes: totalTime,
+      total_time_minutes: recipe?.total_time_minutes ?? null,
     };
   }, []);
 
@@ -206,7 +203,8 @@ export default function Recipes() {
     try {
       setLoading(true);
       setError(null);
-      const data = await RecipesApi.list({ limit: 100 });
+      const token = await getToken();
+      const data = await RecipesApi.list({ limit: 100, token });
       const normalized = (data.items || []).map(normalizeRecipe);
       setRecipes(normalized);
     } catch (err) {
@@ -214,7 +212,7 @@ export default function Recipes() {
     } finally {
       setLoading(false);
     }
-  }, [normalizeRecipe]);
+  }, [getToken, normalizeRecipe]);
 
   useEffect(() => {
     fetchRecipes();
@@ -243,7 +241,7 @@ export default function Recipes() {
     return recipes.filter((recipe) => {
       if (term && !String(recipe.name || '').toLowerCase().includes(term)) return false;
       const n = recipe.nutrition || {};
-      const kcal = Number(n.calories ?? n.calories_kcal ?? 0) || 0;
+      const kcal = Number(n.calories ?? 0) || 0;
       const prot = Number(n.protein_g ?? 0) || 0;
       if (kcal < calories.min || kcal > calories.max) return false;
       if (prot < protein) return false;

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@clerk/clerk-react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
-import { API_URL } from '@/Entities/api';
+import { API_URL, jsonHeaders, withAuthorization } from '@/Entities/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
@@ -88,7 +88,7 @@ export default function AdminRecipeEditor() {
         throw new Error('Missing authentication token. Please sign in again.');
       }
       const response = await fetch(`${API_URL}/admin/recipes/${recipeId}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: withAuthorization(token),
       });
       if (!response.ok) {
         throw new Error(`Request failed with status ${response.status}`);
@@ -208,10 +208,7 @@ export default function AdminRecipeEditor() {
         `${API_URL}/admin/recipes${isCreateMode ? '' : `/${recipeId}`}`,
         {
           method: isCreateMode ? 'POST' : 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
+          headers: jsonHeaders(token),
           body: JSON.stringify(payload),
         }
       );

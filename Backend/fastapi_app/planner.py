@@ -1347,7 +1347,7 @@ def translate_plan(plan: Dict[str, Any], language: Optional[str]) -> Dict[str, A
 def generate_daily_plan(pref: Any, translate: bool = False, db: Optional[Session] = None) -> Dict[str, Any]:
     macro_response = generate_daily_macro_goal(pref)
     if macro_response.get("error"):
-        return {"plan": None, "raw_text": None, "error": macro_response["error"]}
+        return {"plan": None, "error": macro_response["error"]}
 
     macro_goal = macro_response.get("goal")
     dto = _normalize_preference(pref)
@@ -1365,7 +1365,7 @@ def generate_daily_plan(pref: Any, translate: bool = False, db: Optional[Session
             db=db,
         )
         if recipe_match.get("error"):
-            return {"plan": None, "raw_text": None, "error": recipe_match["error"]}
+            return {"plan": None, "error": recipe_match["error"]}
         meals_for_day = recipe_match.get("meals") or []
 
         # Track recipe source counts
@@ -1395,7 +1395,6 @@ def generate_daily_plan(pref: Any, translate: bool = False, db: Optional[Session
         translation = translate_plan(plan_payload, dto.language)
         return {
             "plan": translation["plan"],
-            "raw_text": None,
             "error": translation["error"],
             "language": "en",
             "generation_source": generation_source,
@@ -1404,7 +1403,6 @@ def generate_daily_plan(pref: Any, translate: bool = False, db: Optional[Session
         }
     return {
         "plan": plan_payload,
-        "raw_text": None,
         "error": None,
         "language": plan_language,
         "generation_source": generation_source,
