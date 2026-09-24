@@ -64,15 +64,15 @@ def _normalize_allergens(allergens: Any) -> Set[str]:
 def _dietary_flag_truthy(flags: Any, key: str) -> bool:
     if not isinstance(flags, dict):
         return False
-    value = flags.get(key)
-    if value is None:
-        value = flags.get(key.lower())
-    if value is None:
-        return False
-    if isinstance(value, bool):
-        return value
-    text = str(value).strip().lower()
-    return text in {"true", "1", "yes", "y"}
+    keys = (key, key.lower(), key.removeprefix("is_"), key.lower().removeprefix("is_"))
+    for candidate in keys:
+        value = flags.get(candidate)
+        if value is None:
+            continue
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in {"true", "1", "yes", "y"}
+    return False
 
 
 def _violates_allergen_restriction(allergens: Set[str], restriction: str) -> bool:
@@ -203,12 +203,17 @@ def _filter_recipes_for_solver(
         restriction_lower = str(restriction).lower()
 
         if restriction_lower == "vegan":
-            stmt = stmt.where(Recipe.dietary_flags["is_vegan"].astext == "true")
+            stmt = stmt.where(
+                (Recipe.dietary_flags["vegan"].astext == "true")
+                | (Recipe.dietary_flags["is_vegan"].astext == "true")
+            )
         elif restriction_lower == "vegetarian":
             # Vegetarian includes vegan recipes
             stmt = stmt.where(
-                (Recipe.dietary_flags["is_vegetarian"].astext == "true") |
-                (Recipe.dietary_flags["is_vegan"].astext == "true")
+                (Recipe.dietary_flags["vegetarian"].astext == "true")
+                | (Recipe.dietary_flags["is_vegetarian"].astext == "true")
+                | (Recipe.dietary_flags["vegan"].astext == "true")
+                | (Recipe.dietary_flags["is_vegan"].astext == "true")
             )
 
     result = db.execute(stmt)

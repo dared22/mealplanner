@@ -207,15 +207,15 @@ def _normalize_allergens(value: Any) -> Set[str]:
 def _dietary_flag_truthy(flags: Any, key: str) -> bool:
     if not isinstance(flags, dict):
         return False
-    value = flags.get(key)
-    if value is None:
-        value = flags.get(key.lower())
-    if value is None:
-        return False
-    if isinstance(value, bool):
-        return value
-    text = str(value).strip().lower()
-    return text in {"true", "1", "yes", "y"}
+    keys = (key, key.lower(), key.removeprefix("is_"), key.lower().removeprefix("is_"))
+    for candidate in keys:
+        value = flags.get(candidate)
+        if value is None:
+            continue
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in {"true", "1", "yes", "y"}
+    return False
 
 
 def _violates_allergen_restriction(allergens: Set[str], keyword: str) -> bool:
@@ -848,12 +848,17 @@ def query_candidate_recipes(
         if restriction == "none":
             continue
         if restriction == "vegan":
-            query = query.where(Recipe.dietary_flags["is_vegan"].astext == "true")
+            query = query.where(
+                (Recipe.dietary_flags["vegan"].astext == "true")
+                | (Recipe.dietary_flags["is_vegan"].astext == "true")
+            )
         elif restriction == "vegetarian":
             # Vegetarian means vegan OR vegetarian
             query = query.where(
-                (Recipe.dietary_flags["is_vegan"].astext == "true") |
-                (Recipe.dietary_flags["is_vegetarian"].astext == "true")
+                (Recipe.dietary_flags["vegan"].astext == "true")
+                | (Recipe.dietary_flags["is_vegan"].astext == "true")
+                | (Recipe.dietary_flags["vegetarian"].astext == "true")
+                | (Recipe.dietary_flags["is_vegetarian"].astext == "true")
             )
 
     # Apply preferred cuisines filter
@@ -891,10 +896,12 @@ def query_candidate_recipes(
 
         # Extract nutrition data
         nutrition = recipe.nutrition or {}
-        calories = float(nutrition.get("calories", 0))
-        protein = float(nutrition.get("protein", 0))
-        carbs = float(nutrition.get("carbs", 0) or nutrition.get("carbohydrates", 0))
-        fat = float(nutrition.get("fat", 0))
+        calories = float(nutrition.get("calories") or nutrition.get("calories_kcal") or 0)
+        protein = float(nutrition.get("protein_g") or nutrition.get("protein") or 0)
+        carbs = float(
+            nutrition.get("carbs_g") or nutrition.get("carbs") or nutrition.get("carbohydrates") or 0
+        )
+        fat = float(nutrition.get("fat_g") or nutrition.get("fat") or 0)
 
         # Skip recipes with missing nutrition data
         if calories == 0:

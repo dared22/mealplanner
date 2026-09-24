@@ -106,7 +106,6 @@ class AdminRecipeSummary(BaseModel):
     title: str
     slug: str
     meal_type: Optional[str] = None
-    cost_category: Optional[str] = None
     tags: list[str]
     is_active: bool
     created_at: Optional[datetime] = None
@@ -116,37 +115,17 @@ class AdminRecipeDetail(BaseModel):
     id: UUID
     title: str
     slug: str
-    category: Optional[str] = None
-    cost_category: Optional[str] = None
     source_url: Optional[str] = None
     image_url: Optional[str] = None
     description: Optional[str] = None
     instructions: Optional[list[Any]] = None
     ingredients: Optional[list[Any]] = None
-    prep_time_minutes: Optional[int] = None
-    cook_time_minutes: Optional[int] = None
-    total_time_minutes: Optional[int] = None
-    portions: Optional[int] = None
     cuisine: Optional[str] = None
     meal_type: Optional[str] = None
-    dish_type: Optional[str] = None
-    dietary_flags: Optional[Dict[str, Any]] = None
-    allergens: Optional[list[str]] = None
     nutrition: Optional[Dict[str, Any]] = None
-    cost_per_serving_cents: Optional[int] = None
-    equipment: Optional[list[str]] = None
-    difficulty: Optional[str] = None
-    spice_level: Optional[int] = None
-    author: Optional[str] = None
-    language: Optional[str] = None
     tags: Optional[list[str]] = None
-    rating: Optional[float] = None
-    popularity_score: Optional[float] = None
-    health_score: Optional[float] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
-    scraped_at: Optional[datetime] = None
-    scrape_hash: Optional[str] = None
     is_active: bool
 
 
@@ -162,60 +141,23 @@ class AdminRecipeCreate(BaseModel):
     nutrition: Dict[str, Any]
     tags: list[str]
     meal_type: str
-    category: Optional[str] = None
-    cost_category: Optional[str] = None
     source_url: Optional[str] = None
     image_url: Optional[str] = None
     description: Optional[str] = None
-    prep_time_minutes: Optional[int] = None
-    cook_time_minutes: Optional[int] = None
-    total_time_minutes: Optional[int] = None
-    portions: Optional[int] = None
     cuisine: Optional[str] = None
-    dish_type: Optional[str] = None
-    dietary_flags: Optional[Dict[str, Any]] = None
-    allergens: Optional[list[str]] = None
-    cost_per_serving_cents: Optional[int] = None
-    equipment: Optional[list[str]] = None
-    difficulty: Optional[str] = None
-    spice_level: Optional[int] = None
-    author: Optional[str] = None
-    language: Optional[str] = None
-    rating: Optional[float] = None
-    popularity_score: Optional[float] = None
-    health_score: Optional[float] = None
 
 
 class AdminRecipeUpdate(BaseModel):
     title: Optional[str] = None
-    slug: Optional[str] = None
-    category: Optional[str] = None
-    cost_category: Optional[str] = None
     source_url: Optional[str] = None
     image_url: Optional[str] = None
     description: Optional[str] = None
     instructions: Optional[list[Any]] = None
     ingredients: Optional[list[Any]] = None
-    prep_time_minutes: Optional[int] = None
-    cook_time_minutes: Optional[int] = None
-    total_time_minutes: Optional[int] = None
-    portions: Optional[int] = None
     cuisine: Optional[str] = None
     meal_type: Optional[str] = None
-    dish_type: Optional[str] = None
-    dietary_flags: Optional[Dict[str, Any]] = None
-    allergens: Optional[list[str]] = None
     nutrition: Optional[Dict[str, Any]] = None
-    cost_per_serving_cents: Optional[int] = None
-    equipment: Optional[list[str]] = None
-    difficulty: Optional[str] = None
-    spice_level: Optional[int] = None
-    author: Optional[str] = None
-    language: Optional[str] = None
-    rating: Optional[float] = None
     tags: Optional[list[str]] = None
-    popularity_score: Optional[float] = None
-    health_score: Optional[float] = None
     is_active: Optional[bool] = None
 
 
@@ -1225,8 +1167,7 @@ def _normalize_ingredients_payload(value: Any) -> list[dict[str, Any]]:
 
 def _recipe_to_dict(recipe: Recipe) -> Dict[str, Any]:
     """Serialize the public recipe contract from a Recipe ORM object."""
-    nutrition = recipe.nutrition if isinstance(recipe.nutrition, dict) else {}
-    calories = nutrition.get("calories") or nutrition.get("calories_kcal")
+    nutrition = _normalize_recipe_nutrition(recipe.nutrition)
 
     total_time = recipe.total_time_minutes
 
@@ -1239,7 +1180,7 @@ def _recipe_to_dict(recipe: Recipe) -> Dict[str, Any]:
         "ingredients": _flatten_ingredients(recipe.ingredients) if recipe.ingredients else [],
         "total_time_minutes": total_time,
         "nutrition": {
-            "calories": calories,
+            "calories": nutrition.get("calories"),
             "protein_g": nutrition.get("protein_g"),
             "carbs_g": nutrition.get("carbs_g"),
             "fat_g": nutrition.get("fat_g"),
@@ -1254,7 +1195,6 @@ def _admin_recipe_summary(recipe: Recipe) -> AdminRecipeSummary:
         title=recipe.title,
         slug=recipe.slug,
         meal_type=recipe.meal_type,
-        cost_category=recipe.cost_category,
         tags=recipe.tags or [],
         is_active=recipe.is_active,
         created_at=recipe.created_at,
@@ -1271,30 +1211,12 @@ def _admin_recipe_detail(recipe: Recipe) -> AdminRecipeDetail:
         description=recipe.description,
         instructions=_json_safe(recipe.instructions),
         ingredients=_json_safe(recipe.ingredients),
-        prep_time_minutes=recipe.prep_time_minutes,
-        cook_time_minutes=recipe.cook_time_minutes,
-        total_time_minutes=recipe.total_time_minutes,
-        portions=recipe.portions,
         cuisine=recipe.cuisine,
         meal_type=recipe.meal_type,
-        cost_category=recipe.cost_category,
-        dish_type=recipe.dish_type,
-        dietary_flags=_json_safe(recipe.dietary_flags),
-        allergens=_json_safe(recipe.allergens),
-        nutrition=_json_safe(recipe.nutrition),
-        cost_per_serving_cents=recipe.cost_per_serving_cents,
-        equipment=_json_safe(recipe.equipment),
-        difficulty=recipe.difficulty,
-        spice_level=recipe.spice_level,
-        author=recipe.author,
-        language=recipe.language,
+        nutrition=_json_safe(_normalize_recipe_nutrition(recipe.nutrition)),
         tags=_json_safe(recipe.tags),
-        popularity_score=_json_safe(recipe.popularity_score),
-        health_score=_json_safe(recipe.health_score),
         created_at=recipe.created_at,
         updated_at=recipe.updated_at,
-        scraped_at=recipe.scraped_at,
-        scrape_hash=recipe.scrape_hash,
         is_active=recipe.is_active,
     )
 
@@ -1384,7 +1306,7 @@ def _parse_import_nutrition(value: Any) -> Dict[str, Any]:
     if _is_blank(value):
         return {}
     if isinstance(value, dict):
-        return value
+        return _normalize_recipe_nutrition(value)
     if isinstance(value, str):
         text = value.strip()
         if not text:
@@ -1394,8 +1316,53 @@ def _parse_import_nutrition(value: Any) -> Dict[str, Any]:
         except json.JSONDecodeError:
             return {}
         if isinstance(parsed, dict):
-            return parsed
+            return _normalize_recipe_nutrition(parsed)
     return {}
+
+
+_NUTRITION_ALIASES = {
+    "calories": ("calories", "calories_kcal", "calorie", "kcal", "energy_kcal"),
+    "protein_g": ("protein_g", "protein", "proteins"),
+    "carbs_g": ("carbs_g", "carbs", "carbohydrates", "carbohydrate"),
+    "fat_g": ("fat_g", "fat", "fats"),
+}
+
+
+_DIETARY_FLAG_ALIASES = {
+    "vegan": ("vegan", "is_vegan"),
+    "vegetarian": ("vegetarian", "is_vegetarian"),
+    "gluten_free": ("gluten_free", "is_gluten_free", "glutenfree"),
+    "dairy_free": ("dairy_free", "is_dairy_free", "dairyfree"),
+    "nut_free": ("nut_free", "is_nut_free", "nutfree"),
+}
+
+
+def _normalize_recipe_nutrition(value: Any) -> Dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    normalized_input = {str(key).strip().lower(): item for key, item in value.items()}
+    normalized: Dict[str, Any] = {}
+    for canonical_key, aliases in _NUTRITION_ALIASES.items():
+        for alias in aliases:
+            item = normalized_input.get(alias)
+            if not _is_blank(item):
+                normalized[canonical_key] = item
+                break
+    return normalized
+
+
+def _normalize_dietary_flags(value: Any) -> Dict[str, bool]:
+    if not isinstance(value, dict):
+        return {}
+    normalized_input = {str(key).strip().lower(): item for key, item in value.items()}
+    normalized: Dict[str, bool] = {}
+    for canonical_key, aliases in _DIETARY_FLAG_ALIASES.items():
+        for alias in aliases:
+            parsed = _parse_import_bool(normalized_input.get(alias))
+            if parsed is not None:
+                normalized[canonical_key] = parsed
+                break
+    return normalized
 
 def _strip_nulls(text: str) -> str:
     return text.replace("\x00", "")
@@ -1438,15 +1405,6 @@ def _parse_import_int(value: Any) -> Optional[int]:
         return None
 
 
-def _parse_import_float(value: Any) -> Optional[float]:
-    if _is_blank(value):
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
 def _parse_import_bool(value: Any) -> Optional[bool]:
     if _is_blank(value):
         return None
@@ -1457,41 +1415,6 @@ def _parse_import_bool(value: Any) -> Optional[bool]:
         return True
     if text in {"0", "false", "no", "n", "f"}:
         return False
-    return None
-
-
-def _parse_import_datetime(value: Any) -> Optional[datetime]:
-    if _is_blank(value):
-        return None
-    if isinstance(value, datetime):
-        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
-    if isinstance(value, (int, float)):
-        try:
-            return datetime.fromtimestamp(float(value), tz=timezone.utc)
-        except Exception:
-            return None
-    if isinstance(value, str):
-        text = value.strip()
-        if not text:
-            return None
-        try:
-            dt = datetime.fromisoformat(text)
-        except ValueError:
-            try:
-                import pandas as pd
-
-                parsed = pd.to_datetime(text, utc=True, errors="coerce")
-            except Exception:
-                return None
-            if parsed is None:
-                return None
-            if getattr(parsed, "tzinfo", None) is None and hasattr(parsed, "tz_localize"):
-                parsed = parsed.tz_localize("UTC")
-            if hasattr(parsed, "to_pydatetime"):
-                return parsed.to_pydatetime()
-            return parsed
-        else:
-            return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
     return None
 
 
@@ -1513,58 +1436,21 @@ def _parse_import_object(value: Any) -> Optional[Dict[str, Any]]:
     return None
 
 
-def _parse_import_embedding(value: Any) -> Optional[list[float]]:
-    if _is_blank(value):
-        return None
-    if isinstance(value, str):
-        text = value.strip()
-        try:
-            parsed = json.loads(text)
-        except json.JSONDecodeError:
-            parsed = None
-        if isinstance(parsed, (list, tuple)):
-            value = parsed
-        else:
-            return None
-    if isinstance(value, (list, tuple)):
-        floats: list[float] = []
-        for item in value:
-            try:
-                floats.append(float(item))
-            except (TypeError, ValueError):
-                continue
-        return floats or None
-    return None
-
-
-def _parse_import_uuid(value: Any) -> Optional[UUID]:
-    if _is_blank(value):
-        return None
-    try:
-        return UUID(str(value))
-    except Exception:
-        return None
-
-
-def _infer_import_format(request: Request) -> str:
+def _validate_csv_import(request: Request) -> None:
     content_type = (request.headers.get("content-type") or "").lower()
     filename = (request.headers.get("x-file-name") or "").lower()
-    if "parquet" in content_type or filename.endswith((".parquet", ".pq")):
-        return "parquet"
     if "csv" in content_type or filename.endswith(".csv"):
-        return "csv"
+        return
     if content_type in {"application/octet-stream", "binary/octet-stream"} and filename:
-        if filename.endswith((".parquet", ".pq")):
-            return "parquet"
         if filename.endswith(".csv"):
-            return "csv"
+            return
     raise HTTPException(
         status_code=status.HTTP_400_BAD_REQUEST,
-        detail="Unsupported file format. Provide a CSV or Parquet payload.",
+        detail="Unsupported file format. Provide a CSV payload.",
     )
 
 
-def _read_import_dataframe(payload: bytes, file_format: str):
+def _read_import_dataframe(payload: bytes):
     try:
         import pandas as pd
     except ImportError as exc:
@@ -1575,19 +1461,12 @@ def _read_import_dataframe(payload: bytes, file_format: str):
 
     buffer = io.BytesIO(payload)
     try:
-        if file_format == "csv":
-            return pd.read_csv(buffer)
-        if file_format == "parquet":
-            return pd.read_parquet(buffer)
+        return pd.read_csv(buffer)
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to parse {file_format} payload.",
+            detail="Failed to parse CSV payload.",
         ) from exc
-    raise HTTPException(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        detail="Unsupported file format. Provide a CSV or Parquet payload.",
-    )
 
 
 def _max_import_errors() -> int:
@@ -1608,49 +1487,13 @@ def _resolve_import_columns(columns: Iterable[str]) -> Dict[str, Optional[str]]:
         "nutrition": _find_import_column(columns, ["nutrition", "nutrients", "macros"]),
         "tags": _find_import_column(columns, ["tags", "labels", "categories"]),
         "meal_type": _find_import_column(columns, ["meal_type", "meal", "course"]),
-        "dish_type": _find_import_column(columns, ["dish_type", "dish", "type"]),
-        "category": _find_import_column(columns, ["category", "primary_category", "group"]),
-        "prep_time_minutes": _find_import_column(columns, ["prep_time_minutes", "prep_time", "prep"]),
-        "cook_time_minutes": _find_import_column(columns, ["cook_time_minutes", "cook_time", "cook"]),
         "total_time_minutes": _find_import_column(columns, ["total_time_minutes", "total_time"]),
-        "portions": _find_import_column(
-            columns,
-            [
-                "portions",
-                "porsjoner",
-                "porsjon",
-                "antall",
-                "servings",
-                "serves",
-                "serving",
-                "yield",
-            ],
-        ),
         "dietary_flags": _find_import_column(columns, ["dietary_flags", "dietary", "diet_flags", "diet"]),
         "allergens": _find_import_column(columns, ["allergens", "allergy", "allergies"]),
         "cost_category": _find_import_column(
             columns,
             ["cost_category", "price_tier", "budget_range", "price_level", "cost_level", "price_category"],
         ),
-        "cost_per_serving_cents": _find_import_column(
-            columns,
-            ["cost_per_serving_cents", "cost_per_serving", "price_per_serving", "price_cents", "cost_cents"],
-        ),
-        "equipment": _find_import_column(columns, ["equipment", "tools", "appliances"]),
-        "difficulty": _find_import_column(columns, ["difficulty", "skill_level"]),
-        "spice_level": _find_import_column(columns, ["spice_level", "spiciness", "heat_level", "heat"]),
-        "author": _find_import_column(columns, ["author", "chef", "creator"]),
-        "language": _find_import_column(columns, ["language", "lang"]),
-        "rating": _find_import_column(columns, ["rating", "score"]),
-        "popularity_score": _find_import_column(columns, ["popularity_score", "popularity"]),
-        "health_score": _find_import_column(columns, ["health_score", "health"]),
-        "embedding": _find_import_column(columns, ["embedding", "vector"]),
-        "created_at": _find_import_column(columns, ["created_at", "created", "timestamp"]),
-        "updated_at": _find_import_column(columns, ["updated_at", "updated", "modified"]),
-        "scraped_at": _find_import_column(columns, ["scraped_at", "scraped", "crawl_time"]),
-        "scrape_hash": _find_import_column(columns, ["scrape_hash", "hash"]),
-        "is_active": _find_import_column(columns, ["is_active", "active", "enabled"]),
-        "slug": _find_import_column(columns, ["slug"]),
     }
 
 
@@ -1668,19 +1511,9 @@ def _normalize_import_row(
         raise ValueError("Missing recipe title")
     title = str(title_value).strip()
 
-    slug_col = columns.get("slug")
-    slug_value = row.get(slug_col) if slug_col else None
-    slug_source = slug_value if not _is_blank(slug_value) else title
-    base_slug = _slugify_recipe_title(str(slug_source))
-
-    ingredients_col = columns.get("ingredients")
-    instructions_col = columns.get("instructions")
-    nutrition_col = columns.get("nutrition")
-    tags_col = columns.get("tags")
     meal_type_col = columns.get("meal_type")
     cuisine_col = columns.get("cuisine")
     cost_category_col = columns.get("cost_category")
-
     meal_type_value = row.get(meal_type_col) if meal_type_col else None
     meal_type = None if _is_blank(meal_type_value) else str(meal_type_value).strip().lower()
 
@@ -1697,7 +1530,7 @@ def _normalize_import_row(
 
     return {
         "title": title,
-        "slug": base_slug,
+        "slug": _slugify_recipe_title(title),
         "ingredients": _normalize_ingredients_payload(_value("ingredients")),
         "instructions": _parse_import_list_field(_value("instructions")),
         "nutrition": _parse_import_nutrition(_value("nutrition")),
@@ -1708,29 +1541,9 @@ def _normalize_import_row(
         "source_url": _sanitize_text(_value("source_url")),
         "image_url": _sanitize_text(_value("image_url")),
         "description": _sanitize_text(_value("description")),
-        "dish_type": _sanitize_text(_value("dish_type")),
-        "category": _sanitize_text(_value("category")),
-        "prep_time_minutes": _parse_import_int(_value("prep_time_minutes")),
-        "cook_time_minutes": _parse_import_int(_value("cook_time_minutes")),
         "total_time_minutes": _parse_import_int(_value("total_time_minutes")),
-        "portions": _parse_import_int(_value("portions")),
-        "dietary_flags": _parse_import_object(_value("dietary_flags")) or {},
+        "dietary_flags": _normalize_dietary_flags(_parse_import_object(_value("dietary_flags"))),
         "allergens": _parse_import_list_field(_value("allergens")),
-        "cost_per_serving_cents": _parse_import_int(_value("cost_per_serving_cents")),
-        "equipment": _parse_import_list_field(_value("equipment")),
-        "difficulty": _sanitize_text(_value("difficulty")),
-        "spice_level": _parse_import_int(_value("spice_level")),
-        "author": _sanitize_text(_value("author")),
-        "language": _sanitize_text(_value("language")),
-        "rating": _parse_import_float(_value("rating")),
-        "popularity_score": _parse_import_float(_value("popularity_score")),
-        "health_score": _parse_import_float(_value("health_score")),
-        "embedding": _parse_import_embedding(_value("embedding")),
-        "created_at": _parse_import_datetime(_value("created_at")),
-        "updated_at": _parse_import_datetime(_value("updated_at")),
-        "scraped_at": _parse_import_datetime(_value("scraped_at")),
-        "scrape_hash": _sanitize_text(_value("scrape_hash")),
-        "is_active": _parse_import_bool(_value("is_active")),
     }
 
 
@@ -2368,11 +2181,6 @@ def create_admin_recipe(
     db: Session = Depends(get_session),
     _admin: User = Depends(admin_user_dependency),
 ) -> AdminRecipeDetail:
-    try:
-        normalized_cost = _normalize_cost_category(payload.cost_category)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-
     base_slug = _slugify_recipe_title(payload.title)
     slug = _ensure_unique_recipe_slug(db, base_slug)
 
@@ -2380,31 +2188,15 @@ def create_admin_recipe(
         id=uuid4(),
         title=payload.title,
         slug=slug,
-        cost_category=normalized_cost,
         source_url=payload.source_url,
         image_url=payload.image_url,
         description=payload.description,
         instructions=_json_safe(payload.instructions),
         ingredients=_json_safe(_normalize_ingredients_payload(payload.ingredients)),
-        prep_time_minutes=payload.prep_time_minutes,
-        cook_time_minutes=payload.cook_time_minutes,
-        total_time_minutes=payload.total_time_minutes,
-        portions=payload.portions,
         cuisine=payload.cuisine,
         meal_type=payload.meal_type,
-        dish_type=payload.dish_type,
-        dietary_flags=_json_safe(payload.dietary_flags),
-        allergens=_json_safe(payload.allergens),
-        nutrition=_json_safe(payload.nutrition),
-        cost_per_serving_cents=payload.cost_per_serving_cents,
-        equipment=_json_safe(payload.equipment),
-        difficulty=payload.difficulty,
-        spice_level=payload.spice_level,
-        author=payload.author,
-        language=payload.language,
+        nutrition=_json_safe(_normalize_recipe_nutrition(payload.nutrition)),
         tags=_json_safe(payload.tags),
-        popularity_score=payload.popularity_score,
-        health_score=payload.health_score,
         is_active=True,
     )
 
@@ -2437,19 +2229,9 @@ def update_admin_recipe(
     if recipe is None:
         raise HTTPException(status_code=404, detail="Recipe not found")
 
-    updates = payload.dict(exclude_unset=True)
-    if "cost_category" in updates:
-        try:
-            updates["cost_category"] = _normalize_cost_category(updates["cost_category"])
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc))
+    updates = payload.model_dump(exclude_unset=True)
     title_changed = "title" in updates and updates.get("title") != recipe.title
-    slug_value = updates.pop("slug", None)
-
-    if slug_value:
-        base_slug = _slugify_recipe_title(slug_value)
-        updates["slug"] = _ensure_unique_recipe_slug(db, base_slug, exclude_id=recipe.id)
-    elif title_changed:
+    if title_changed:
         base_slug = _slugify_recipe_title(str(updates.get("title")))
         updates["slug"] = _ensure_unique_recipe_slug(db, base_slug, exclude_id=recipe.id)
 
@@ -2458,6 +2240,8 @@ def update_admin_recipe(
     for key, value in updates.items():
         if key == "ingredients":
             setattr(recipe, key, _json_safe(_normalize_ingredients_payload(value)))
+        elif key == "nutrition":
+            setattr(recipe, key, _json_safe(_normalize_recipe_nutrition(value)))
         else:
             setattr(recipe, key, _json_safe(value))
 
@@ -2489,8 +2273,8 @@ async def import_admin_recipes(
     if not payload:
         raise HTTPException(status_code=400, detail="Request body cannot be empty")
 
-    file_format = _infer_import_format(request)
-    df = _read_import_dataframe(payload, file_format)
+    _validate_csv_import(request)
+    df = _read_import_dataframe(payload)
     if df.empty:
         return AdminRecipeImportResponse(created=0, updated=0, skipped=0, errors=[])
 
@@ -2528,8 +2312,6 @@ async def import_admin_recipes(
 
             if existing is not None:
                 existing.title = normalized["title"]
-                if normalized["category"] is not None:
-                    existing.category = normalized["category"]
                 existing.source_url = normalized["source_url"]
                 existing.image_url = normalized["image_url"]
                 existing.description = normalized["description"]
@@ -2538,35 +2320,12 @@ async def import_admin_recipes(
                 existing.nutrition = _json_safe(normalized["nutrition"])
                 existing.tags = _json_safe(normalized["tags"])
                 existing.meal_type = normalized["meal_type"]
-                existing.dish_type = normalized["dish_type"]
                 existing.cost_category = normalized["cost_category"]
-                existing.cost_per_serving_cents = normalized["cost_per_serving_cents"]
-                existing.prep_time_minutes = normalized["prep_time_minutes"]
-                existing.cook_time_minutes = normalized["cook_time_minutes"]
                 existing.total_time_minutes = normalized["total_time_minutes"]
-                existing.portions = normalized["portions"]
                 existing.cuisine = normalized["cuisine"]
                 existing.dietary_flags = _json_safe(normalized["dietary_flags"])
                 existing.allergens = _json_safe(normalized["allergens"])
-                existing.equipment = _json_safe(normalized["equipment"])
-                existing.difficulty = normalized["difficulty"]
-                existing.spice_level = normalized["spice_level"]
-                existing.author = normalized["author"]
-                existing.language = normalized["language"]
-                existing.rating = normalized["rating"]
-                existing.popularity_score = normalized["popularity_score"]
-                existing.health_score = normalized["health_score"]
-                if normalized["embedding"] is not None:
-                    existing.embedding = normalized["embedding"]
-                if normalized["scraped_at"] is not None:
-                    existing.scraped_at = normalized["scraped_at"]
-                if normalized["scrape_hash"] is not None:
-                    existing.scrape_hash = normalized["scrape_hash"]
-                if normalized["is_active"] is not None:
-                    existing.is_active = normalized["is_active"]
-                if normalized["created_at"] is not None:
-                    existing.created_at = normalized["created_at"]
-                existing.updated_at = normalized["updated_at"] or datetime.now(timezone.utc)
+                existing.updated_at = datetime.now(timezone.utc)
                 db.add(existing)
                 db.commit()
                 db.refresh(existing)
@@ -2602,7 +2361,6 @@ async def import_admin_recipes(
                 id=uuid4(),
                 title=normalized["title"],
                 slug=slug,
-                category=normalized["category"],
                 source_url=normalized["source_url"],
                 image_url=normalized["image_url"],
                 description=normalized["description"],
@@ -2610,34 +2368,14 @@ async def import_admin_recipes(
                 instructions=_json_safe(normalized["instructions"]),
                 nutrition=_json_safe(normalized["nutrition"]),
                 tags=_json_safe(normalized["tags"]),
-                prep_time_minutes=normalized["prep_time_minutes"],
-                cook_time_minutes=normalized["cook_time_minutes"],
                 total_time_minutes=normalized["total_time_minutes"],
-                portions=normalized["portions"],
                 meal_type=normalized["meal_type"],
-                dish_type=normalized["dish_type"],
                 cuisine=normalized["cuisine"],
                 cost_category=normalized["cost_category"],
-                cost_per_serving_cents=normalized["cost_per_serving_cents"],
                 dietary_flags=_json_safe(normalized["dietary_flags"]),
                 allergens=_json_safe(normalized["allergens"]),
-                equipment=_json_safe(normalized["equipment"]),
-                difficulty=normalized["difficulty"],
-                spice_level=normalized["spice_level"],
-                author=normalized["author"],
-                language=normalized["language"],
-                rating=normalized["rating"],
-                popularity_score=normalized["popularity_score"],
-                health_score=normalized["health_score"],
-                embedding=normalized["embedding"],
-                scraped_at=normalized["scraped_at"],
-                scrape_hash=normalized["scrape_hash"],
-                is_active=True if normalized["is_active"] is None else normalized["is_active"],
+                is_active=True,
             )
-            if normalized["created_at"] is not None:
-                recipe.created_at = normalized["created_at"]
-            if normalized["updated_at"] is not None:
-                recipe.updated_at = normalized["updated_at"]
             db.add(recipe)
             db.commit()
             db.refresh(recipe)
@@ -2956,11 +2694,16 @@ def get_recipe_alternatives(
         restriction_lower = restriction.lower()
 
         if restriction_lower == "vegan":
-            stmt = stmt.where(Recipe.dietary_flags["is_vegan"].astext == "true")
+            stmt = stmt.where(
+                (Recipe.dietary_flags["vegan"].astext == "true")
+                | (Recipe.dietary_flags["is_vegan"].astext == "true")
+            )
         elif restriction_lower == "vegetarian":
             stmt = stmt.where(
-                (Recipe.dietary_flags["is_vegetarian"].astext == "true") |
-                (Recipe.dietary_flags["is_vegan"].astext == "true")
+                (Recipe.dietary_flags["vegetarian"].astext == "true")
+                | (Recipe.dietary_flags["is_vegetarian"].astext == "true")
+                | (Recipe.dietary_flags["vegan"].astext == "true")
+                | (Recipe.dietary_flags["is_vegan"].astext == "true")
             )
         elif restriction_lower == "gluten_free" or "gluten" in restriction_lower:
             stmt = stmt.where(~Recipe.allergens.any("gluten"))

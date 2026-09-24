@@ -163,7 +163,7 @@ export default function AdminRecipes() {
 
   const handleImport = async () => {
     if (!importFile) {
-      setImportError(new Error('Select a CSV or Parquet file to upload.'));
+      setImportError(new Error('Select a CSV file to upload.'));
       return;
     }
 
@@ -325,9 +325,7 @@ export default function AdminRecipes() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-base font-semibold text-foreground">Bulk import</h2>
-            <p className="text-sm text-muted-foreground">
-              Upload a CSV or Parquet file to add or update recipes in bulk.
-            </p>
+            <p className="text-sm text-muted-foreground">Upload a CSV file to add or update recipes in bulk.</p>
           </div>
           <Button onClick={handleImport} disabled={importStatus === 'uploading'}>
             {importStatus === 'uploading' ? 'Uploading...' : 'Upload file'}
@@ -337,7 +335,7 @@ export default function AdminRecipes() {
           <input
             id="bulk-import-file"
             type="file"
-            accept=".csv,.parquet,.pq"
+            accept=".csv,text/csv"
             className="sr-only"
             onChange={(event) => {
               setImportFile(event.target.files?.[0] || null);

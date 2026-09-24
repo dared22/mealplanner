@@ -54,9 +54,9 @@ const buildFormState = (recipe) => ({
   ingredients: normalizeLines(recipe?.ingredients),
   instructions: normalizeLines(recipe?.instructions),
   calories: formatNutritionValue(recipe?.nutrition?.calories),
-  protein: formatNutritionValue(recipe?.nutrition?.protein),
-  carbs: formatNutritionValue(recipe?.nutrition?.carbs),
-  fat: formatNutritionValue(recipe?.nutrition?.fat),
+  protein_g: formatNutritionValue(recipe?.nutrition?.protein_g),
+  carbs_g: formatNutritionValue(recipe?.nutrition?.carbs_g),
+  fat_g: formatNutritionValue(recipe?.nutrition?.fat_g),
   is_active: recipe?.is_active ? 'true' : 'false',
 });
 
@@ -145,9 +145,9 @@ export default function AdminRecipeEditor() {
       const instructionsValue = splitLines(form.instructions);
       const nutrition = {
         calories: parseNutritionNumber('calories', form.calories),
-        protein: parseNutritionNumber('protein', form.protein),
-        carbs: parseNutritionNumber('carbs', form.carbs),
-        fat: parseNutritionNumber('fat', form.fat),
+        protein_g: parseNutritionNumber('protein', form.protein_g),
+        carbs_g: parseNutritionNumber('carbs', form.carbs_g),
+        fat_g: parseNutritionNumber('fat', form.fat_g),
       };
       Object.keys(nutrition).forEach((key) => {
         if (nutrition[key] === null) {
@@ -188,9 +188,9 @@ export default function AdminRecipeEditor() {
         }
         if (
           form.calories !== initialForm.calories ||
-          form.protein !== initialForm.protein ||
-          form.carbs !== initialForm.carbs ||
-          form.fat !== initialForm.fat
+          form.protein_g !== initialForm.protein_g ||
+          form.carbs_g !== initialForm.carbs_g ||
+          form.fat_g !== initialForm.fat_g
         ) {
           payload.nutrition = nutrition;
         }
@@ -444,8 +444,8 @@ export default function AdminRecipeEditor() {
             </label>
             <Input
               id="recipe-protein"
-              value={form.protein}
-              onChange={(event) => setForm((prev) => ({ ...prev, protein: event.target.value }))}
+              value={form.protein_g}
+              onChange={(event) => setForm((prev) => ({ ...prev, protein_g: event.target.value }))}
               placeholder="g"
             />
           </div>
@@ -455,8 +455,8 @@ export default function AdminRecipeEditor() {
             </label>
             <Input
               id="recipe-carbs"
-              value={form.carbs}
-              onChange={(event) => setForm((prev) => ({ ...prev, carbs: event.target.value }))}
+              value={form.carbs_g}
+              onChange={(event) => setForm((prev) => ({ ...prev, carbs_g: event.target.value }))}
               placeholder="g"
             />
           </div>
@@ -466,8 +466,8 @@ export default function AdminRecipeEditor() {
             </label>
             <Input
               id="recipe-fat"
-              value={form.fat}
-              onChange={(event) => setForm((prev) => ({ ...prev, fat: event.target.value }))}
+              value={form.fat_g}
+              onChange={(event) => setForm((prev) => ({ ...prev, fat_g: event.target.value }))}
               placeholder="g"
             />
           </div>
