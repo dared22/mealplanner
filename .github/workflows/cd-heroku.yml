@@ -111,8 +111,8 @@ jobs:
 
       - name: Resolve Heroku app URLs
         run: |
-          backend_url=$(heroku apps:info --app "$HEROKU_APP_BACKEND" --json | python3 -c 'import json, sys; print(json.load(sys.stdin)["web_url"].rstrip("/"))')
-          frontend_url=$(heroku apps:info --app "$HEROKU_APP_FRONTEND" --json | python3 -c 'import json, sys; print(json.load(sys.stdin)["web_url"].rstrip("/"))')
+          backend_url=$(heroku apps:info --app "$HEROKU_APP_BACKEND" --shell | python3 -c 'import sys; print(next(line.split("=", 1)[1].strip().rstrip("/") for line in sys.stdin if line.startswith("web_url=")))')
+          frontend_url=$(heroku apps:info --app "$HEROKU_APP_FRONTEND" --shell | python3 -c 'import sys; print(next(line.split("=", 1)[1].strip().rstrip("/") for line in sys.stdin if line.startswith("web_url=")))')
           echo "HEROKU_BACKEND_URL=$backend_url" >> "$GITHUB_ENV"
           echo "HEROKU_FRONTEND_URL=$frontend_url" >> "$GITHUB_ENV"
 
