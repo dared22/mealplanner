@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react';
 import { motion as Motion, useReducedMotion } from 'framer-motion';
+import { API_URL, withAuthorization } from '@/Entities/api';
 import {
   CheckCircle, RefreshCw,
   Shuffle, ThumbsUp, ThumbsDown, Sun, Coffee, Utensils, Moon,
@@ -1001,10 +1002,9 @@ export default function ResultsStep({
     setLoadingAlternatives(true);
     try {
       const token = await getToken();
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-      const url = `${apiUrl}/recipes/alternatives/${recipeId}?meal_type=${mealType.toLowerCase()}&limit=5`;
+      const url = `${API_URL}/recipes/alternatives/${recipeId}?meal_type=${mealType.toLowerCase()}&limit=5`;
       const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: withAuthorization(token)
       });
       if (res.ok) {
         const data = await res.json();

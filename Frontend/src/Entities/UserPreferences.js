@@ -1,18 +1,10 @@
-import { API_URL } from './api';
-
-const buildHeaders = (token) => {
-  const headers = { 'Content-Type': 'application/json' };
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
-  return headers;
-};
+import { API_URL, jsonHeaders, withAuthorization } from './api';
 
 export const UserPreferences = {
   create: async (data, token) => {
     const response = await fetch(`${API_URL}/preferences`, {
       method: 'POST',
-      headers: buildHeaders(token),
+      headers: jsonHeaders(token),
       body: JSON.stringify(data)
     });
 
@@ -27,7 +19,7 @@ export const UserPreferences = {
     const query = language ? `?lang=${encodeURIComponent(language)}` : '';
     const response = await fetch(`${API_URL}/preferences/${preferenceId}${query}`, {
       method: 'GET',
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      headers: withAuthorization(token),
       cache: 'no-store',
     });
 

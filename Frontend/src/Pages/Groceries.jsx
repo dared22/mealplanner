@@ -13,6 +13,7 @@ import { Link } from 'react-router-dom';
 import DashboardLayout from '@/components/DashboardLayout';
 import { buildShoppingList, formatAmounts } from '@/components/groceries/shoppingListUtils';
 import { Button } from '@/components/ui/button';
+import { buttonVariants } from '@/components/ui/buttonVariants';
 import { Plans } from '@/Entities/Plans';
 import { UserPreferences } from '@/Entities/UserPreferences';
 import { useLanguage } from '@/i18n/useLanguage';
@@ -366,7 +367,7 @@ export default function Groceries({ user }) {
           icon={Loader2}
           title={t('Your plan is still being prepared')}
           message={t('Your shopping list will be ready as soon as your meal plan is complete.')}
-          action={<Button asChild><Link to="/planner">{t('View meal planner')}</Link></Button>}
+          action={<Link to="/planner" className={buttonVariants()}>{t('View meal planner')}</Link>}
         />
       </DashboardLayout>
     );
@@ -379,7 +380,7 @@ export default function Groceries({ user }) {
           icon={ShoppingBasket}
           title={t('Your shopping list is waiting')}
           message={t('Create a meal plan and we will gather every ingredient here for you.')}
-          action={<Button asChild><Link to="/planner">{t('Create a meal plan')}</Link></Button>}
+          action={<Link to="/planner" className={buttonVariants()}>{t('Create a meal plan')}</Link>}
         />
       </DashboardLayout>
     );

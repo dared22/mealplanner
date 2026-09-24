@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@clerk/clerk-react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
-import { API_URL } from '@/Entities/api';
+import { API_URL, withAuthorization } from '@/Entities/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
@@ -119,7 +119,7 @@ export default function AdminLogs() {
       params.set('offset', String(pagination.offset));
 
       const response = await fetch(`${API_URL}/admin/logs?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: withAuthorization(token),
       });
 
       if (!response.ok) {

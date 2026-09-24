@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@clerk/clerk-react';
-import { API_URL } from '@/Entities/api';
+import { API_URL, withAuthorization } from '@/Entities/api';
 import { Button } from '@/components/ui/button';
 import {
   RefreshCw,
@@ -136,7 +136,7 @@ export default function AdminDashboard() {
         throw new Error('Missing authentication token. Please sign in again.');
       }
       const response = await fetch(`${API_URL}/admin/dashboard/metrics`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: withAuthorization(token),
       });
 
       if (!response.ok) {

@@ -12,50 +12,13 @@ from sqlalchemy import (
     Text,
     func,
     Numeric,
-    SmallInteger,
     UniqueConstraint,
     Index,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.types import TypeDecorator, UserDefinedType
 
 from database import Base
-
-
-class VectorType(UserDefinedType):
-    """Minimal pgvector type without extra dependencies."""
-
-    cache_ok = True
-
-    def __init__(self, dims: int = 1536):
-        self.dims = dims
-
-    def get_col_spec(self, **kw):
-        return f"vector({self.dims})"
-
-    def bind_processor(self, dialect):
-        def process(value):
-            if value is None:
-                return None
-            if isinstance(value, (list, tuple)):
-                return "[" + ",".join(str(float(x)) for x in value) + "]"
-            return str(value)
-
-        return process
-
-    def result_processor(self, dialect, coltype):
-        def process(value):
-            if value is None:
-                return None
-            if isinstance(value, str):
-                stripped = value.strip("[]")
-                if stripped == "":
-                    return []
-                return [float(x) for x in stripped.split(",")]
-            return value
-
-        return process
 
 
 class Preference(Base):
@@ -133,33 +96,18 @@ class Recipe(Base):
     description: Mapped[Optional[str]] = mapped_column(Text)
     instructions: Mapped[Optional[List[Any]]] = mapped_column(JSONB)
     ingredients: Mapped[Optional[List[Any]]] = mapped_column(JSONB)
-    prep_time_minutes: Mapped[Optional[int]] = mapped_column(Integer)
     cook_time_minutes: Mapped[Optional[int]] = mapped_column(Integer)
     total_time_minutes: Mapped[Optional[int]] = mapped_column(Integer)
-    portions: Mapped[Optional[int]] = mapped_column(Integer)
     cuisine: Mapped[Optional[str]] = mapped_column(Text)
     meal_type: Mapped[Optional[str]] = mapped_column(Text)
-    dish_type: Mapped[Optional[str]] = mapped_column(Text)
     dietary_flags: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB)
     allergens: Mapped[Optional[list[str]]] = mapped_column(ARRAY(Text))
     nutrition: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB)
-    cost_per_serving_cents: Mapped[Optional[int]] = mapped_column(Integer)
     cost_category: Mapped[Optional[str]] = mapped_column(String(32))
-    equipment: Mapped[Optional[list[str]]] = mapped_column(ARRAY(Text))
-    difficulty: Mapped[Optional[str]] = mapped_column(Text)
-    spice_level: Mapped[Optional[int]] = mapped_column(SmallInteger)
-    author: Mapped[Optional[str]] = mapped_column(Text)
-    language: Mapped[Optional[str]] = mapped_column(Text)
     tags: Mapped[Optional[list[str]]] = mapped_column(ARRAY(Text))
-    embedding: Mapped[Optional[list[float]]] = mapped_column(VectorType())
-    category: Mapped[Optional[str]] = mapped_column(Text)
-    rating: Mapped[Optional[float]] = mapped_column(Numeric)
     popularity_score: Mapped[Optional[float]] = mapped_column(Numeric)
-    health_score: Mapped[Optional[float]] = mapped_column(Numeric)
     created_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    scraped_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    scrape_hash: Mapped[Optional[str]] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, server_default="true")
 
 

@@ -6,6 +6,8 @@ import os
 import sys
 from sqlalchemy import create_engine, text
 
+from database_url import coerce_database_url
+
 # Load DATABASE_URL from parent .env
 env_path = os.path.join(os.path.dirname(__file__), "..", "..", ".env")
 if os.path.exists(env_path):
@@ -16,13 +18,19 @@ if os.path.exists(env_path):
                 if key.strip() == "DATABASE_URL":
                     os.environ["DATABASE_URL"] = value.strip().strip('"')
 
-DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL:
+raw_database_url = os.getenv("DATABASE_URL")
+if not raw_database_url:
     print("ERROR: DATABASE_URL not found in environment or .env file")
     sys.exit(1)
 
+
+DATABASE_URL = coerce_database_url(raw_database_url)
+
 print(f"Testing connection to database...")
-print(f"Database host: {DATABASE_URL.split('@')[1].split('/')[0] if '@' in DATABASE_URL else 'unknown'}")
+print(
+    "Database host: "
+    f"{raw_database_url.split('@')[1].split('/')[0] if '@' in raw_database_url else 'unknown'}"
+)
 
 try:
     engine = create_engine(DATABASE_URL)

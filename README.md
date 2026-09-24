@@ -1,375 +1,169 @@
 # Preppr
 
-A Norwegian high-protein, budget meal-prep planner for one person. Fill out one
-short questionnaire and Preppr builds a full week of cheap, goal-fit meals around
-your calories, protein target, budget, and food preferences — so you can shop
-once and meal-prep for the week instead of re-deciding dinner every night.
+Preppr creates personalized weekly meal plans from dietary preferences,
+nutrition goals, recipe data, and user feedback. It provides an English and
+Norwegian React interface backed by a FastAPI service, Clerk authentication,
+and PostgreSQL hosted on Neon.
 
-It's for the person asking *"what should I eat this week to hit my protein and
-calorie goals without overspending?"* — students, gym-goers, and others cooking
-for just themselves.
+## Architecture
 
-**Live demo:** [preppr.xyz](https://www.preppr.xyz/)
+The frontend is a Vite and React application. It collects preferences,
+displays generated plans and grocery lists, supports plan translations, and
+provides the administrator recipe-management screens. Grocery lists load the
+latest successful plan, combine ingredient quantities, and remember checked
+items for that plan.
 
-> **Note:** The live demo is the primary way to use this app. Running your own
-> instance requires setting up your own Neon database and populating it with
-> recipe data. The demo uses a personal OpenAI API key for nutrition
-> calculations, so please be considerate when testing.
+The backend is a FastAPI application using SQLAlchemy, Alembic, and psycopg 3.
+It calculates nutrition targets with OpenAI, selects database recipes with a
+random planner or the rating-based constraint solver, and stores plans in
+PostgreSQL. Solver failures fall back to the database planner. Clerk protects
+all application endpoints except `GET /health`.
 
-## Current product focus
+Production uses two Heroku container apps: one for the backend API and one for
+the frontend. The backend connects to Neon; neither local development nor a
+fork should use production credentials or production data.
 
-Preppr's wedge is **solo weekly eating**, not family dinner planning. Today the
-planner is built for **one person**:
+## Prerequisites
 
-- **One person, one week.** Recipes, portions, calories, macros, and cost are all
-  generated for a single eater. Household / multi-person scaling is a future
-  direction, not part of the current product.
-- **Goal-fit nutrition is the core constraint.** Daily calorie and macro targets
-  (protein first) come from your profile and goal — lose fat, build muscle,
-  maintain, or just eat high-protein cheaply.
-- **Meal prep, not nightly cooking.** Plans support batch cooking and
-  carry-forward leftovers (cook once, eat across days), so a week is realistic
-  for one person.
-- **Budget matters, but it's still a tier today.** Recipes carry a cost category
-  and the plan respects a budget preference. Live prices are not wired in yet.
-- **Norwegian-first.** English + Norwegian throughout.
+You need the following tools and accounts to run a local instance:
 
-**Where it's headed (not built yet):** live weekly deal/price integration across
-**Kiwi, Rema 1000, Extra, and Meny**, plus a real consolidated shopping list with
-an estimated basket cost. Those are the highest-priority gaps — see
-[ROADMAP.md](ROADMAP.md).
+- Python 3.11 or newer
+- Node.js 20 or newer
+- A PostgreSQL database, such as a Neon database you control
+- An OpenAI API key
+- A Clerk instance and its frontend publishable key
 
-## Features
+You also need a CSV of recipes before the planner can return useful results.
+Import it through the administrator recipe screen after completing the admin
+bootstrap described below.
 
-- **One-person weekly plans:** a full week of meals from one short
-  questionnaire, sized for a single eater — not a household.
-- **Calorie & macro targeting:** daily calorie and protein/carb/fat targets are
-  derived from your stats and goal (lose fat, build muscle, maintain, or eat
-  high-protein cheaply) and constrain the whole week.
-- **Meal-prep aware:** plans support batch-cook portions and carry-forward
-  leftovers, so you cook fewer times and eat across days.
-- **Budget tier:** recipes are tagged by cost category and the plan honors a
-  budget preference. *(Live Norwegian store prices are planned, not built — see
-  Current product focus.)*
-- **Personalization over time:** like/dislike recipes; once you've rated enough,
-  the planner optimizes around what you actually like.
-- **Meal swapping:** swap any meal for a comparable alternative that still fits
-  your diet and targets.
-- **Recipe browser & plan history:** browse recipes and revisit past weeks.
-- **English + Norwegian:** full i18n with background translation.
+## Local setup
 
-## Tech stack
-
-**Frontend:**
-- React 19 with Vite
-- React Router for navigation
-- Clerk for authentication
-- TailwindCSS with shadcn/ui components
-- Framer Motion for animations
-
-**Backend:**
-- FastAPI (Python)
-- PostgreSQL (Neon) with SQLAlchemy ORM
-- OpenAI API for nutrition target recommendations
-- Custom optimization algorithm for meal selection
-- Background task processing for async operations
-
-**Deployment:**
-- Docker support
-- Heroku hosting
-
-## Using the app
-
-The easiest way to use this app is through the live demo. If you want to run
-your own instance, you'll need to set up your own Neon database, populate it
-with recipe data, and configure your own API keys.
-
-## Setting up your own instance
-
-### Prerequisites
-
-- Python 3.9 or higher
-- Node.js 18 or higher
-- Your own Neon PostgreSQL database
-- Recipe dataset (see Database setup below)
-- OpenAI API key
-- Clerk account for authentication
-
-> **Note:** You cannot connect to the production database. You must create and
-> populate your own Neon database with recipe data.
-
-### Database setup
-
-Before running the backend, you need to:
-
-1. Create a Neon PostgreSQL database
-2. Set up the database schema (users, preferences, recipes tables)
-3. Load recipe data from `recipes.csv` into your recipes table
-4. The recipe data must include nutrition information, tags, and meal type
-   classifications for the optimization algorithm to work
-
-### Backend setup
-
-1. Navigate to the backend directory:
-
-   ```bash
-   cd Backend/fastapi_app
-   ```
-
-2. Create and activate a virtual environment:
-
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-
-3. Install dependencies:
-
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. Set environment variables:
-
-   ```bash
-   export DATABASE_URL="your-neon-connection-string"  # From Neon dashboard
-   export OPENAI_API_KEY="your-openai-api-key"
-   export CLERK_JWKS_URL="https://api.clerk.com/v1/jwks"
-   export CLERK_JWT_ISSUER="https://your-clerk-instance.clerk.accounts.dev"
-   ```
-
-5. Start the development server:
-
-   ```bash
-   uvicorn main:app --reload --port 8000
-   ```
-
-The API will be available at http://localhost:8000.
-
-### Frontend setup
-
-1. Navigate to the frontend directory:
-
-   ```bash
-   cd Frontend
-   ```
-
-2. Install dependencies:
-
-   ```bash
-   npm install
-   ```
-
-3. Set environment variables:
-
-   ```bash
-   export VITE_CLERK_PUBLISHABLE_KEY="your-clerk-publishable-key"
-   export VITE_API_URL="http://localhost:8000"  # Optional, defaults to localhost:8000
-   ```
-
-4. Start the development server:
-
-   ```bash
-   npm run dev
-   ```
-
-The app will be available at http://localhost:5173.
-
-### Docker setup
-
-To run both frontend and backend using Docker Compose (requires configured
-environment variables and your own Neon database):
+Configure the backend before starting it. The application reads `DATABASE_URL`
+when it imports the database module, so the variable must exist before running
+Uvicorn, Alembic, or tests that import the app.
 
 ```bash
-docker-compose up
+cd Backend/fastapi_app
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+export DATABASE_URL='postgresql://user:password@host/database?sslmode=require'
+export OPENAI_API_KEY='your-openai-api-key'
+export CLERK_JWKS_URL='https://api.clerk.com/v1/jwks'
+export CLERK_JWT_ISSUER='https://your-instance.clerk.accounts.dev'
 ```
 
-To rebuild containers after making changes:
+For a fresh database, create the schema with Alembic and start the API:
+
+```bash
+alembic upgrade head
+uvicorn main:app --reload --port 8000
+```
+
+The backend listens on `http://localhost:8000`. Its interactive API reference
+is available at `http://localhost:8000/docs`.
+
+Set up the frontend in a second terminal:
+
+```bash
+cd Frontend
+npm install
+
+export VITE_CLERK_PUBLISHABLE_KEY='your-clerk-publishable-key'
+export VITE_API_URL='http://localhost:8000'
+npm run dev
+```
+
+The frontend runs at `http://localhost:5173`.
+
+## Database safety and recipe import
+
+The initial Alembic revision only creates a fresh schema. For an existing,
+unversioned database, first take and verify a restore point, inspect schema
+compatibility, then mark the baseline before upgrading:
+
+```bash
+alembic stamp 0001_existing_schema
+alembic upgrade head
+```
+
+Do not apply those commands, direct SQL, or recipe imports to production
+without explicit authorization for that environment.
+
+To bootstrap an administrator locally, sign in and visit `/admin` once so the
+backend creates the user record. Then, in the database you control, update the
+matching Clerk user ID:
+
+```sql
+UPDATE users
+SET is_admin = TRUE
+WHERE clerk_user_id = '<your-clerk-user-id>';
+```
+
+An administrator can import CSV recipe data from the admin recipe screen. The
+importer requires a title column and accepts common aliases for ingredients,
+instructions, nutrition, cuisine, meal type, dietary flags, and allergens.
+The import endpoint accepts CSV only.
+
+## Docker Compose
+
+Docker Compose starts the backend and frontend development services. Export the
+same environment variables used for local setup, then run:
 
 ```bash
 docker-compose up --build
 ```
 
-## Environment variables
+The compose file mounts the source directories and enables backend reload and
+Vite development mode. It is intended for local development, not production.
 
-All environment variables must be your own credentials. You cannot use the
-production database or API keys.
+## Verification
 
-### Backend
+Run the backend checks from the repository root with a test database URL:
 
-- `DATABASE_URL` (required): Your Neon PostgreSQL connection string
-- `OPENAI_API_KEY` (required): Your OpenAI API key for nutrition target
-  calculation
-- `CLERK_JWKS_URL` (required): Clerk JWKS endpoint for authentication
-- `CLERK_JWT_ISSUER` (required): Your Clerk issuer URL
-
-### Frontend
-
-- `VITE_CLERK_PUBLISHABLE_KEY` (required): Your Clerk publishable key
-- `VITE_API_URL` (optional): Backend API URL (defaults to
-  http://localhost:8000)
-
-## Project structure
-
-```
-mealplanner/
-├── Backend/
-│   └── fastapi_app/
-│       ├── main.py              # FastAPI app and routes
-│       ├── models.py            # SQLAlchemy database models
-│       ├── database.py          # Database session management
-│       ├── clerk_auth.py        # Authentication middleware
-│       ├── planner.py           # Meal plan generation logic
-│       └── recipe_translator.py # Translation service
-├── Frontend/
-│   └── src/
-│       ├── App.jsx              # Main app component
-│       ├── Pages/
-│       │   └── MealPlanner.jsx  # Meal planner page
-│       ├── components/
-│       │   └── questionnaire/   # Multi-step form components
-│       └── i18n/                # Internationalization
-├── docker-compose.yml           # Docker configuration
-└── README.md
+```bash
+python3 -m compileall -q Backend/fastapi_app
+DATABASE_URL='postgresql://postgres:postgres@localhost:5432/mealplanner_test' \
+  python3 -m pytest Backend/fastapi_app/tests
 ```
 
-## How it works
+Run the frontend checks from `Frontend`:
 
-1. You complete a questionnaire with your dietary preferences, nutrition goals,
-   activity level, and other details
-2. The backend sends your profile to OpenAI's API to calculate optimal daily
-   calorie and macronutrient targets
-3. A custom optimization algorithm selects meals from the recipe database that
-   match your nutrition targets, dietary restrictions, and preferences
-4. Your meal plan appears in the app, where you can review, translate, and swap
-   individual meals
-5. Plans are saved to your account for future reference and reuse
+```bash
+npm ci
+npm run lint
+npm run build
+```
 
-Meal plan generation and translation happen asynchronously in the background.
-The frontend polls the API to retrieve results when they're ready.
+## Deployment
 
-## The optimization algorithm
+The GitHub Actions workflow in
+[`.github/workflows/cd-heroku.yml`](.github/workflows/cd-heroku.yml) deploys
+`main` after quality checks pass. It builds both container images before any
+release, releases the backend, runs Alembic in the backend app, checks
+`/health`, then releases the frontend and checks its root page.
 
-The meal plan generator uses a sophisticated constraint-solving approach to
-create personalized plans. Inspired by [Tautvidas Pranc's constraint-based meal
-planning](https://www.tautvidas.com/blog/2020/04/overcomplicating-meal-planning-with-z3-constraint-solver/),
-the algorithm uses mathematical optimization to balance nutrition targets with
-your preferences.
+Configure these GitHub secrets before enabling a deployment:
 
-### Two-tier approach
+- `HEROKU_API_KEY`
+- `HEROKU_EMAIL`
+- `HEROKU_APP_BACKEND`
+- `HEROKU_APP_FRONTEND`
+- `VITE_CLERK_PUBLISHABLE_KEY`
 
-The app uses different algorithms depending on how much it knows about your
-preferences:
+Set the backend's runtime configuration in its Heroku app: `DATABASE_URL`,
+`OPENAI_API_KEY`, `CLERK_JWKS_URL`, `CLERK_JWT_ISSUER`, and any required Clerk
+audience or CORS settings. The frontend receives its API URL and Clerk
+publishable key at image-build time.
 
-**For users with rating history (10+ rated recipes):**
+Do not push, deploy, migrate production, or alter production configuration
+without explicit authorization.
 
-The system formulates meal planning as an Integer Linear Programming problem
-using the PuLP library. This finds the mathematically optimal combination of
-meals that:
+## Neon MCP server
 
-- Maximizes the number of recipes you've liked in the past
-- Meets your daily calorie and macronutrient targets (within ±10%)
-- Respects all dietary restrictions (vegan, gluten-free, etc.) as hard
-  constraints
-- Ensures meal variety (each recipe used at most once per week)
-- Assigns appropriate meal types (breakfast recipes for breakfast, etc.)
-- Considers your budget and cooking time preferences when possible
-
-The solver evaluates hundreds of recipe combinations in seconds to find the
-best match. If the solution quality doesn't meet thresholds (at least 50%
-liked recipes and macros within 20% of targets), it falls back to the
-alternative approach.
-
-**For new users or fallback scenarios:**
-
-When you don't have enough rating history, the system computes your daily
-calorie and macro targets (via OpenAI) and then picks recipes **randomly from
-the database** subject to your constraints. It uses a per-day relaxation ladder
-so it can always produce a plan:
-
-1. **Strict** — dietary/allergy + preferred cuisines + budget + cooking time
-2. **Relaxed** — drops budget and cooking time (keeps allergies and cuisines)
-3. **Final** — also drops cuisines (allergies are *never* relaxed)
-
-Each day is filled to land within **±15%** of the calorie target. It accepts
-the least-relaxed level that fits the band, otherwise the nearest combination
-found, and tracks used recipes to keep the week varied. There is **no AI meal
-generation** — every meal comes from a real recipe in the database.
-
-### Key constraints
-
-The optimization algorithm enforces:
-
-- **Daily macro targets:** Calories, protein, carbohydrates, and fat stay
-  within acceptable ranges
-- **Dietary restrictions:** Hard filters for vegan, vegetarian, gluten-free,
-  dairy-free, and allergen restrictions
-- **Meal appropriateness:** Breakfast foods for breakfast, dinner foods for
-  dinner (with some flexibility for lunch)
-- **Variety:** No recipe appears more than once in your weekly plan
-- **Recency:** Recipes from your previous week's plan are excluded
-- **User preferences:** Recipes you've disliked are never selected
-
-### Why constraint solving?
-
-Traditional recommendation systems might just pick "healthy recipes" or "top
-rated meals," but constraint solving ensures your entire week works together
-as a cohesive nutrition plan. It's like solving a complex puzzle where every
-meal affects the next, and the algorithm finds the configuration that best
-satisfies all requirements simultaneously.
-
-The result is meal plans that feel personalized and actually hit your
-nutrition goals without you having to think about macro calculations.
-
-## API documentation
-
-Once the backend is running, you can access the interactive API documentation:
-
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
-
-## Development
-
-### Frontend commands
-
-- `npm run dev` - Start development server
-- `npm run build` - Build for production
-- `npm run preview` - Preview production build
-- `npm run lint` - Run ESLint
-
-### Backend commands
-
-- `uvicorn main:app --reload` - Start development server with hot reload
-- `pytest` - Run tests (if configured)
-
-## Authentication
-
-All API endpoints except `/health` require authentication. The app uses Clerk
-for user management and JWT-based authentication. User accounts are
-automatically created on first login.
-
-## Database
-
-The app uses Neon (serverless PostgreSQL) with three main tables:
-
-- **users:** User accounts (synced with Clerk)
-- **preferences:** User preferences and generated meal plans
-- **recipes:** Recipe database loaded from `recipes.csv`
-
-The custom optimization algorithm queries the recipes table to build meal plans
-that match your nutrition targets and preferences. Generated meal plans and
-translations are stored as JSON in the `preferences.raw_data` field for
-flexibility.
-
-**Important:** To run your own instance, you must create and populate your own
-Neon database with recipe data. The production database is not accessible for
-local development or forking.
-
-## Contributing
-
-This is a personal project, but suggestions and feedback are welcome. If you
-find issues or have ideas for improvements, feel free to open an issue.
-
-## License
-
-This project is for personal and educational use.
+The repository includes an optional MCP server for direct database inspection
+and administration. Its setup, configuration expectations, available tools,
+and safety guidance are in
+[`mcp-servers/neon-db/README.md`](mcp-servers/neon-db/README.md).

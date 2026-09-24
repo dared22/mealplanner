@@ -3,6 +3,7 @@
 .env.*
 Backend/.env
 Frontend/.env
+.firecrawl
 
 # Allow example env files
 !.env.example
@@ -20,7 +21,7 @@ Frontend/.env
 
 # MCP servers virtual environments
 mcp-servers/**/venv/
-mcp-servers/**/__pycache__/.planning/
+mcp-servers/**/__pycache__/
 
 #md files
 planner_logic.md

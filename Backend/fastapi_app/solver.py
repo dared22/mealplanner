@@ -18,6 +18,15 @@ from sqlalchemy.orm import Session
 
 from models import PlanRecipe, Preference, Rating, Recipe
 from planner import apply_carry_forward_leftovers, generate_daily_macro_goal
+from planning_policy import (
+    normalize_nutrition,
+    matches_dietary_restrictions,
+    normalize_allergens as policy_normalize_allergens,
+    dietary_flag_truthy as policy_dietary_flag_truthy,
+    normalize_cuisine_list as policy_normalize_cuisine_list,
+    matches_preferred_cuisines,
+    cooking_time_bounds as policy_cooking_time_bounds,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -59,46 +68,21 @@ def _normalize_token(value: str) -> str:
 
 
 def _normalize_cuisine_list(values: Optional[List[str]]) -> Set[str]:
-    if not values:
-        return set()
-    return {token for token in (_normalize_token(v) for v in values) if token}
+    return policy_normalize_cuisine_list(values or [])
 
 
 def _recipe_matches_preferred_cuisines(
     recipe_cuisine: Optional[str], allowed: Set[str]
 ) -> bool:
-    if not allowed:
-        return True
-    if not recipe_cuisine:
-        return False
-    # Split on common separators to support multi-cuisine strings.
-    parts = re.split(r"[,/;|]+", str(recipe_cuisine))
-    for part in parts:
-        if _normalize_token(part) in allowed:
-            return True
-    return False
+    return matches_preferred_cuisines(recipe_cuisine, allowed)
 
 
 def _normalize_allergens(allergens: Any) -> Set[str]:
-    if not allergens:
-        return set()
-    if isinstance(allergens, (list, tuple, set)):
-        return {str(item).strip().lower() for item in allergens if item}
-    return {str(allergens).strip().lower()}
+    return policy_normalize_allergens(allergens)
 
 
 def _dietary_flag_truthy(flags: Any, key: str) -> bool:
-    if not isinstance(flags, dict):
-        return False
-    value = flags.get(key)
-    if value is None:
-        value = flags.get(key.lower())
-    if value is None:
-        return False
-    if isinstance(value, bool):
-        return value
-    text = str(value).strip().lower()
-    return text in {"true", "1", "yes", "y"}
+    return policy_dietary_flag_truthy(flags, key)
 
 
 def _violates_allergen_restriction(allergens: Set[str], restriction: str) -> bool:
@@ -115,24 +99,7 @@ def _violates_allergen_restriction(allergens: Set[str], restriction: str) -> boo
 
 
 def _cooking_time_bounds(value: Any) -> Tuple[Optional[int], Optional[int]]:
-    if value is None:
-        return None, None
-    normalized = str(value).strip().lower()
-    if normalized in {"under_20_min", "under20", "<20"}:
-        return None, 20
-    if normalized in {"15_30_min", "15-30", "15_30"}:
-        return 15, 30
-    if normalized in {"30_60_min", "30-60", "30_60"}:
-        return 30, 60
-    if normalized in {"over_60_min", "60_plus", ">60"}:
-        return 60, None
-    if "quick" in normalized or "fast" in normalized:
-        return None, 30
-    if "moderate" in normalized or "medium" in normalized:
-        return 30, 60
-    if "slow" in normalized or "long" in normalized:
-        return 60, None
-    return None, None
+    return policy_cooking_time_bounds(value)
 
 
 def _apply_cooking_time_filter(
@@ -185,24 +152,19 @@ def _get_last_week_recipes(db: Session, user_id: UUID) -> Set[UUID]:
     # Find most recent successful preference
     stmt = (
         select(Preference)
-        .where(
-            Preference.user_id == user_id,
-            Preference.raw_data["plan_status"].astext == "success",
-        )
+        .where(Preference.user_id == user_id)
         .order_by(Preference.submitted_at.desc())
-        .limit(1)
     )
-    result = db.execute(stmt)
-    last_pref = result.scalar_one_or_none()
-
-    if not last_pref:
-        return set()
-
-    # Get all recipes from that plan
-    stmt = select(PlanRecipe.recipe_id).where(PlanRecipe.preference_id == last_pref.id)
-    result = db.execute(stmt)
-
-    return {recipe_id for (recipe_id,) in result}
+    for previous_preference in db.execute(stmt).scalars().all():
+        raw_data = previous_preference.raw_data if isinstance(previous_preference.raw_data, dict) else {}
+        generated_plan = raw_data.get("generated_plan") if isinstance(raw_data, dict) else None
+        if not isinstance(generated_plan, dict) or not generated_plan.get("plan"):
+            continue
+        recipe_ids = db.execute(
+            select(PlanRecipe.recipe_id).where(PlanRecipe.preference_id == previous_preference.id)
+        )
+        return {recipe_id for (recipe_id,) in recipe_ids}
+    return set()
 
 
 def _filter_recipes_for_solver(
@@ -225,20 +187,6 @@ def _filter_recipes_for_solver(
 
     # Apply dietary restrictions (hard constraint)
     dietary_restrictions = preference.dietary_restrictions or []
-    for restriction in dietary_restrictions:
-        if not restriction:
-            continue
-        restriction_lower = str(restriction).lower()
-
-        if restriction_lower == "vegan":
-            stmt = stmt.where(Recipe.dietary_flags["is_vegan"].astext == "true")
-        elif restriction_lower == "vegetarian":
-            # Vegetarian includes vegan recipes
-            stmt = stmt.where(
-                (Recipe.dietary_flags["is_vegetarian"].astext == "true")
-                | (Recipe.dietary_flags["is_vegan"].astext == "true")
-            )
-
     result = db.execute(stmt)
     recipes = result.scalars().all()
 
@@ -253,47 +201,17 @@ def _filter_recipes_for_solver(
         if not _recipe_matches_preferred_cuisines(recipe.cuisine, allowed_cuisines):
             continue
 
-        restriction_blocked = False
-        flags = recipe.dietary_flags or {}
-        allergens = _normalize_allergens(recipe.allergens)
-        for restriction in dietary_restrictions:
-            if not restriction:
-                continue
-            restriction_lower = str(restriction).lower()
-            if restriction_lower == "none":
-                continue
-            if restriction_lower == "vegan":
-                if not _dietary_flag_truthy(flags, "is_vegan"):
-                    restriction_blocked = True
-                    break
-            elif restriction_lower == "vegetarian":
-                if not (
-                    _dietary_flag_truthy(flags, "is_vegetarian")
-                    or _dietary_flag_truthy(flags, "is_vegan")
-                ):
-                    restriction_blocked = True
-                    break
-            elif restriction_lower == "gluten_free" or "gluten" in restriction_lower:
-                if _violates_allergen_restriction(allergens, "gluten"):
-                    restriction_blocked = True
-                    break
-            elif restriction_lower == "dairy_free" or "dairy" in restriction_lower:
-                if _violates_allergen_restriction(allergens, "dairy"):
-                    restriction_blocked = True
-                    break
-            elif restriction_lower == "nut_free" or "nut" in restriction_lower:
-                if _violates_allergen_restriction(allergens, "nut"):
-                    restriction_blocked = True
-                    break
-        if restriction_blocked:
+        if not matches_dietary_restrictions(
+            recipe.dietary_flags, recipe.allergens, dietary_restrictions
+        ):
             continue
 
         # Extract nutrition data
-        nutrition = recipe.nutrition or {}
-        calories = nutrition.get("calories_kcal") or nutrition.get("calories") or 0
-        protein = nutrition.get("protein_g") or 0
-        carbs = nutrition.get("carbs_g") or 0
-        fat = nutrition.get("fat_g") or 0
+        nutrition = normalize_nutrition(recipe.nutrition)
+        calories = nutrition.get("calories", 0)
+        protein = nutrition.get("protein", 0)
+        carbs = nutrition.get("carbs", 0)
+        fat = nutrition.get("fat", 0)
 
         recipe_data.append(
             {
@@ -751,6 +669,7 @@ def generate_personalized_plan(
     db: Session,
     user_id: UUID,
     preference: Preference,
+    macro_goal: Optional[Dict[str, Any]] = None,
     timeout_seconds: int = 10,
 ) -> Dict[str, Any]:
     """
@@ -781,16 +700,16 @@ def generate_personalized_plan(
         logger.info(f"User {user_id}: {len(last_week_ids)} recipes from last week")
 
         # Step 3: Generate macro targets
-        macro_response = generate_daily_macro_goal(preference)
-        if macro_response.get("error"):
-            return {
-                "plan": None,
-                "error": macro_response["error"],
-                "fallback_reason": "macro_generation_failed",
-                "quality_metrics": None,
-            }
-
-        macro_goal = macro_response.get("goal")
+        if macro_goal is None:
+            macro_response = generate_daily_macro_goal(preference)
+            if macro_response.get("error"):
+                return {
+                    "plan": None,
+                    "error": macro_response["error"],
+                    "fallback_reason": "macro_generation_failed",
+                    "quality_metrics": None,
+                }
+            macro_goal = macro_response.get("goal")
         macro_targets = {
             "calories": float(macro_goal.get("calorieTarget", 2000)),
             "protein": float(macro_goal.get("macroTargets", {}).get("protein", 150)),

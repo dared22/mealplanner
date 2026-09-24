@@ -2,7 +2,7 @@ import asyncio
 import copy
 import logging
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, List, Optional
 
 try:
     from googletrans import Translator
@@ -70,46 +70,6 @@ class _GoogleTranslateBase:
     async def _translate_async(self, texts: List[str]) -> Any:
         translator = Translator()
         return await translator.translate(texts, dest=self.target_language)
-
-
-class RecipeTranslator(_GoogleTranslateBase):
-    def __init__(self, target_language: str = "Norwegian") -> None:
-        super().__init__(target_language)
-        self._translatable_keys = ("name", "ingredients", "instructions", "tags")
-
-    def translate_recipe(self, recipe: Dict[str, Any]) -> TranslationResult:
-        if not self._enabled:
-            return TranslationResult(recipe, "Translation disabled: Google Translate not configured.")
-
-        self._last_error = None
-        translated = dict(recipe)
-        translated["name"] = self._translate_text(recipe.get("name"))
-        translated["instructions"] = self._translate_text(recipe.get("instructions"))
-        translated["ingredients"] = self._translate_list(recipe.get("ingredients"))
-        translated["tags"] = self._translate_list(recipe.get("tags"))
-        if self._last_error:
-            return TranslationResult(translated, f"Translation failed: {self._last_error}")
-        return TranslationResult(translated, None)
-
-    def translate_recipes(self, recipes: Iterable[Dict[str, Any]]) -> List[TranslationResult]:
-        return [self.translate_recipe(recipe) for recipe in recipes]
-
-    def _translate_text(self, value: Any) -> Any:
-        if value is None:
-            return value
-        if not isinstance(value, str):
-            return value
-        translated = self._translate_batch([value])
-        return translated[0] if translated else value
-
-    def _translate_list(self, value: Any) -> Any:
-        if value is None:
-            return []
-        if not isinstance(value, list):
-            return value
-        texts = [str(item) for item in value]
-        translated = self._translate_batch(texts)
-        return translated if translated else value
 
 
 class PlanTranslator(_GoogleTranslateBase):
