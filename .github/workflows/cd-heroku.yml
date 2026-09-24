@@ -109,6 +109,13 @@ jobs:
       - name: Login to Heroku Container Registry
         run: heroku container:login
 
+      - name: Resolve Heroku app URLs
+        run: |
+          backend_url=$(heroku apps:info --app "$HEROKU_APP_BACKEND" --json | python3 -c 'import json, sys; print(json.load(sys.stdin)["web_url"].rstrip("/"))')
+          frontend_url=$(heroku apps:info --app "$HEROKU_APP_FRONTEND" --json | python3 -c 'import json, sys; print(json.load(sys.stdin)["web_url"].rstrip("/"))')
+          echo "HEROKU_BACKEND_URL=$backend_url" >> "$GITHUB_ENV"
+          echo "HEROKU_FRONTEND_URL=$frontend_url" >> "$GITHUB_ENV"
+
       # ---------- Backend ----------
       - name: Set container stack (backend)
         run: heroku stack:set container -a "$HEROKU_APP_BACKEND" 
@@ -117,13 +124,12 @@ jobs:
         env:
           VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
         run: |
-          VITE_API_URL="https://$HEROKU_APP_BACKEND.herokuapp.com"
           docker build \
             -f Backend/fastapi_app/Dockerfile \
             -t registry.heroku.com/$HEROKU_APP_BACKEND/web \
             Backend/fastapi_app
           docker build \
-            --build-arg VITE_API_URL=$VITE_API_URL \
+            --build-arg VITE_API_URL="$HEROKU_BACKEND_URL" \
             --build-arg VITE_CLERK_PUBLISHABLE_KEY=$VITE_CLERK_PUBLISHABLE_KEY \
             -f Frontend/Dockerfile \
             -t registry.heroku.com/$HEROKU_APP_FRONTEND/web \
@@ -141,7 +147,7 @@ jobs:
       - name: Verify backend health
         run: |
           curl --fail --retry 5 --retry-connrefused --retry-delay 5 \
-            "https://$HEROKU_APP_BACKEND.herokuapp.com/health"
+            "$HEROKU_BACKEND_URL/health"
 
       # ---------- Frontend ----------
       - name: Push frontend image
@@ -153,4 +159,4 @@ jobs:
       - name: Verify frontend root
         run: |
           curl --fail --retry 5 --retry-connrefused --retry-delay 5 \
-            "https://$HEROKU_APP_FRONTEND.herokuapp.com/"
+            "$HEROKU_FRONTEND_URL/"
