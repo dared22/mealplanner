@@ -523,11 +523,15 @@ def _repair_plan_payload(plan: Any) -> Any:
         if not isinstance(meal, dict):
             return meal
         fixed = dict(meal)
-        # Keep ingredients as structured objects (list of dicts with quantity, unit, name)
-        # instead of converting to plain strings
+        # Older translations stored ingredient dictionaries as Python strings.
         ingredients = meal.get("ingredients")
         if ingredients is not None:
-            fixed["ingredients"] = ingredients if isinstance(ingredients, list) else []
+            fixed["ingredients"] = [
+                (_maybe_eval_dict(item) or item) if isinstance(item, str) else item
+                for item in ingredients
+            ] if isinstance(ingredients, list) else []
+        if isinstance(meal.get("items"), list):
+            fixed["items"] = [_repair_meal(item) for item in meal["items"]]
         # Backfill calories from macros if missing/zero.
         cal = fixed.get("calories")
         protein = float(fixed.get("protein") or 0)

@@ -142,6 +142,32 @@ def test_preference_response_is_owner_scoped_and_contains_only_plan_fields():
     assert "secret_questionnaire_data" not in response
 
 
+def test_cached_english_plan_restores_serialized_ingredients():
+    owner = SimpleNamespace(id=uuid4())
+    bread = {"name": "bread", "unit": "slice", "notes": "", "quantity": 4.0,
+             "original_text": "4slicebrød"}
+    herbs = {"name": "potted herbs or sprouts", "unit": None, "notes": "",
+             "quantity": 0.25, "original_text": "0.25potted herbs\n\n or sprouts"}
+    meal = {"name": "Bruschetta", "ingredients": [str(bread), str(herbs), "Salt to taste", bread]}
+    plan = {"days": [{"name": "Monday", "meals": {
+        "Breakfast": meal,
+        "Snacks": {"name": "Snacks", "items": [meal]},
+    }}]}
+    preference = SimpleNamespace(id=1, user_id=owner.id, raw_data={
+        "generated_plan": {"plan": plan, "language": "no"},
+        "generated_plan_translations": {"en": plan},
+    })
+
+    response = get_preferences(1, background_tasks=None, lang="en",
+                               db=FakeSession(preference), current_user=owner)
+
+    assert response["translation_status"] == "success"
+    meals = response["plan"]["days"][0]["meals"]
+    assert meals["Breakfast"]["ingredients"] == [bread, herbs, "Salt to taste", bread]
+    assert meals["Snacks"]["items"][0]["ingredients"] == [bread, herbs, "Salt to taste", bread]
+    assert meal["ingredients"][0] == str(bread)
+
+
 def test_preference_response_hides_records_owned_by_another_user():
     owner = SimpleNamespace(id=uuid4())
     other_user = SimpleNamespace(id=uuid4())
